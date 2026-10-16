@@ -101,10 +101,10 @@ android {
             manifestPlaceholders["label"] = "JamesDSP"
             project.setProperty("archivesBaseName", "JamesDSP-v${AndroidConfig.versionName}-${AndroidConfig.versionCode}")
             applicationId = "james.dsp"
-            // The Samsung test module targets users who already have the
-            // owner-signed v1.6.15 diagnostic app (versionCode 60) installed.
-            // Keep this fork build installable as an in-place test update.
-            versionCode = 61
+            // The Samsung test module targets users who already have an
+            // owner-signed diagnostic build installed. Keep this branch
+            // installable as an in-place test update.
+            versionCode = 62
             versionName = "${AndroidConfig.versionName}-zahah-samsung-test"
             AndroidConfig.minSdk = 26
             minSdk = AndroidConfig.minSdk

@@ -1,4 +1,4 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <string name="jamesdsp" translatable="false">JamesDSP</string>
 
     <!-- Main menu bar -->
@@ -560,7 +560,7 @@
     <!-- Root: Library load failure -->
     <string name="load_fail_header">Magisk module not installed</string>
     <string name="load_fail_card_title">Failed to load libjamesdsp.so</string>
-    <string name="load_fail_card">Please install the JamesDSP magisk module and reboot your Android device to use this application. You may also need to reinstall this app after rebooting.</string>
+    <string name="load_fail_card" tools:ignore="MissingTranslation">The JamesDSP effect is not currently visible to AudioFlinger. Confirm that the module is enabled. On Samsung temp-root setups, the app will retry discovery briefly after opening; if this message remains, collect the module status and audio-effect logs. Do not uninstall the app or clear its data.</string>
     <string name="load_fail_rootless_card_title">Looking for a rootless alternative?</string>
     <string name="load_fail_rootless_card">This flavor of JamesDSP was designed to be used with a rooted/modified device. A non-root alternative with some limitations is also available. Tap here for details.</string>
     <string name="load_fail_arch_card_title">Module already installed?</string>

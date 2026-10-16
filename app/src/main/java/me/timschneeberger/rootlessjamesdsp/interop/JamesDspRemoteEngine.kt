@@ -308,22 +308,40 @@ class JamesDspRemoteEngine(
                 // setup). Treat that as an empty list so the filesystem fallback
                 // below can run instead of crashing MainActivity while iterating.
                 val queriedEffects = AudioEffect.queryEffects() ?: emptyArray()
-                queriedEffects
-                    .firstOrNull { it.uuid == EFFECT_JAMESDSP }
-                    ?.run {
-                        if(name.contains("v3")) PluginState.Unsupported else PluginState.Available
-                    } ?: if (isPluginLibraryPresent()) PluginState.Available else PluginState.Unavailable
-            } catch (e: Exception) {
-                Timber.e("isPluginInstalled: exception raised")
-                Timber.e(e)
-                MainApplication.instance.showAlert(
-                    "Error while checking audio effect status",
-                    "Unexpected error while checking whether JamesDSP's audio effect library is installed. \n\n" +
-                            "Error: $e",
+                val descriptor = queriedEffects.firstOrNull { it.uuid == EFFECT_JAMESDSP }
+                Timber.i(
+                    "JDSP effect discovery: manufacturer=%s queried=%d found=%s",
+                    android.os.Build.MANUFACTURER,
+                    queriedEffects.size,
+                    descriptor != null,
                 )
+                descriptor?.run {
+                    if(name.contains("v3")) PluginState.Unsupported else PluginState.Available
+                } ?: if (isSamsungDevice()) {
+                    // Samsung's app process may not share the audio HAL's mount namespace.
+                    // A file visible to the app is therefore not an adequate substitute for
+                    // the descriptor that AudioFlinger must actually be able to instantiate.
+                    PluginState.Unavailable
+                } else if (isPluginLibraryPresent()) {
+                    PluginState.Available
+                } else {
+                    PluginState.Unavailable
+                }
+            } catch (e: Exception) {
+                Timber.e(e, "isPluginInstalled: exception raised")
+                if (!isSamsungDevice()) {
+                    MainApplication.instance.showAlert(
+                        "Error while checking audio effect status",
+                        "Unexpected error while checking whether JamesDSP's audio effect library is installed. \n\n" +
+                                "Error: $e",
+                    )
+                }
                 PluginState.Unavailable
             }
         }
+
+        private fun isSamsungDevice() =
+            android.os.Build.MANUFACTURER.equals("samsung", ignoreCase = true)
 
         private fun isPluginLibraryPresent(): Boolean {
             return listOf(

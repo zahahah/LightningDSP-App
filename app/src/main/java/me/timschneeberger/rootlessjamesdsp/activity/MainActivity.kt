@@ -14,7 +14,9 @@ import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.PersistableBundle
 import android.view.HapticFeedbackConstants
 import android.widget.CheckBox
@@ -97,6 +99,9 @@ class MainActivity : BaseActivity() {
 
     /* Root version */
     private var hasLoadFailed = false
+    private val samsungPluginRetryHandler = Handler(Looper.getMainLooper())
+    private var samsungPluginRetry: Runnable? = null
+    private var samsungPluginRetryAttempt = 0
     private lateinit var runtimePermissionLauncher: ActivityResultLauncher<Array<String>>
     private val updateManager: UpdateManager by inject()
 
@@ -452,11 +457,15 @@ class MainActivity : BaseActivity() {
     }
 
     override fun onPause() {
+        samsungPluginRetry?.let(samsungPluginRetryHandler::removeCallbacks)
+        samsungPluginRetry = null
         super.onPause()
         prefsVar.set(R.string.key_is_activity_active, false)
     }
 
     override fun onDestroy() {
+        samsungPluginRetry?.let(samsungPluginRetryHandler::removeCallbacks)
+        samsungPluginRetry = null
         unregisterLocalReceiver(broadcastReceiver)
         unregisterLocalReceiver(processorMessageReceiver)
 
@@ -479,6 +488,60 @@ class MainActivity : BaseActivity() {
 
         if(isRootless())
             binding.powerToggle.isToggled = processorService != null
+        else if (hasLoadFailed && isRoot() && Build.MANUFACTURER.equals("samsung", ignoreCase = true)) {
+            // On Samsung the Audio HAL/factory can become ready after the app's first probe.
+            // Re-query for a short bounded window so returning to the app can recover without
+            // requiring a force-stop/relaunch. Never restart the audio services from the app.
+            samsungPluginRetryAttempt = 0
+            scheduleSamsungPluginRetry()
+        }
+    }
+
+    private fun scheduleSamsungPluginRetry() {
+        if (!hasLoadFailed || isFinishing || isDestroyed || samsungPluginRetry != null)
+            return
+
+        val retryDelaysMs = longArrayOf(1_000L, 2_000L, 4_000L, 8_000L, 15_000L)
+        if (samsungPluginRetryAttempt >= retryDelaysMs.size)
+            return
+
+        val delayMs = retryDelaysMs[samsungPluginRetryAttempt++]
+        val retry = Runnable {
+            samsungPluginRetry = null
+            if (!hasLoadFailed || isFinishing || isDestroyed)
+                return@Runnable
+
+            when (JamesDspRemoteEngine.isPluginInstalled()) {
+                JamesDspRemoteEngine.PluginState.Available -> recoverSamsungPluginAvailability()
+                JamesDspRemoteEngine.PluginState.Unsupported -> {
+                    Timber.e("Samsung JDSP retry found an unsupported effect implementation")
+                }
+                JamesDspRemoteEngine.PluginState.Unavailable -> {
+                    Timber.w("Samsung JDSP effect descriptor is still unavailable; retry=%d", samsungPluginRetryAttempt)
+                    scheduleSamsungPluginRetry()
+                }
+            }
+        }
+        samsungPluginRetry = retry
+        samsungPluginRetryHandler.postDelayed(retry, delayMs)
+    }
+
+    private fun recoverSamsungPluginAvailability() {
+        if (!hasLoadFailed)
+            return
+
+        Timber.i("Samsung JDSP effect descriptor became available; restoring app UI")
+        hasLoadFailed = false
+        binding.toolbar.isVisible = true
+        binding.powerToggle.isToggled = prefsApp.get(R.string.key_powered_on)
+        supportFragmentManager.beginTransaction()
+            .replace(R.id.dsp_fragment_container, dspFragment)
+            .commit()
+
+        if (app.isLegacyMode)
+            RootAudioProcessorService.updateLegacyMode(this, true)
+        else if (app.isEnhancedProcessing)
+            RootAudioProcessorService.startServiceEnhanced(this)
     }
 
     private fun showAndroid15Alert() {
