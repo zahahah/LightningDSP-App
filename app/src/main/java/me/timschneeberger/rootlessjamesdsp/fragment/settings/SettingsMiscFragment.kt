@@ -28,6 +28,7 @@ import java.util.Locale
 class SettingsMiscFragment : SettingsBaseFragment() {
 
     private val autoStartNotify by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_autostart_prompt_at_boot)) }
+    private val volumeManagerIntegration by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_volume_manager_integration_api)) }
     private val repairAssets by lazy { findPreference<Preference>(getString(R.string.key_troubleshooting_repair_assets)) }
     private val crashReports by lazy { findPreference<Preference>(getString(R.string.key_share_crash_reports)) }
     private val aeqApiUrl by lazy { findPreference<EditTextPreference>(getString(R.string.key_network_autoeq_api_url)) }
@@ -41,6 +42,8 @@ class SettingsMiscFragment : SettingsBaseFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         preferenceManager.sharedPreferencesName = Constants.PREF_APP
         setPreferencesFromResource(R.xml.app_misc_preferences, rootKey)
+
+        updateVolumeManagerIntegrationState()
 
         crashReports?.setOnPreferenceChangeListener { _, newValue ->
             CrashlyticsImpl.setCollectionEnabled(newValue as Boolean)
@@ -109,7 +112,14 @@ class SettingsMiscFragment : SettingsBaseFragment() {
 
     override fun onResume() {
         updatePermissionStates()
+        updateVolumeManagerIntegrationState()
         super.onResume()
+    }
+
+    private fun updateVolumeManagerIntegrationState() {
+        volumeManagerIntegration?.isChecked = preferences.preferences.getBoolean(
+            getString(R.string.key_volume_manager_integration_api), false
+        )
     }
 
     private fun updatePermissionStates() {

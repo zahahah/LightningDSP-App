@@ -60,6 +60,12 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
         }
     }
 
+    fun syncWithPreferences() {
+        sessionList.values.toList().forEach { session ->
+            (session as? RemoteEffectSession)?.effect?.syncWithPreferences()
+        }
+    }
+
     override fun shouldAcceptSessionDump(id: Int, session: AudioSessionDumpEntry): Boolean {
         if (!session.isUsageRecordable()) {
             Timber.d("Skipped session $id due to usage ($session)")

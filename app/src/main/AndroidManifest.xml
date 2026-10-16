@@ -322,6 +322,7 @@
         <provider
             android:name=".interop.VolumeManagerIntegrationProvider"
             android:authorities="${applicationId}.volume_manager"
+            android:enabled="true"
             android:exported="true" />
 
     </application>

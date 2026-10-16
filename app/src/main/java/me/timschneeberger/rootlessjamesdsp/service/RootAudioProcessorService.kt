@@ -2,7 +2,9 @@ package me.timschneeberger.rootlessjamesdsp.service
 
 import android.app.NotificationManager
 import android.content.Context
+import android.content.BroadcastReceiver
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.pm.ServiceInfo
 import android.media.AudioManager
@@ -28,6 +30,8 @@ import me.timschneeberger.rootlessjamesdsp.session.root.OnRootSessionChangeListe
 import me.timschneeberger.rootlessjamesdsp.session.root.RootSessionDumpManager
 import me.timschneeberger.rootlessjamesdsp.utils.Constants
 import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.sendLocalBroadcast
+import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.registerLocalReceiver
+import me.timschneeberger.rootlessjamesdsp.utils.extensions.ContextExtensions.unregisterLocalReceiver
 import me.timschneeberger.rootlessjamesdsp.utils.notifications.Notifications
 import me.timschneeberger.rootlessjamesdsp.utils.notifications.ServiceNotificationHelper
 import me.timschneeberger.rootlessjamesdsp.utils.preferences.Preferences
@@ -51,6 +55,14 @@ class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponent,
 
     // Preferences
     private val preferences: Preferences.App by inject()
+
+    private val dspPreferencesReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == Constants.ACTION_PREFERENCES_UPDATED) {
+                app.rootSessionDatabase.syncWithPreferences()
+            }
+        }
+    }
 
     // Room databases
     private val applicationScope = CoroutineScope(SupervisorJob())
@@ -80,6 +92,7 @@ class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponent,
         // Register shared preferences listener
         preferences.registerOnSharedPreferenceChangeListener(this)
         app.rootSessionDatabase.registerOnSessionChangeListener(this)
+        registerLocalReceiver(dspPreferencesReceiver, IntentFilter(Constants.ACTION_PREFERENCES_UPDATED))
 
         // Get reference to system services
         audioManager = getSystemService<AudioManager>()!!
@@ -180,6 +193,7 @@ class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponent,
         app.rootSessionDatabase.clearSessions()
 
         preferences.unregisterOnSharedPreferenceChangeListener(this)
+        unregisterLocalReceiver(dspPreferencesReceiver)
         app.rootSessionDatabase.unregisterOnSessionChangeListener(this)
 
         notificationManager.cancel(Notifications.ID_SERVICE_STATUS)

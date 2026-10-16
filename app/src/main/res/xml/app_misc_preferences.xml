@@ -19,6 +19,17 @@
             app:iconSpaceReserved="false" />
     </PreferenceCategory>
 
+    <PreferenceCategory app:title="@string/integration_services"
+        app:iconSpaceReserved="false">
+        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSwitchPreference
+            app:key="@string/key_volume_manager_integration_api"
+            app:title="@string/volume_manager_integration_api"
+            app:summaryOn="@string/volume_manager_integration_api_on"
+            app:summaryOff="@string/volume_manager_integration_api_off"
+            app:defaultValue="false"
+            app:iconSpaceReserved="false" />
+    </PreferenceCategory>
+
     <PreferenceCategory app:title="@string/assets"
         app:iconSpaceReserved="false">
         <Preference

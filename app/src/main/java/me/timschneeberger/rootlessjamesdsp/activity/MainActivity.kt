@@ -393,6 +393,35 @@ class MainActivity : BaseActivity() {
         if(intent?.action == Intent.ACTION_VIEW) {
             intent.data?.let { handleFileIntent(it) }
         }
+        showRequestedEffect(intent)
+    }
+
+    private fun showRequestedEffect(request: Intent?) {
+        if (request?.action != "$packageName.action.OPEN_EFFECT" || hasLoadFailed) return
+        val (cardId, selectionKey) = when (request.getStringExtra("effect_id")) {
+            "compander" -> R.id.card_compressor to R.string.key_compander_response
+            "bass" -> R.id.card_bass to null
+            "equalizer" -> R.id.card_eq to R.string.key_eq_bands
+            "graphic_eq" -> R.id.card_geq to R.string.key_geq_nodes
+            "reverb" -> R.id.card_reverb to R.string.key_reverb_preset
+            "stereo_wide" -> R.id.card_stereowide to null
+            "crossfeed" -> R.id.card_crossfeed to R.string.key_crossfeed_mode
+            "tube" -> R.id.card_tube to null
+            "ddc" -> R.id.card_ddc to R.string.key_ddc_file
+            "liveprog" -> R.id.card_liveprog to R.string.key_liveprog_file
+            "convolver" -> R.id.card_convolver to R.string.key_convolver_file
+            else -> return
+        }
+        binding.root.post {
+            val scroll = dspFragment.view?.findViewById<androidx.core.widget.NestedScrollView>(R.id.dsp_scrollview)
+            val card = dspFragment.view?.findViewById<android.view.View>(cardId)
+            if (scroll != null && card != null) scroll.smoothScrollTo(0, card.top)
+            if (selectionKey != null) {
+                (dspFragment.childFragmentManager.findFragmentById(cardId)
+                    as? me.timschneeberger.rootlessjamesdsp.fragment.PreferenceGroupFragment)
+                    ?.showIntegrationSelection(selectionKey)
+            }
+        }
     }
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {

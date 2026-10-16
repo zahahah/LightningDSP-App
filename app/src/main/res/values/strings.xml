@@ -368,6 +368,11 @@
     <string name="misc_permission_header">Optional permissions</string>
     <string name="assets">Assets</string>
     <string name="network_services">Network services</string>
+    <string name="integration_services">Integration</string>
+    <string name="volume_manager_integration_api">Expose the VolumeManager integration API</string>
+    <string name="volume_manager_integration_api_on">Expose the protected provider for VolumeManager to control post gain and effects</string>
+    <string name="volume_manager_integration_api_off">The integration provider is disabled and unavailable to VolumeManager</string>
+    <string name="volume_manager_integration_api_error">Could not update the VolumeManager integration setting</string>
     <string name="network_autoeq_api_url">AutoEQ API backend URL</string>
     <string name="network_invalid_url">Invalid URL format</string>
     <string name="network_autoeq_conntest_running">Testing connection to server…</string>

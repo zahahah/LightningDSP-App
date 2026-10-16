@@ -238,6 +238,15 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
         }
     }
 
+    fun showIntegrationSelection(keyRes: Int) {
+        val preference = findPreference<Preference>(getString(keyRes)) ?: return
+        if (keyRes == R.string.key_geq_nodes) {
+            startActivity(Intent(requireContext(), GraphicEqualizerActivity::class.java))
+        } else {
+            onDisplayPreferenceDialog(preference)
+        }
+    }
+
     companion object {
         private const val BUNDLE_PREF_NAME = "preferencesName"
         private const val BUNDLE_XML_RES = "preferencesXmlRes"

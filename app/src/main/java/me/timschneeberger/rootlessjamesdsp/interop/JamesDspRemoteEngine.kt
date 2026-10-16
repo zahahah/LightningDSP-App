@@ -303,13 +303,16 @@ class JamesDspRemoteEngine(
 
         fun isPluginInstalled(): PluginState {
             return try {
-                AudioEffect
-                    .queryEffects()
-                    .orEmpty()
+                // AudioEffect.queryEffects() can return null on vendor HALs that
+                // expose no descriptors yet (observed with Samsung's late-load
+                // setup). Treat that as an empty list so the filesystem fallback
+                // below can run instead of crashing MainActivity while iterating.
+                val queriedEffects = AudioEffect.queryEffects() ?: emptyArray()
+                queriedEffects
                     .firstOrNull { it.uuid == EFFECT_JAMESDSP }
                     ?.run {
                         if(name.contains("v3")) PluginState.Unsupported else PluginState.Available
-                    } ?: PluginState.Unavailable
+                    } ?: if (isPluginLibraryPresent()) PluginState.Available else PluginState.Unavailable
             } catch (e: Exception) {
                 Timber.e("isPluginInstalled: exception raised")
                 Timber.e(e)
@@ -320,6 +323,17 @@ class JamesDspRemoteEngine(
                 )
                 PluginState.Unavailable
             }
+        }
+
+        private fun isPluginLibraryPresent(): Boolean {
+            return listOf(
+                "/vendor/lib64/soundfx/libjamesdsp.so",
+                "/vendor/lib/soundfx/libjamesdsp.so",
+                "/odm/lib64/soundfx/libjamesdsp.so",
+                "/odm/lib/soundfx/libjamesdsp.so",
+                "/system/lib64/soundfx/libjamesdsp.so",
+                "/system/lib/soundfx/libjamesdsp.so",
+            ).any { java.io.File(it).isFile }
         }
     }
 }
