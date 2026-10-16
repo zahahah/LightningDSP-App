@@ -390,3 +390,14 @@ All the limitations mentioned above are **not relevant** for the magisk/root ver
   </tr>
 </table><a href="https://crowdin.com/project/rootlessjamesdsp" target="_blank">Translate in Crowdin 🚀</a>
 <!-- CROWDIN-CONTRIBUTORS-END -->
+# VolumeManager integration (experimental)
+
+The `pixel-test` branch exposes a narrow exported ContentProvider for the
+VolumeManager app (`moe.chensi.volume`). It supports reading the shared DSP
+state and changing output post gain (−15..+15 dB) or existing effect enable
+preferences. Calls are restricted to the VolumeManager package UID; successful
+changes update the running engine through the app's existing preference-update
+broadcast. The VolumeManager controls are global because JamesDSP processing is
+global, not per application. Preview APKs for Root and Rootless flavors are
+available from the `Pixel test APKs` GitHub Actions workflow.
+

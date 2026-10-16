@@ -1,0 +1,41 @@
+name: Pixel test APKs
+
+on:
+  push:
+    branches: [pixel-test]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.flavor }} preview APK
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        flavor: [Rootless, Root]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Build preview APK
+        run: ./gradlew --no-daemon assemble${{ matrix.flavor }}FullPreview
+
+      - name: Upload preview APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: jamesdsp-${{ matrix.flavor }}-preview
+          path: app/build/outputs/apk/${{ matrix.flavor == 'Root' && 'root' || 'rootless' }}Full/preview/*.apk
+          if-no-files-found: error
+          retention-days: 14

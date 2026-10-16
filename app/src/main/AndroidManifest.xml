@@ -319,5 +319,10 @@
             android:exported="false"
             android:grantUriPermissions="true" />
 
+        <provider
+            android:name=".interop.VolumeManagerIntegrationProvider"
+            android:authorities="${applicationId}.volume_manager"
+            android:exported="true" />
+
     </application>
 </manifest>
