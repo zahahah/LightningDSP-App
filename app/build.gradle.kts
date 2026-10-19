@@ -101,8 +101,8 @@ android {
             manifestPlaceholders["label"] = "JamesDSP"
             project.setProperty("archivesBaseName", "JamesDSP-v${AndroidConfig.versionName}-${AndroidConfig.versionCode}")
             applicationId = "james.dsp"
-            // Keep this custom integration APK installable over the bundled 1.6.15 app.
-            versionCode = AndroidConfig.versionCode
+            // Bump the root integration build so the module can update the bundled v1.6.15 app in place.
+            versionCode = AndroidConfig.versionCode + 1
             versionName = AndroidConfig.versionName
             AndroidConfig.minSdk = 26
             minSdk = AndroidConfig.minSdk
