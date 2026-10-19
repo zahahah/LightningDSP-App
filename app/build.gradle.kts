@@ -152,8 +152,7 @@ android {
     buildFeatures {
         viewBinding = true
         // Disable unused features
-        // The root flavor consumes LightningDSP's optional jdsp.control Binder API.
-        aidl = true
+        aidl = false
         renderScript = false
         shaders = false
     }

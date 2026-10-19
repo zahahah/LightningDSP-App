@@ -46,11 +46,7 @@ class JamesDspRemoteEngine(
     var effect: AudioEffectHidden? = createEffect()
 
     override var enabled: Boolean
-        set(value) {
-            if (!JamesDspControlClient.setEnabledIfSupported(value)) {
-                effect?.enabled = value
-            }
-        }
+        set(value) { effect?.enabled = value }
         get() = effect?.enabled ?: false
 
     override var sampleRate: Float
@@ -61,7 +57,6 @@ class JamesDspRemoteEngine(
         set(_){}
 
     init {
-        JamesDspControlClient.probeAsync()
         syncWithPreferences()
 
         val filter = IntentFilter()
