@@ -332,7 +332,7 @@
     <string name="troubleshooting_repair_assets_summary">プリロードされたアセットを紛失した場合にアンパックをします</string>
     <string name="troubleshooting_repair_assets_success">バンドルされたアセットが復元されました</string>
     <string name="misc_settings">その他</string>
-    <string name="misc_settings_summary">クラッシュレポート、その他のアクション</string>
+    <string name="misc_settings_summary">その他の設定と操作</string>
     <string name="misc_permission_skip_prompt">キャプチャ権限プロンプトをスキップ</string>
     <string name="misc_permission_auto_start">起動時に効果エンジンを自動起動</string>
     <string name="misc_permission_restart_setup">セットアップウィザードを再度表示する</string>

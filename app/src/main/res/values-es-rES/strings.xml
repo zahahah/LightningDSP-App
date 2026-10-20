@@ -329,7 +329,7 @@
     <string name="troubleshooting_repair_assets_summary">Abre los datos precargados si los perdiste</string>
     <string name="troubleshooting_repair_assets_success">Los activos han sido restaurados</string>
     <string name="misc_settings">Misceláneo</string>
-    <string name="misc_settings_summary">Reportes, otras acciones</string>
+    <string name="misc_settings_summary">Otros ajustes y acciones</string>
     <string name="misc_permission_skip_prompt">Omitir aviso de permisos de captura</string>
     <string name="misc_permission_auto_start">Empece los efectos al encender su teléfono</string>
     <string name="misc_permission_restart_setup">Reinicie autoconfiguración</string>

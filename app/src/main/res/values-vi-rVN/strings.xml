@@ -329,7 +329,7 @@
     <string name="troubleshooting_repair_assets_summary">Giải nén tài sản được tải trước nếu bạn bị mất chúng</string>
     <string name="troubleshooting_repair_assets_success">Bundled assets đã được khôi phục</string>
     <string name="misc_settings">Các tùy chọn khác</string>
-    <string name="misc_settings_summary">Báo cáo sự cố, hành động khác</string>
+    <string name="misc_settings_summary">Cài đặt và thao tác khác</string>
     <string name="misc_permission_skip_prompt">Bỏ qua lời nhắc cấp phép chụp</string>
     <string name="misc_permission_auto_start">Tự động khởi động hiệu ứng động khi khởi động</string>
     <string name="misc_permission_restart_setup">Khởi động lại trình hướng dẫn thiết lập</string>

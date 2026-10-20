@@ -329,7 +329,7 @@
     <string name="troubleshooting_repair_assets_summary">Ripristina le preimpostazioni di base se queste sono state eliminate</string>
     <string name="troubleshooting_repair_assets_success">Le impostazioni predefinite sono state ripristinate</string>
     <string name="misc_settings">Altro</string>
-    <string name="misc_settings_summary">Segnalazioni di arresti anomali, altre azioni</string>
+    <string name="misc_settings_summary">Altre impostazioni e azioni</string>
     <string name="misc_permission_skip_prompt">Salta richiesta di autorizzazione di acquisizione</string>
     <string name="misc_permission_auto_start">Avvio automatico dell\'elaborazione audio all\'avvio</string>
     <string name="misc_permission_restart_setup">Riavvia la configurazione guidata</string>

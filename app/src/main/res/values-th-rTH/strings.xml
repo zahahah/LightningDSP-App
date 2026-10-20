@@ -330,7 +330,7 @@
     <string name="troubleshooting_repair_assets_summary">แกะเนื้อหาที่โหลดไว้ล่วงหน้าหากคุณทำหาย</string>
     <string name="troubleshooting_repair_assets_success">ค่าที่กำหนดเอาไว้ถูกเรียกคืนแล้ว</string>
     <string name="misc_settings">เบ็ดเตล็ด</string>
-    <string name="misc_settings_summary">รายงานข้อขัดข้อง การดำเนินการอื่นๆ</string>
+    <string name="misc_settings_summary">การตั้งค่าและการดำเนินการอื่นๆ</string>
     <string name="misc_permission_skip_prompt">ข้ามพรอมต์การอนุญาตให้จับภาพ</string>
     <string name="misc_permission_auto_start">เอ็นจิ้นเอฟเฟกต์สตาร์ทอัตโนมัติเมื่อบู๊ต</string>
     <string name="misc_permission_restart_setup">รีสตาร์ทวิซาร์ดการตั้งค่า</string>

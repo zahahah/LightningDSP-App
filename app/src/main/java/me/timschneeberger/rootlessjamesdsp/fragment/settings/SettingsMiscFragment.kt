@@ -11,7 +11,6 @@ import me.timschneeberger.rootlessjamesdsp.BuildConfig
 import me.timschneeberger.rootlessjamesdsp.R
 import me.timschneeberger.rootlessjamesdsp.activity.OnboardingActivity
 import me.timschneeberger.rootlessjamesdsp.api.AutoEqClient
-import me.timschneeberger.rootlessjamesdsp.flavor.CrashlyticsImpl
 import me.timschneeberger.rootlessjamesdsp.preference.IconPreference
 import me.timschneeberger.rootlessjamesdsp.preference.MaterialSwitchPreference
 import me.timschneeberger.rootlessjamesdsp.utils.Constants
@@ -30,7 +29,6 @@ class SettingsMiscFragment : SettingsBaseFragment() {
     private val autoStartNotify by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_autostart_prompt_at_boot)) }
     private val volumeManagerIntegration by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_volume_manager_integration_api)) }
     private val repairAssets by lazy { findPreference<Preference>(getString(R.string.key_troubleshooting_repair_assets)) }
-    private val crashReports by lazy { findPreference<Preference>(getString(R.string.key_share_crash_reports)) }
     private val aeqApiUrl by lazy { findPreference<EditTextPreference>(getString(R.string.key_network_autoeq_api_url)) }
     private val debugDatabase by lazy { findPreference<Preference>(getString(R.string.key_debug_database)) }
     private val permSkipPrompt by lazy { findPreference<IconPreference>(getString(R.string.key_misc_permission_skip_prompt)) }
@@ -44,11 +42,6 @@ class SettingsMiscFragment : SettingsBaseFragment() {
         setPreferencesFromResource(R.xml.app_misc_preferences, rootKey)
 
         updateVolumeManagerIntegrationState()
-
-        crashReports?.setOnPreferenceChangeListener { _, newValue ->
-            CrashlyticsImpl.setCollectionEnabled(newValue as Boolean)
-            true
-        }
 
         repairAssets?.setOnPreferenceClickListener {
             requireContext().assets.installPrivateAssets(requireContext(), force = true)
@@ -104,7 +97,6 @@ class SettingsMiscFragment : SettingsBaseFragment() {
 
         updatePermissionStates()
 
-        crashReports?.parent?.isVisible = !BuildConfig.FOSS_ONLY
         debugDatabase?.parent?.isVisible = BuildConfig.DEBUG
         autoStartNotify?.isVisible = isRootless()
         permRestartSetup?.parent?.isVisible = isRootless()

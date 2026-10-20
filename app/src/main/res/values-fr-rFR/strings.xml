@@ -329,7 +329,7 @@
     <string name="troubleshooting_repair_assets_summary">Décompresser les actifs préchargés si vous les avez perdus</string>
     <string name="troubleshooting_repair_assets_success">Les assets groupées ont été restaurées</string>
     <string name="misc_settings">Divers</string>
-    <string name="misc_settings_summary">Rapports de plantage, autres actions</string>
+    <string name="misc_settings_summary">Autres paramètres et actions</string>
     <string name="misc_permission_skip_prompt">Ignorer la demande d\'autorisation de capture</string>
     <string name="misc_permission_auto_start">Démarrage automatique du moteur d\'effet audio au démarrage</string>
     <string name="misc_permission_restart_setup">Redémarrer l\'assistant de configuration</string>

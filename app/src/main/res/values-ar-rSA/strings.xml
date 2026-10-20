@@ -329,7 +329,7 @@
     <string name="troubleshooting_repair_assets_summary">فك تحميل الأصول مسبقا إذا فقدتها</string>
     <string name="troubleshooting_repair_assets_success">تم استعادة الأصول المجمعة</string>
     <string name="misc_settings">خيارات متنوعة</string>
-    <string name="misc_settings_summary">تقارير الأعطال والإجراءات الأخرى</string>
+    <string name="misc_settings_summary">إعدادات وإجراءات أخرى</string>
     <string name="misc_permission_skip_prompt">تخطي إذن التقاط الدعوة</string>
     <string name="misc_permission_auto_start">تشغيل محرك التأثير التلقائي عند التشغيل</string>
     <string name="misc_permission_restart_setup">إعادة تشغيل معالج الإعداد</string>

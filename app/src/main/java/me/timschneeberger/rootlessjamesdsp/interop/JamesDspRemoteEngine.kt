@@ -65,8 +65,8 @@ class JamesDspRemoteEngine(
         set(_){}
 
     init {
-        JamesDspControlClient.probeAsync {
-            if (!disposed) syncWithPreferences(arrayOf(Constants.PREF_OUTPUT, Constants.PREF_EQ))
+        JamesDspControlClient.probeAsync { nativeControlReady ->
+            if (nativeControlReady && !disposed) syncWithPreferences(arrayOf(Constants.PREF_OUTPUT, Constants.PREF_EQ))
         }
         syncWithPreferences()
 
@@ -327,28 +327,36 @@ class JamesDspRemoteEngine(
         private val EFFECT_JAMESDSP = UUID.fromString("f27317f4-c984-4de6-9a90-545759495bf2")
 
         fun isPluginInstalled(): PluginState {
-            return try {
-                // AudioEffect.queryEffects() can return null on vendor HALs that
-                // expose no descriptors yet (observed with Samsung's late-load
-                // setup). Treat that as an empty list so the filesystem fallback
-                // below can run instead of crashing MainActivity while iterating.
-                val queriedEffects = AudioEffect.queryEffects() ?: emptyArray()
-                queriedEffects
-                    .firstOrNull { it.uuid == EFFECT_JAMESDSP }
-                    ?.run {
-                        if(name.contains("v3")) PluginState.Unsupported else PluginState.Available
-                    } ?: if (isPluginLibraryPresent()) PluginState.Available else PluginState.Unavailable
-            } catch (e: Exception) {
-                Timber.e("isPluginInstalled: exception raised")
-                Timber.e(e)
-                MainApplication.instance.showAlert(
-                    "Error while checking audio effect status",
-                    "Unexpected error while checking whether JamesDSP's audio effect library is installed. \n\n" +
-                            "Error: $e",
-                )
-                PluginState.Unavailable
+            // Global control is the primary root backend. Do not even query
+            // AudioEffect or the legacy library unless the native probe failed.
+            return resolvePluginAvailability(JamesDspControlClient.isAvailable()) {
+                try {
+                    // AudioEffect.queryEffects() can return null on vendor HALs
+                    // that expose no descriptors yet. Treat it as empty so the
+                    // filesystem fallback can run instead of crashing the UI.
+                    val queriedEffects = AudioEffect.queryEffects() ?: emptyArray()
+                    queriedEffects
+                        .firstOrNull { it.uuid == EFFECT_JAMESDSP }
+                        ?.run {
+                            if(name.contains("v3")) PluginState.Unsupported else PluginState.Available
+                        } ?: if (isPluginLibraryPresent()) PluginState.Available else PluginState.Unavailable
+                } catch (e: Exception) {
+                    Timber.e("isPluginInstalled: exception raised")
+                    Timber.e(e)
+                    MainApplication.instance.showAlert(
+                        "Error while checking audio effect status",
+                        "Unexpected error while checking whether JamesDSP's audio effect library is installed. \n\n" +
+                                "Error: $e",
+                    )
+                    PluginState.Unavailable
+                }
             }
         }
+
+        internal fun resolvePluginAvailability(
+            nativeControlReady: Boolean,
+            checkLegacy: () -> PluginState,
+        ): PluginState = if (nativeControlReady) PluginState.Available else checkLegacy()
 
         private fun isPluginLibraryPresent(): Boolean {
             return listOf(

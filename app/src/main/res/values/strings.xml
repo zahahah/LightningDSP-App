@@ -214,7 +214,7 @@
     <string name="onboarding_root_shell_fail_title">No root access</string>
     <string name="onboarding_root_shell_fail">No root access available. Please use another setup method.</string>
     <string name="onboarding_root_shell_fail_unknown">Failed to grant permission via root. Please use another setup method.</string>
-    <string name="onboarding_root_enhanced_processing_setup_success">Enhanced processing is set-up</string>
+    <string name="onboarding_root_enhanced_processing_setup_success">Media session scanning is set up</string>
 
     <string name="onboarding_adb_shizuku_title">Shizuku setup</string>
     <string name="onboarding_adb_adb_title">ADB setup</string>
@@ -298,18 +298,18 @@
     <string name="audio_format_header">Audio processing</string>
     <string name="audio_format_section_header">Preferred audio format</string>
     <string name="audio_format_processing_header">Audio processing options</string>
-    <string name="audio_format_processing_legacy">Legacy mode</string>
-    <string name="audio_format_processing_legacy_on">Attach globally to session 0 (deprecated)</string>
-    <string name="audio_format_processing_legacy_off">Attach to each app individually</string>
-    <string name="audio_format_enhanced_processing">Enhanced processing</string>
-    <string name="audio_format_enhanced_processing_on">Per-app control and enhanced support for apps enabled</string>
-    <string name="audio_format_enhanced_processing_off">Enhanced processing disabled</string>
-    <string name="audio_format_enhanced_processing_info_title">What is enhanced processing?</string>
+    <string name="audio_format_processing_legacy">Global mode</string>
+    <string name="audio_format_processing_legacy_on">Attach globally to session 0</string>
+    <string name="audio_format_processing_legacy_off">Per-app sessions (requires app support)</string>
+    <string name="audio_format_enhanced_processing">Media session scanning</string>
+    <string name="audio_format_enhanced_processing_on">Scanning enabled for broader app compatibility</string>
+    <string name="audio_format_enhanced_processing_off">Media session scanning disabled</string>
+    <string name="audio_format_enhanced_processing_info_title">About media session scanning</string>
     <string name="audio_format_enhanced_processing_info">Tap to view documentation</string>
-    <string name="audio_format_enhanced_processing_info_content">When enhanced processing is enabled, you can selectively exclude certain apps from being processed by JamesDSP. Use the 3-dot menu on the bottom right corner and select \'Excluded apps\' to access this feature.\n\nWhile legacy mode is disabled, JamesDSP relies on media apps to send a system broadcast when they start playback. This is an advantage over legacy mode because each app gets its own JamesDSP effect engine assigned to it, which allows for more fine-grained control. Otherwise, with legacy mode turned on, all apps would share a single processing engine, which Android deprecates and should not be used anymore.\n\nUnfortunately, not all media apps do this correctly and, therefore, would not function correctly with legacy mode disabled. To solve this issue, you can enable enhanced processing. Instead of relying on system broadcasts about new media sessions, JamesDSP will proactively scan for media sessions by itself and allow proper support for uncooperative media apps.</string>
+    <string name="audio_format_enhanced_processing_info_content">When media session scanning is enabled, JamesDSP actively discovers playback sessions. You can also exclude specific apps from processing using the 3-dot menu in the bottom-right corner and selecting \'Excluded apps\'.\n\nWhen Global mode is disabled, JamesDSP relies on media apps to send a system broadcast when they start playback. Each app gets its own JamesDSP effect engine, which allows for more fine-grained control. When Global mode is enabled, all apps share one processing engine attached to session 0.\n\nSome media apps do not send session broadcasts correctly. Media session scanning helps JamesDSP find those sessions and improves compatibility when Global mode is disabled.</string>
     <string name="audio_format_media_apps_need_restart">You need to restart all active media apps after changing this setting to resume audio processing.</string>
     <string name="audio_format_summary">Preferred audio encoding, buffer size</string>
-    <string name="audio_format_summary_root">Legacy mode, enhanced processing</string>
+    <string name="audio_format_summary_root">Global mode, media session scanning</string>
     <string name="audio_format_summary_plugin">Convolver optimizations</string>
     <string name="audio_format_encoding">Audio encoding</string>
     <string name="audio_format_encoding_int16">16-bit integer PCM</string>
@@ -360,7 +360,7 @@
     <string name="troubleshooting_repair_assets_summary">Unpack preloaded assets if you lost them</string>
     <string name="troubleshooting_repair_assets_success">Bundled assets have been restored</string>
     <string name="misc_settings">Miscellaneous</string>
-    <string name="misc_settings_summary">Crash reports, other actions</string>
+    <string name="misc_settings_summary">Other settings and actions</string>
     <string name="misc_permission_skip_prompt">Skip capture permission prompt</string>
     <string name="misc_permission_auto_start">Auto-start effect engine on boot</string>
     <string name="misc_permission_restart_setup">Restart setup wizard</string>
@@ -566,10 +566,10 @@
     <string name="load_fail_arch_card_title">Module already installed?</string>
     <string name="load_fail_arch_card">If you already installed the magisk module, you may have chosen the wrong settings during installation. Please re-install and try to enable Huawei compatibility (even if your phone is not from that manufacturer).</string>
 
-    <!-- Enhanced processing -->
+    <!-- Media session scanning -->
     <string name="enhanced_processing_feature_unavailable">Feature unavailable</string>
-    <string name="enhanced_processing_feature_unavailable_content">This feature is only available when \'enhanced processing\' is enabled in the settings. Please go to \'Settings > Audio processing > Enhanced processing\' and enable that option to access this menu.\n\nNote: \'Enhanced processing\' can not be used while legacy mode is enabled.</string>
-    <string name="enhanced_processing_missing_perm">Enhanced processing has been disabled due to a missing permission. Please re-setup it in settings.</string>
+    <string name="enhanced_processing_feature_unavailable_content">This feature is only available when \'Media session scanning\' is enabled in the settings. Please go to \'Settings > Audio processing > Media session scanning\' and enable that option to access this menu.\n\nNote: Media session scanning can not be used while Global mode is enabled.</string>
+    <string name="enhanced_processing_missing_perm">Media session scanning has been disabled due to a missing permission. Please set it up again in settings.</string>
 
     <!-- App list -->
     <string name="app_list_loading">Loading apps…</string>

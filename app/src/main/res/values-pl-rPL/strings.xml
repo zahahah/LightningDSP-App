@@ -330,7 +330,7 @@ Graphic eq</string>
     <string name="troubleshooting_repair_assets_summary">Rozpakuj wstępnie załadowane zasoby, jeśli je zgubiłeś</string>
     <string name="troubleshooting_repair_assets_success">Definicje zostały odzyskane</string>
     <string name="misc_settings">Różne</string>
-    <string name="misc_settings_summary">Raporty o awariach, inne działania</string>
+    <string name="misc_settings_summary">Inne ustawienia i działania</string>
     <string name="misc_permission_skip_prompt">Pomiń monit o uprawnienia przechwytywania</string>
     <string name="misc_permission_auto_start">Automatyczne uruchamianie silnika efektu przy starcie</string>
     <string name="misc_permission_restart_setup">Zrestartuj kreator konfiguracji</string>

@@ -16,35 +16,50 @@ internal object JamesDspControlClient {
     @Volatile private var rootAvailable = false
     @Volatile private var ready = false
     @Volatile private var probing = false
+    private val probeCallbacks = mutableListOf<(Boolean) -> Unit>()
 
     fun isAvailable() = ready
 
-    @Synchronized
-    fun probeAsync(onReady: (() -> Unit)? = null) {
-        if (probing) return
-        probing = true
+    fun probeAsync(onComplete: ((Boolean) -> Unit)? = null) {
+        synchronized(this) {
+            if (ready) {
+                onComplete?.let { executor.execute { it(true) } }
+                return
+            }
+            onComplete?.let(probeCallbacks::add)
+            if (probing) return
+            probing = true
+        }
         executor.execute {
+            var result = false
             try {
                 rootAvailable = RootShellImpl.hasRootShell()
                 if (!rootAvailable) {
                     Timber.i("jdsp.control: root unavailable; legacy fallback")
-                    return@execute
-                }
-                for (delayMs in longArrayOf(0, 250, 500, 1_000, 2_000)) {
-                    if (delayMs > 0) Thread.sleep(delayMs)
-                    val response = runHelper("probe")
-                    ready = response?.ready == true
-                    if (ready) {
-                        Timber.i("jdsp.control: global native backend ready; ${response?.raw}")
-                        onReady?.invoke()
-                        return@execute
+                } else {
+                    for (delayMs in longArrayOf(0, 250, 500, 1_000, 2_000)) {
+                        if (delayMs > 0) Thread.sleep(delayMs)
+                        val response = runHelper("probe")
+                        ready = response?.ready == true
+                        if (ready) {
+                            Timber.i("jdsp.control: global native backend ready; ${response?.raw}")
+                            break
+                        }
                     }
                 }
-                Timber.i("jdsp.control: discovery/authorization/context gate unavailable; legacy fallback")
+                result = ready
+                if (!result) Timber.i("jdsp.control: discovery/authorization/context gate unavailable; legacy fallback")
             } catch (e: Exception) {
                 Timber.w(e, "jdsp.control: probe failed; legacy fallback")
             } finally {
-                synchronized(this) { probing = false }
+                val callbacks = synchronized(this) {
+                    probing = false
+                    probeCallbacks.toList().also { probeCallbacks.clear() }
+                }
+                callbacks.forEach { callback ->
+                    try { callback(result) }
+                    catch (e: Exception) { Timber.w(e, "jdsp.control: availability callback failed") }
+                }
             }
         }
     }
