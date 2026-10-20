@@ -558,13 +558,14 @@
     <string name="app_compat_unknown_pkg_name">Unknown package name</string>
 
     <!-- Root: Library load failure -->
-    <string name="load_fail_header">Magisk module not installed</string>
-    <string name="load_fail_card_title">Failed to load libjamesdsp.so</string>
-    <string name="load_fail_card">Please install the JamesDSP magisk module and reboot your Android device to use this application. You may also need to reinstall this app after rebooting.</string>
+    <string name="load_fail_header">JamesDSP audio effect unavailable</string>
+    <string name="load_fail_card_title">The audio effect is not registered yet</string>
+    <string name="load_fail_card">The module may be mounted, but the audio factory has not registered JamesDSP. On a temp-root device, the overlay may have appeared after the audio HAL started. Check the module status and use only a validated, manual recovery procedure. Then return here or tap Retry. This does not by itself mean the module is missing.</string>
+    <string name="load_fail_retry">Retry</string>
     <string name="load_fail_rootless_card_title">Looking for a rootless alternative?</string>
     <string name="load_fail_rootless_card">This flavor of JamesDSP was designed to be used with a rooted/modified device. A non-root alternative with some limitations is also available. Tap here for details.</string>
     <string name="load_fail_arch_card_title">Module already installed?</string>
-    <string name="load_fail_arch_card">If you already installed the magisk module, you may have chosen the wrong settings during installation. Please re-install and try to enable Huawei compatibility (even if your phone is not from that manufacturer).</string>
+    <string name="load_fail_arch_card">A visible library does not prove the effect was loaded. If retry does not help, inspect the module logs and the audio effect factory before reinstalling.</string>
 
     <!-- Media session scanning -->
     <string name="enhanced_processing_feature_unavailable">Feature unavailable</string>

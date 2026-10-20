@@ -20,6 +20,7 @@ class LibraryLoadErrorFragment : Fragment() {
         binding.rootlessNotice.setOnClickListener {
             requireContext().openPlayStoreApp("me.timschneeberger.rootlessjamesdsp")
         }
+        binding.retryButton.setOnClickListener { requireActivity().recreate() }
         return binding.root
     }
 

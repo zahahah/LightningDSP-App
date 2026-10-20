@@ -131,8 +131,8 @@ class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponent,
         if (intent == null)
             return START_STICKY
 
-        if(JamesDspRemoteEngine.isPluginInstalled() == JamesDspRemoteEngine.PluginState.Unavailable) {
-            Timber.e("onStartCommand: Ignoring command because plugin is not installed")
+        if(JamesDspRemoteEngine.discoveredPluginState() == JamesDspRemoteEngine.PluginState.Unavailable) {
+            Timber.e("onStartCommand: Ignoring command because audio factory has no JamesDSP descriptor")
             stopSelf()
             return START_NOT_STICKY
         }

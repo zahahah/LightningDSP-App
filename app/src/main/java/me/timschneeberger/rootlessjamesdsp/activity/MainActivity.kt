@@ -99,6 +99,8 @@ class MainActivity : BaseActivity() {
     /* Root version */
     private var hasLoadFailed = false
     private var rootAvailabilityCheckPending = false
+    private var rootEffectRecoveryPending = false
+    private var rootEffectWasUnavailable = false
     private lateinit var runtimePermissionLauncher: ActivityResultLauncher<Array<String>>
     private val updateManager: UpdateManager by inject()
 
@@ -321,33 +323,6 @@ class MainActivity : BaseActivity() {
             }
         }
 
-        // Root: prefer the global control service. Only show a legacy-library
-        // error after jdsp.control has been probed and found unavailable.
-        if(isRoot()) {
-            JamesDspControlClient.probeAsync { nativeControlReady ->
-                runOnUiThread {
-                    if (nativeControlReady || isFinishing || hasLoadFailed) return@runOnUiThread
-                    if (JamesDspControlClient.needsRootPermission()) {
-                        toast(getString(R.string.native_control_root_required))
-                    }
-                    when(JamesDspRemoteEngine.isPluginInstalled()) {
-                        JamesDspRemoteEngine.PluginState.Unavailable -> showLibraryLoadError()
-                        JamesDspRemoteEngine.PluginState.Unsupported -> {
-                            prefsApp.set(R.string.key_powered_on, false)
-                            showYesNoAlert(
-                                getString(R.string.version_mismatch_root),
-                                getString(R.string.version_mismatch_root_description)
-                            ) {
-                                if(it) {
-                                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://zackptg5.com/android.php")))
-                                }
-                            }
-                        }
-                        else -> {}
-                    }
-                }
-            }
-        }
 
         /* Root: require battery optimizations turned off when legacy mode is disabled,
            otherwise, the service will be block from launching from background */
@@ -481,6 +456,65 @@ class MainActivity : BaseActivity() {
 
         if(isRootless())
             binding.powerToggle.isToggled = processorService != null
+        else if (isRoot())
+            reconcileRootEffect()
+    }
+
+    private fun reconcileRootEffect() {
+        if (rootEffectRecoveryPending) return
+        rootEffectRecoveryPending = true
+        JamesDspControlClient.probeAsync { _ ->
+            // AudioEffect.queryEffects() is a Binder query. Keep it off the UI
+            // thread along with the native probe. Even a previously ready
+            // control client cannot prove that the restarted factory still
+            // advertises the effect.
+            val pluginState = JamesDspRemoteEngine.discoveredPluginState()
+            runOnUiThread {
+                rootEffectRecoveryPending = false
+                if (isFinishing || isDestroyed || supportFragmentManager.isStateSaved) return@runOnUiThread
+
+                // The global service may be published with contexts=0. In that
+                // state, the factory descriptor can create the missing context;
+                // filesystem visibility alone must never count as readiness.
+                if (pluginState == JamesDspRemoteEngine.PluginState.Available) {
+                    if (hasLoadFailed) {
+                        hasLoadFailed = false
+                        supportFragmentManager.beginTransaction()
+                            .replace(R.id.dsp_fragment_container, dspFragment)
+                            .commit()
+                        binding.toolbar.isVisible = true
+                        binding.powerToggle.isToggled = prefsApp.get(R.string.key_powered_on)
+                    }
+                    if (shouldReattachGlobalMode(app.isLegacyMode,
+                            app.rootSessionDatabase.hasUsableGlobalSession(),
+                            rootEffectWasUnavailable)) {
+                        try {
+                            RootAudioProcessorService.updateLegacyMode(this, true)
+                            rootEffectWasUnavailable = false
+                        } catch (e: Exception) {
+                            Timber.w(e, "Unable to reattach Global mode after factory discovery")
+                        }
+                    } else {
+                        rootEffectWasUnavailable = false
+                    }
+                } else if (pluginState == JamesDspRemoteEngine.PluginState.Unsupported) {
+                    rootEffectWasUnavailable = true
+                    prefsApp.set(R.string.key_powered_on, false)
+                    showYesNoAlert(
+                        getString(R.string.version_mismatch_root),
+                        getString(R.string.version_mismatch_root_description)
+                    ) {
+                        if (it) startActivity(Intent(Intent.ACTION_VIEW,
+                            Uri.parse("https://zackptg5.com/android.php")))
+                    }
+                } else if (!hasLoadFailed) {
+                    rootEffectWasUnavailable = true
+                    showLibraryLoadError()
+                } else {
+                    rootEffectWasUnavailable = true
+                }
+            }
+        }
     }
 
     private fun showAndroid15Alert() {
@@ -606,16 +640,11 @@ class MainActivity : BaseActivity() {
     private fun toggleRootPowerAfterAvailabilityCheck() {
         if (rootAvailabilityCheckPending) return
         rootAvailabilityCheckPending = true
-        JamesDspControlClient.probeAsync { nativeControlReady ->
+        JamesDspControlClient.probeAsync { _ ->
+            val state = JamesDspRemoteEngine.discoveredPluginState()
             runOnUiThread {
                 rootAvailabilityCheckPending = false
                 if (isFinishing || isDestroyed) return@runOnUiThread
-
-                val state = if (nativeControlReady) {
-                    JamesDspRemoteEngine.PluginState.Available
-                } else {
-                    JamesDspRemoteEngine.isPluginInstalled()
-                }
                 when(state) {
                     JamesDspRemoteEngine.PluginState.Available -> {
                         binding.powerToggle.isToggled = !binding.powerToggle.isToggled
@@ -869,3 +898,9 @@ class MainActivity : BaseActivity() {
         private const val STATE_LOAD_FAILED = "LoadFailed"
     }
 }
+
+internal fun shouldReattachGlobalMode(
+    globalMode: Boolean,
+    hasUsableGlobalSession: Boolean,
+    recoveredAfterUnavailable: Boolean,
+): Boolean = globalMode && (!hasUsableGlobalSession || recoveredAfterUnavailable)

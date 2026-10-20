@@ -29,6 +29,12 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
             }
         }
 
+    /** A session record can outlive an audio HAL restart or a failed attachment. */
+    fun hasUsableGlobalSession(): Boolean {
+        val effect = (sessionList[0] as? RemoteEffectSession)?.effect?.effect ?: return false
+        return runCatching { effect.enabled }.isSuccess
+    }
+
     override fun createSession(id: Int, uid: Int, packageName: String): IEffectSession? {
         if (sessionList[id] == null) {
             Timber.d("Creating effect for session $id (${packageName})")

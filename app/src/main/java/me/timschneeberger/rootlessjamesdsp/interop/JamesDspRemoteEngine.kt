@@ -337,6 +337,17 @@ class JamesDspRemoteEngine(
         private val EFFECT_TYPE_CUSTOM = UUID.fromString("f98765f4-c321-5de6-9a45-123459495ab2")
         private val EFFECT_JAMESDSP = UUID.fromString("f27317f4-c984-4de6-9a90-545759495bf2")
 
+        /** A mounted library is not enough: the audio factory must advertise it. */
+        fun discoveredPluginState(): PluginState = try {
+            AudioEffect.queryEffects()
+                ?.firstOrNull { it.uuid == EFFECT_JAMESDSP }
+                ?.run { if (name.contains("v3")) PluginState.Unsupported else PluginState.Available }
+                ?: PluginState.Unavailable
+        } catch (e: Exception) {
+            Timber.w(e, "Unable to query the audio effect factory")
+            PluginState.Unavailable
+        }
+
         fun isPluginInstalled(): PluginState {
             // Global control is the primary root backend. Do not even query
             // AudioEffect or the legacy library unless the native probe failed.
