@@ -99,10 +99,10 @@ android {
             dimension = "version"
 
             manifestPlaceholders["label"] = "JamesDSP"
-            project.setProperty("archivesBaseName", "JamesDSP-v${AndroidConfig.versionName}-${AndroidConfig.versionCode + 2}")
+            project.setProperty("archivesBaseName", "JamesDSP-v${AndroidConfig.versionName}-${AndroidConfig.versionCode + 4}")
             applicationId = "james.dsp"
             // Bump the root integration build so the module can update the bundled v1.6.15 app in place.
-            versionCode = AndroidConfig.versionCode + 2
+            versionCode = AndroidConfig.versionCode + 4
             versionName = AndroidConfig.versionName
             AndroidConfig.minSdk = 26
             minSdk = AndroidConfig.minSdk

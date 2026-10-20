@@ -669,4 +669,5 @@ Tap on \'Tutorial\' below for detailed instructions.</string>
     <string name="android_15_screenshare_keyguard_warning">Android 15 introduces a restriction that stops screen sharing when the device is locked. To workaround this issue, the \'PROJECT_MEDIA\' permission must be granted using Shizuku or ADB.
 
 Please press \'Continue\' below to re-do the setup wizard.</string>
+    <string name="native_control_root_required">jdsp.control needs root access. Allow JamesDSP in KernelSU or Magisk to use native controls.</string>
 </resources>

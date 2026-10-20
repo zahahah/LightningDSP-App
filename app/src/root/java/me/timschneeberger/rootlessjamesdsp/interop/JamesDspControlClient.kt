@@ -17,8 +17,18 @@ internal object JamesDspControlClient {
     @Volatile private var ready = false
     @Volatile private var probing = false
     private val probeCallbacks = mutableListOf<(Boolean) -> Unit>()
+    private val writes = NativeControlWriteDispatcher(
+        isReady = { ready },
+        enqueue = { executor.execute(it) },
+        execute = { action, args ->
+            runHelper(action, *args.toTypedArray()).also { response ->
+                Timber.i("jdsp.control: $action accepted=${response?.accepted == true} applied=${response?.applied == true}; ${response?.raw ?: "transport unavailable"}")
+            }
+        },
+    )
 
     fun isAvailable() = ready
+    fun needsRootPermission() = !rootAvailable
 
     fun probeAsync(onComplete: ((Boolean) -> Unit)? = null) {
         synchronized(this) {
@@ -64,36 +74,27 @@ internal object JamesDspControlClient {
         }
     }
 
-    fun setEnabledIfSupported(enabled: Boolean): Boolean {
-        if (!ready) { probeAsync(); return false }
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            // The Android effect is enabled by the engine separately. Never
-            // freeze the UI while the root helper waits for HAL acknowledgement.
-            executor.execute { write("enabled", enabled.toString()) }
-            return false
-        }
-        return write("enabled", enabled.toString())
-    }
+    fun setEnabledIfSupported(enabled: Boolean): Boolean = write("enabled", listOf(enabled.toString()))
 
-    fun setPostGainIfSupported(gainDb: Float): Boolean =
-        gainDb.isFinite() && gainDb in -15f..15f && write("post-gain", gainDb.toString())
+    fun setPostGainIfSupported(gainDb: Float, fallback: () -> Unit = {}): Boolean =
+        gainDb.isFinite() && gainDb in -15f..15f && write("post-gain", listOf(gainDb.toString()), fallback)
 
     fun setFirEqIfSupported(frequenciesHz: FloatArray, gainsDb: FloatArray,
-                            interpolation: Int, enabled: Boolean): Boolean {
+                            interpolation: Int, enabled: Boolean, fallback: () -> Unit = {}): Boolean {
         if (frequenciesHz.size != 15 || gainsDb.size != 15 || interpolation !in 0..1 ||
             frequenciesHz.any { !it.isFinite() || it <= 0f } ||
             gainsDb.any { !it.isFinite() || it !in -64f..64f }) return false
-        return write("fir", enabled.toString(), interpolation.toString(),
-            frequenciesHz.joinToString(","), gainsDb.joinToString(","))
+        return write("fir", listOf(enabled.toString(), interpolation.toString(),
+            frequenciesHz.joinToString(","), gainsDb.joinToString(",")), fallback)
     }
 
-    private fun write(action: String, vararg args: String): Boolean {
-        if (!ready) { probeAsync(); return false }
-        val response = runHelper(action, *args) ?: return false
-        Timber.i("jdsp.control: $action accepted=${response.accepted} applied=${response.applied}; ${response.raw}")
-        // Pending is accepted, not applied. Do not overwrite an accepted queued
-        // native request with the same legacy control just because audio is idle.
-        return response.accepted
+    private fun write(action: String, args: List<String>, fallback: () -> Unit = {}): Boolean {
+        // Always serialize on the native worker, including preference changes
+        // received on Android's main thread. The caller must not also write the
+        // same legacy parameter merely because Binder has not replied yet.
+        val queued = writes.dispatch(action, args, fallback)
+        if (!queued) probeAsync()
+        return queued
     }
 
     private fun runHelper(action: String, vararg args: String): NativeControlReply? {

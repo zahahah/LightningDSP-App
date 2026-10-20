@@ -144,8 +144,10 @@ class JamesDspRemoteEngine(
             1500,
             floatArrayOf(threshold, release, postGain)
         ) == AudioEffect.SUCCESS
-        JamesDspControlClient.setPostGainIfSupported(postGain)
-        return limiterApplied
+        val nativeQueued = JamesDspControlClient.setPostGainIfSupported(postGain) {
+            if (!disposed) effect.setParameterFloatArray(1500, floatArrayOf(threshold, release, postGain))
+        }
+        return limiterApplied || nativeQueued
     }
 
     override fun setCompanderInternal(
@@ -211,7 +213,16 @@ class JamesDspRemoteEngine(
                 FloatArray(15) { bands[it + 15].toFloat() },
                 if (interpolationMode == 1) 1 else 0,
                 enable,
+                fallback = {
+                    if (!disposed) applyLegacyMultiEqualizer(enable, filterType, interpolationMode, bands)
+                },
             )) return true
+        return applyLegacyMultiEqualizer(enable, filterType, interpolationMode, bands)
+    }
+
+    private fun applyLegacyMultiEqualizer(
+        enable: Boolean, filterType: Int, interpolationMode: Int, bands: DoubleArray,
+    ): Boolean {
         var ret = true
 
         if (enable) {

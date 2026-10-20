@@ -327,6 +327,9 @@ class MainActivity : BaseActivity() {
             JamesDspControlClient.probeAsync { nativeControlReady ->
                 runOnUiThread {
                     if (nativeControlReady || isFinishing || hasLoadFailed) return@runOnUiThread
+                    if (JamesDspControlClient.needsRootPermission()) {
+                        toast(getString(R.string.native_control_root_required))
+                    }
                     when(JamesDspRemoteEngine.isPluginInstalled()) {
                         JamesDspRemoteEngine.PluginState.Unavailable -> showLibraryLoadError()
                         JamesDspRemoteEngine.PluginState.Unsupported -> {
