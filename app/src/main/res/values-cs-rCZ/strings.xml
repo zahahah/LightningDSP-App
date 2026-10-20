@@ -326,7 +326,7 @@
     <string name="troubleshooting_repair_assets_summary">Rozbalit výchozí assety, pokud jste je ztratili</string>
     <string name="troubleshooting_repair_assets_success">Výchozí assety byly obnoveny</string>
     <string name="misc_settings">Ostatní</string>
-    <string name="misc_settings_summary">Hlášení chyb, další akce</string>
+    <string name="misc_settings_summary">Další nastavení a akce</string>
     <string name="misc_permission_skip_prompt">Přeskočit výzvu k oprávnění k zachycování zvuku</string>
     <string name="misc_permission_auto_start">Automatické spuštění efektového modulu při startu</string>
     <string name="misc_permission_restart_setup">Znovu spustit průvodce nastavením</string>

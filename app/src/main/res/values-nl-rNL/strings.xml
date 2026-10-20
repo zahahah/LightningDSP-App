@@ -329,7 +329,7 @@
     <string name="troubleshooting_repair_assets_summary">Voorgeladen assets uitpakken als u ze verloren heeft</string>
     <string name="troubleshooting_repair_assets_success">Gebundelde assets zijn hersteld</string>
     <string name="misc_settings">Overig</string>
-    <string name="misc_settings_summary">Crash rapporten, andere acties</string>
+    <string name="misc_settings_summary">Overige instellingen en acties</string>
     <string name="misc_permission_skip_prompt">Sla opname machtiging prompt over</string>
     <string name="misc_permission_auto_start">Effect-service automatisch starten bij opstarten</string>
     <string name="misc_permission_restart_setup">Herstart de installatiewizard</string>

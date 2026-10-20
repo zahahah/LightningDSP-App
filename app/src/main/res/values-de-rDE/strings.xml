@@ -329,7 +329,7 @@
     <string name="troubleshooting_repair_assets_summary">Vorgeladene Assets entpacken, wenn Sie diese verloren haben</string>
     <string name="troubleshooting_repair_assets_success">Gebündelte Dateien wurden wiederhergestellt</string>
     <string name="misc_settings">Verschiedenes</string>
-    <string name="misc_settings_summary">Absturzberichte, andere Aktionen</string>
+    <string name="misc_settings_summary">Weitere Einstellungen und Aktionen</string>
     <string name="misc_permission_skip_prompt">Erlaubnisanfrage für Audio-Aufnahme überspringen</string>
     <string name="misc_permission_auto_start">Effekt-Engine beim Booten automatisch starten</string>
     <string name="misc_permission_restart_setup">Setup-Assistenten neu starten</string>

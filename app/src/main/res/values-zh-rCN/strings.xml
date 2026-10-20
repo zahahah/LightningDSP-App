@@ -329,7 +329,7 @@
     <string name="troubleshooting_repair_assets_summary">解包预加载 (如果已丢失)</string>
     <string name="troubleshooting_repair_assets_success">捆绑资源已恢复</string>
     <string name="misc_settings">更多选项</string>
-    <string name="misc_settings_summary">崩溃报告，其它操作</string>
+    <string name="misc_settings_summary">其他设置和操作</string>
     <string name="misc_permission_skip_prompt">跳过捕获权限提示</string>
     <string name="misc_permission_auto_start">开机自动启动效果引擎</string>
     <string name="misc_permission_restart_setup">重新开始设置向导</string>

@@ -329,7 +329,7 @@
     <string name="troubleshooting_repair_assets_summary">Якщо ви втратили або видалили попередньо встановлені ресурси, ви можете їх відновити. Ресурси, імпортовані або створені вами, залишаться без змін</string>
     <string name="troubleshooting_repair_assets_success">Попередньо встановлені ресурси були відновлені</string>
     <string name="misc_settings">Інше</string>
-    <string name="misc_settings_summary">Звіти про помилки, інші дії</string>
+    <string name="misc_settings_summary">Інші налаштування та дії</string>
     <string name="misc_permission_skip_prompt">Пропустити запит дозволу на захоплення</string>
     <string name="misc_permission_auto_start">Автозапуск механізму обробки ефектів під час завантаження</string>
     <string name="misc_permission_restart_setup">Перезапустити майстер налаштування</string>

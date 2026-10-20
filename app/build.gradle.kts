@@ -99,8 +99,11 @@ android {
             dimension = "version"
 
             manifestPlaceholders["label"] = "JamesDSP"
-            project.setProperty("archivesBaseName", "JamesDSP-v${AndroidConfig.versionName}-${AndroidConfig.versionCode}")
+            project.setProperty("archivesBaseName", "JamesDSP-v${AndroidConfig.versionName}-${AndroidConfig.versionCode + 4}")
             applicationId = "james.dsp"
+            // Bump the root integration build so the module can update the bundled v1.6.15 app in place.
+            versionCode = AndroidConfig.versionCode + 4
+            versionName = AndroidConfig.versionName
             AndroidConfig.minSdk = 26
             minSdk = AndroidConfig.minSdk
             buildConfigField("boolean", "ROOTLESS", "false")
@@ -149,7 +152,8 @@ android {
     buildFeatures {
         viewBinding = true
         // Disable unused features
-        aidl = false
+        // The root flavor consumes LightningDSP's optional jdsp.control Binder API.
+        aidl = true
         renderScript = false
         shaders = false
     }

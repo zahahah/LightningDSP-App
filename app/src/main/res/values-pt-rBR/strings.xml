@@ -320,7 +320,7 @@
     <string name="troubleshooting_repair_assets_summary">Descompactar os arquivos pré-carregados se você os perder</string>
     <string name="troubleshooting_repair_assets_success">Os itens empacotados foram restaurados</string>
     <string name="misc_settings">Diversos</string>
-    <string name="misc_settings_summary">Relatórios de erros, outras ações</string>
+    <string name="misc_settings_summary">Outras configurações e ações</string>
     <string name="misc_permission_skip_prompt">Ignorar solicitação de permissão de captura</string>
     <string name="misc_permission_auto_start">Auto-iniciar o mecanismo de efeito na inicialização</string>
     <string name="misc_permission_restart_setup">Reiniciar assistente de instalação</string>

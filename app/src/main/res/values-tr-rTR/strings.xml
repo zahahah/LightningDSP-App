@@ -312,7 +312,7 @@
     <string name="troubleshooting_repair_assets_summary">Kaybettiyseniz önceden yüklenmiş parçaları paketinden çıkarın</string>
     <string name="troubleshooting_repair_assets_success">Paketlenmiş parçalar geri yüklendi</string>
     <string name="misc_settings">Çeşitli</string>
-    <string name="misc_settings_summary">Çökme raporları, diğer işlemler</string>
+    <string name="misc_settings_summary">Diğer ayarlar ve işlemler</string>
     <string name="misc_permission_skip_prompt">Yakalama izni isteğini atla</string>
     <string name="misc_permission_auto_start">Açılışta efekt programını otomatik başlat</string>
     <string name="misc_permission_restart_setup">Kurulum sihirbazını yeniden başlatın</string>

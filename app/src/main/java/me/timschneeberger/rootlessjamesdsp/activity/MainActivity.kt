@@ -46,6 +46,7 @@ import me.timschneeberger.rootlessjamesdsp.fragment.DspFragment
 import me.timschneeberger.rootlessjamesdsp.fragment.FileLibraryDialogFragment
 import me.timschneeberger.rootlessjamesdsp.fragment.LibraryLoadErrorFragment
 import me.timschneeberger.rootlessjamesdsp.interop.JamesDspRemoteEngine
+import me.timschneeberger.rootlessjamesdsp.interop.JamesDspControlClient
 import me.timschneeberger.rootlessjamesdsp.interop.JamesDspWrapper
 import me.timschneeberger.rootlessjamesdsp.model.ProcessorMessage
 import me.timschneeberger.rootlessjamesdsp.model.preset.Preset
@@ -97,6 +98,7 @@ class MainActivity : BaseActivity() {
 
     /* Root version */
     private var hasLoadFailed = false
+    private var rootAvailabilityCheckPending = false
     private lateinit var runtimePermissionLauncher: ActivityResultLauncher<Array<String>>
     private val updateManager: UpdateManager by inject()
 
@@ -144,7 +146,9 @@ class MainActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
 
         savedInstanceState?.let {
-            hasLoadFailed = it.getBoolean(STATE_LOAD_FAILED)
+            // Re-check root availability on every recreation: a previous
+            // legacy-only failure must not override a now-ready jdsp.control.
+            hasLoadFailed = it.getBoolean(STATE_LOAD_FAILED) && !isRoot()
         }
 
         val firstBoot = prefsVar.get<Boolean>(R.string.key_first_boot)
@@ -287,18 +291,7 @@ class MainActivity : BaseActivity() {
                     }
                 }
                 else if (isRoot()) {
-                    when(JamesDspRemoteEngine.isPluginInstalled()) {
-                        JamesDspRemoteEngine.PluginState.Available -> {
-                            binding.powerToggle.isToggled = !binding.powerToggle.isToggled
-                            prefsApp.set(R.string.key_powered_on, binding.powerToggle.isToggled)
-                        }
-                        JamesDspRemoteEngine.PluginState.Unsupported -> {
-                            toast(getString(R.string.version_mismatch_root_toast))
-                        }
-                        JamesDspRemoteEngine.PluginState.Unavailable -> {
-                            toast(getString(R.string.load_fail_header))
-                        }
-                    }
+                    toggleRootPowerAfterAvailabilityCheck()
                 }
                 else if(isPlugin()) {
                     binding.powerToggle.isToggled = !binding.powerToggle.isToggled
@@ -328,22 +321,31 @@ class MainActivity : BaseActivity() {
             }
         }
 
-        // Root: show error if plugin unavailable
+        // Root: prefer the global control service. Only show a legacy-library
+        // error after jdsp.control has been probed and found unavailable.
         if(isRoot()) {
-            when(JamesDspRemoteEngine.isPluginInstalled()) {
-                JamesDspRemoteEngine.PluginState.Unavailable -> showLibraryLoadError()
-                JamesDspRemoteEngine.PluginState.Unsupported -> {
-                    prefsApp.set(R.string.key_powered_on, false)
-                    showYesNoAlert(
-                        getString(R.string.version_mismatch_root),
-                        getString(R.string.version_mismatch_root_description)
-                    ) {
-                        if(it) {
-                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://zackptg5.com/android.php")))
+            JamesDspControlClient.probeAsync { nativeControlReady ->
+                runOnUiThread {
+                    if (nativeControlReady || isFinishing || hasLoadFailed) return@runOnUiThread
+                    if (JamesDspControlClient.needsRootPermission()) {
+                        toast(getString(R.string.native_control_root_required))
+                    }
+                    when(JamesDspRemoteEngine.isPluginInstalled()) {
+                        JamesDspRemoteEngine.PluginState.Unavailable -> showLibraryLoadError()
+                        JamesDspRemoteEngine.PluginState.Unsupported -> {
+                            prefsApp.set(R.string.key_powered_on, false)
+                            showYesNoAlert(
+                                getString(R.string.version_mismatch_root),
+                                getString(R.string.version_mismatch_root_description)
+                            ) {
+                                if(it) {
+                                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://zackptg5.com/android.php")))
+                                }
+                            }
                         }
+                        else -> {}
                     }
                 }
-                else -> {}
             }
         }
 
@@ -598,6 +600,36 @@ class MainActivity : BaseActivity() {
             .setNegativeButton(getString(android.R.string.cancel)){ _, _ -> }
             .create()
             .show()
+    }
+
+    /** Check the primary global backend before falling back to legacy discovery. */
+    private fun toggleRootPowerAfterAvailabilityCheck() {
+        if (rootAvailabilityCheckPending) return
+        rootAvailabilityCheckPending = true
+        JamesDspControlClient.probeAsync { nativeControlReady ->
+            runOnUiThread {
+                rootAvailabilityCheckPending = false
+                if (isFinishing || isDestroyed) return@runOnUiThread
+
+                val state = if (nativeControlReady) {
+                    JamesDspRemoteEngine.PluginState.Available
+                } else {
+                    JamesDspRemoteEngine.isPluginInstalled()
+                }
+                when(state) {
+                    JamesDspRemoteEngine.PluginState.Available -> {
+                        binding.powerToggle.isToggled = !binding.powerToggle.isToggled
+                        prefsApp.set(R.string.key_powered_on, binding.powerToggle.isToggled)
+                    }
+                    JamesDspRemoteEngine.PluginState.Unsupported -> {
+                        toast(getString(R.string.version_mismatch_root_toast))
+                    }
+                    JamesDspRemoteEngine.PluginState.Unavailable -> {
+                        toast(getString(R.string.load_fail_header))
+                    }
+                }
+            }
+        }
     }
 
     private fun showLibraryLoadError() {

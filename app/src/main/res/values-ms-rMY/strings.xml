@@ -329,7 +329,7 @@
     <string name="troubleshooting_repair_assets_summary">Ekstrak preloaded aset jika anda kehilangan</string>
     <string name="troubleshooting_repair_assets_success">Bundled aset sudah dikembalikan</string>
     <string name="misc_settings">Lainnya</string>
-    <string name="misc_settings_summary">Laporan kerusakan dan tindakan lain</string>
+    <string name="misc_settings_summary">Tetapan dan tindakan lain</string>
     <string name="misc_permission_skip_prompt">Lewati permintaan izin capture</string>
     <string name="misc_permission_auto_start">Jalankan effect engine saat booting</string>
     <string name="misc_permission_restart_setup">Ulangi setup wizard</string>

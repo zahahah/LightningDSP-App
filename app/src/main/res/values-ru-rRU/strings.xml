@@ -329,7 +329,7 @@
     <string name="troubleshooting_repair_assets_summary">Если вы потеряли или удалили предустановленные ресурсы, вы можете их восстановить. Ресурсы, импортированные или созданные вами, останутся без изменений</string>
     <string name="troubleshooting_repair_assets_success">Предустановленные ресурсы были восстановлены</string>
     <string name="misc_settings">Прочее</string>
-    <string name="misc_settings_summary">Отчеты об ошибках, другие действия</string>
+    <string name="misc_settings_summary">Другие настройки и действия</string>
     <string name="misc_permission_skip_prompt">Пропустить запрос разрешения на захват</string>
     <string name="misc_permission_auto_start">Автозапуск механизма обработки эффектов при загрузке</string>
     <string name="misc_permission_restart_setup">Перезапустить мастер настройки</string>

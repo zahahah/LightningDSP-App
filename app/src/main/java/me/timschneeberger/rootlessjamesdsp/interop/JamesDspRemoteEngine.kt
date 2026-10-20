@@ -44,9 +44,17 @@ class JamesDspRemoteEngine(
     }
 
     var effect: AudioEffectHidden? = createEffect()
+    @Volatile private var disposed = false
 
     override var enabled: Boolean
-        set(value) { effect?.enabled = value }
+        set(value) {
+            // The framework must dispatch audio even when the global control
+            // service owns the DSP parameter. Binder acceptance alone does not
+            // enable the AudioFlinger effect or its processing thread.
+            try { effect?.enabled = value }
+            catch (e: Exception) { Timber.w(e, "Framework effect enable failed; native diagnostics retained") }
+            JamesDspControlClient.setEnabledIfSupported(value)
+        }
         get() = effect?.enabled ?: false
 
     override var sampleRate: Float
@@ -57,6 +65,9 @@ class JamesDspRemoteEngine(
         set(_){}
 
     init {
+        JamesDspControlClient.probeAsync { nativeControlReady ->
+            if (nativeControlReady && !disposed) syncWithPreferences(arrayOf(Constants.PREF_OUTPUT, Constants.PREF_EQ))
+        }
         syncWithPreferences()
 
         val filter = IntentFilter()
@@ -68,17 +79,17 @@ class JamesDspRemoteEngine(
         context.registerLocalReceiver(broadcastReceiver, filter)
     }
 
-    private fun createEffect(): AudioEffectHidden {
+    private fun createEffect(): AudioEffectHidden? {
         return try {
             AudioEffectHidden(EFFECT_TYPE_CUSTOM, EFFECT_JAMESDSP, priority, sessionId)
         } catch (e: Exception) {
-            Timber.e("Failed to create JamesDSP effect")
-            Timber.e(e)
-            throw IllegalStateException(e)
+            Timber.w(e, "AudioEffect attachment unavailable; keep global-control diagnostics alive")
+            null
         }
     }
 
     private fun checkEngine() {
+        if (effect == null || JamesDspControlClient.isAvailable()) return
         if (!isPidValid) {
             Timber.e("PID ($pid) for session $sessionId invalid. Engine probably crashed or detached.")
             context.toast("Engine crashed. Rebooting JamesDSP.", false)
@@ -106,7 +117,7 @@ class JamesDspRemoteEngine(
     }
 
     override fun syncWithPreferences(forceUpdateNamespaces: Array<String>?) {
-        if(effect == null) {
+        if(effect == null && !JamesDspControlClient.isAvailable()) {
             Timber.d("Rejecting update due to disposed engine")
             return
         }
@@ -115,7 +126,11 @@ class JamesDspRemoteEngine(
         super.syncWithPreferences(forceUpdateNamespaces)
     }
 
+    override fun preferenceUpdateOrder(targets: Array<String>) =
+        orderNativePreferenceUpdates(targets, JamesDspControlClient.isAvailable())
+
     override fun close() {
+        disposed = true
         context.unregisterLocalReceiver(broadcastReceiver)
         effect?.release()
         effect = null
@@ -123,10 +138,16 @@ class JamesDspRemoteEngine(
     }
 
     override fun setOutputControl(threshold: Float, release: Float, postGain: Float): Boolean {
-        return effect.setParameterFloatArray(
+        // Limiter threshold/release still use the legacy path. Apply those
+        // first so they cannot immediately cancel the queued native post-gain.
+        val limiterApplied = effect.setParameterFloatArray(
             1500,
             floatArrayOf(threshold, release, postGain)
         ) == AudioEffect.SUCCESS
+        val nativeQueued = JamesDspControlClient.setPostGainIfSupported(postGain) {
+            if (!disposed) effect.setParameterFloatArray(1500, floatArrayOf(threshold, release, postGain))
+        }
+        return limiterApplied || nativeQueued
     }
 
     override fun setCompanderInternal(
@@ -186,6 +207,21 @@ class JamesDspRemoteEngine(
         filterType: Int,
         interpolationMode: Int,
         bands: DoubleArray,
+    ): Boolean {
+        if (filterType == 0 && bands.size == 30 && JamesDspControlClient.setFirEqIfSupported(
+                FloatArray(15) { bands[it].toFloat() },
+                FloatArray(15) { bands[it + 15].toFloat() },
+                if (interpolationMode == 1) 1 else 0,
+                enable,
+                fallback = {
+                    if (!disposed) applyLegacyMultiEqualizer(enable, filterType, interpolationMode, bands)
+                },
+            )) return true
+        return applyLegacyMultiEqualizer(enable, filterType, interpolationMode, bands)
+    }
+
+    private fun applyLegacyMultiEqualizer(
+        enable: Boolean, filterType: Int, interpolationMode: Int, bands: DoubleArray,
     ): Boolean {
         var ret = true
 
@@ -302,28 +338,36 @@ class JamesDspRemoteEngine(
         private val EFFECT_JAMESDSP = UUID.fromString("f27317f4-c984-4de6-9a90-545759495bf2")
 
         fun isPluginInstalled(): PluginState {
-            return try {
-                // AudioEffect.queryEffects() can return null on vendor HALs that
-                // expose no descriptors yet (observed with Samsung's late-load
-                // setup). Treat that as an empty list so the filesystem fallback
-                // below can run instead of crashing MainActivity while iterating.
-                val queriedEffects = AudioEffect.queryEffects() ?: emptyArray()
-                queriedEffects
-                    .firstOrNull { it.uuid == EFFECT_JAMESDSP }
-                    ?.run {
-                        if(name.contains("v3")) PluginState.Unsupported else PluginState.Available
-                    } ?: if (isPluginLibraryPresent()) PluginState.Available else PluginState.Unavailable
-            } catch (e: Exception) {
-                Timber.e("isPluginInstalled: exception raised")
-                Timber.e(e)
-                MainApplication.instance.showAlert(
-                    "Error while checking audio effect status",
-                    "Unexpected error while checking whether JamesDSP's audio effect library is installed. \n\n" +
-                            "Error: $e",
-                )
-                PluginState.Unavailable
+            // Global control is the primary root backend. Do not even query
+            // AudioEffect or the legacy library unless the native probe failed.
+            return resolvePluginAvailability(JamesDspControlClient.isAvailable()) {
+                try {
+                    // AudioEffect.queryEffects() can return null on vendor HALs
+                    // that expose no descriptors yet. Treat it as empty so the
+                    // filesystem fallback can run instead of crashing the UI.
+                    val queriedEffects = AudioEffect.queryEffects() ?: emptyArray()
+                    queriedEffects
+                        .firstOrNull { it.uuid == EFFECT_JAMESDSP }
+                        ?.run {
+                            if(name.contains("v3")) PluginState.Unsupported else PluginState.Available
+                        } ?: if (isPluginLibraryPresent()) PluginState.Available else PluginState.Unavailable
+                } catch (e: Exception) {
+                    Timber.e("isPluginInstalled: exception raised")
+                    Timber.e(e)
+                    MainApplication.instance.showAlert(
+                        "Error while checking audio effect status",
+                        "Unexpected error while checking whether JamesDSP's audio effect library is installed. \n\n" +
+                                "Error: $e",
+                    )
+                    PluginState.Unavailable
+                }
             }
         }
+
+        internal fun resolvePluginAvailability(
+            nativeControlReady: Boolean,
+            checkLegacy: () -> PluginState,
+        ): PluginState = if (nativeControlReady) PluginState.Available else checkLegacy()
 
         private fun isPluginLibraryPresent(): Boolean {
             return listOf(
