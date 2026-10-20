@@ -560,8 +560,10 @@
     <!-- Root: Library load failure -->
     <string name="load_fail_header">JamesDSP audio effect unavailable</string>
     <string name="load_fail_card_title">The audio effect is not registered yet</string>
-    <string name="load_fail_card">The module may be mounted, but the audio factory has not registered JamesDSP. On a temp-root device, the overlay may have appeared after the audio HAL started. Check the module status and use only a validated, manual recovery procedure. Then return here or tap Retry. This does not by itself mean the module is missing.</string>
+    <string name="load_fail_card">The module may be mounted, but the audio factory has not registered JamesDSP. On temp-root devices, the overlay can appear after the audio HAL starts. The module waits 10 seconds, then tries one guarded HAL recovery on verified devices. Retry checks again and can request one additional recovery if needed. Audio may briefly stop.</string>
     <string name="load_fail_retry">Retry</string>
+    <string name="load_fail_root_required">Root access is required to retry audio recovery.</string>
+    <string name="load_fail_recovery_failed">Audio recovery was not completed. Check the module recovery status before trying again.</string>
     <string name="load_fail_rootless_card_title">Looking for a rootless alternative?</string>
     <string name="load_fail_rootless_card">This flavor of JamesDSP was designed to be used with a rooted/modified device. A non-root alternative with some limitations is also available. Tap here for details.</string>
     <string name="load_fail_arch_card_title">Module already installed?</string>
