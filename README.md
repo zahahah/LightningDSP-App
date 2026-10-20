@@ -13,11 +13,19 @@ The Root build works with the companion module in [zahahah/JamesDSPManager](http
 
 The Pixel configuration tested so far is a **Pixel 10 Pro XL (`mustang`) on Android 17, KernelSU Next, and Magic Mount-rs 4.0.11**. The module stayed active across several soft reboots in that setup. That's useful evidence, not a promise that every Pixel build or audio HAL will behave identically. Android audio stacks enjoy keeping a few surprises in reserve.
 
+### Native control first
+
+Our modified Root app **1.6.17 (versionCode 60)** prefers **`jdsp.control`**, the global Binder service supplied by the companion native library. The app uses the root-native `jdspctl` helper for power, post-gain and FIR EQ controls. Android's `AudioEffect` mechanism still attaches the effect to the audio chain; other controls use the existing effect-parameter path, with legacy fallback when native control is unavailable.
+
+The native service accepts writes from root, so grant **JamesDSP itself** root access. A root grant for ADB or Termux doesn't cover the app.
+
+Both this app and the module now carry that integration on **`master`**, promoted from `pixel-test-new-aidl`.
+
 For that setup:
 
-1. Install the RootJamesDSP **Root** APK from the [Pixel test pre-release](https://github.com/zahahah/RootJamesDSP/releases/tag/pixel-test).
-2. Install the JamesDSPManager module from [its repository](https://github.com/zahahah/JamesDSPManager) using your root manager, then reboot.
-3. Grant root access to JamesDSP when prompted and start the app.
+1. Download the matching module and Root APK from the [JamesDSPManager release](https://github.com/zahahah/JamesDSPManager/releases/tag/v6.6-beta-1). The module includes the APK too.
+2. Install the module using your root manager, then reboot.
+3. Grant JamesDSP root access, enable processing and play some music.
 
 The module does not need PIXAML for JamesDSP's basic effect path. PIXAML provides a separate AML service, which can still matter for other AML-based effects or device-specific compatibility, but installing PIXAML by itself won't make JamesDSP available.
 
@@ -39,6 +47,7 @@ The Root build depends on the device's audio HAL and the root manager's module-m
 
 ## Downloads
 
+- [Current module and matching Root APK](https://github.com/zahahah/JamesDSPManager/releases/tag/v6.6-beta-1).
 - [RootJamesDSP Pixel test builds](https://github.com/zahahah/RootJamesDSP/releases/tag/pixel-test): choose **Root** when using the module, or **Rootless** if you don't want root.
 - [JamesDSPManager module](https://github.com/zahahah/JamesDSPManager)
 - [VolumeManager](https://github.com/zahahah/VolumeManager)
