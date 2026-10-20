@@ -44,12 +44,16 @@ class JamesDspRemoteEngine(
     }
 
     var effect: AudioEffectHidden? = createEffect()
+    @Volatile private var disposed = false
 
     override var enabled: Boolean
         set(value) {
-            if (!JamesDspControlClient.setEnabledIfSupported(value)) {
-                effect?.enabled = value
-            }
+            // The framework must dispatch audio even when the global control
+            // service owns the DSP parameter. Binder acceptance alone does not
+            // enable the AudioFlinger effect or its processing thread.
+            try { effect?.enabled = value }
+            catch (e: Exception) { Timber.w(e, "Framework effect enable failed; native diagnostics retained") }
+            JamesDspControlClient.setEnabledIfSupported(value)
         }
         get() = effect?.enabled ?: false
 
@@ -61,7 +65,9 @@ class JamesDspRemoteEngine(
         set(_){}
 
     init {
-        JamesDspControlClient.probeAsync()
+        JamesDspControlClient.probeAsync {
+            if (!disposed) syncWithPreferences(arrayOf(Constants.PREF_OUTPUT, Constants.PREF_EQ))
+        }
         syncWithPreferences()
 
         val filter = IntentFilter()
@@ -73,17 +79,17 @@ class JamesDspRemoteEngine(
         context.registerLocalReceiver(broadcastReceiver, filter)
     }
 
-    private fun createEffect(): AudioEffectHidden {
+    private fun createEffect(): AudioEffectHidden? {
         return try {
             AudioEffectHidden(EFFECT_TYPE_CUSTOM, EFFECT_JAMESDSP, priority, sessionId)
         } catch (e: Exception) {
-            Timber.e("Failed to create JamesDSP effect")
-            Timber.e(e)
-            throw IllegalStateException(e)
+            Timber.w(e, "AudioEffect attachment unavailable; keep global-control diagnostics alive")
+            null
         }
     }
 
     private fun checkEngine() {
+        if (effect == null || JamesDspControlClient.isAvailable()) return
         if (!isPidValid) {
             Timber.e("PID ($pid) for session $sessionId invalid. Engine probably crashed or detached.")
             context.toast("Engine crashed. Rebooting JamesDSP.", false)
@@ -111,7 +117,7 @@ class JamesDspRemoteEngine(
     }
 
     override fun syncWithPreferences(forceUpdateNamespaces: Array<String>?) {
-        if(effect == null) {
+        if(effect == null && !JamesDspControlClient.isAvailable()) {
             Timber.d("Rejecting update due to disposed engine")
             return
         }
@@ -120,7 +126,11 @@ class JamesDspRemoteEngine(
         super.syncWithPreferences(forceUpdateNamespaces)
     }
 
+    override fun preferenceUpdateOrder(targets: Array<String>) =
+        orderNativePreferenceUpdates(targets, JamesDspControlClient.isAvailable())
+
     override fun close() {
+        disposed = true
         context.unregisterLocalReceiver(broadcastReceiver)
         effect?.release()
         effect = null
@@ -128,10 +138,14 @@ class JamesDspRemoteEngine(
     }
 
     override fun setOutputControl(threshold: Float, release: Float, postGain: Float): Boolean {
-        return effect.setParameterFloatArray(
+        // Limiter threshold/release still use the legacy path. Apply those
+        // first so they cannot immediately cancel the queued native post-gain.
+        val limiterApplied = effect.setParameterFloatArray(
             1500,
             floatArrayOf(threshold, release, postGain)
         ) == AudioEffect.SUCCESS
+        JamesDspControlClient.setPostGainIfSupported(postGain)
+        return limiterApplied
     }
 
     override fun setCompanderInternal(
@@ -192,6 +206,12 @@ class JamesDspRemoteEngine(
         interpolationMode: Int,
         bands: DoubleArray,
     ): Boolean {
+        if (filterType == 0 && bands.size == 30 && JamesDspControlClient.setFirEqIfSupported(
+                FloatArray(15) { bands[it].toFloat() },
+                FloatArray(15) { bands[it + 15].toFloat() },
+                if (interpolationMode == 1) 1 else 0,
+                enable,
+            )) return true
         var ret = true
 
         if (enable) {

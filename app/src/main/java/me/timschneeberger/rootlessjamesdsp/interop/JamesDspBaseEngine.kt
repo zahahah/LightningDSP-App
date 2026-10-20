@@ -19,6 +19,13 @@ import java.io.File
 import java.io.FileNotFoundException
 import java.io.FileReader
 
+/** Legacy writes invalidate queued native generations. Commit native-capable
+ * namespaces last so an idle-audio FIR update survives the same preference sync. */
+internal fun orderNativePreferenceUpdates(targets: Array<String>, nativeReady: Boolean): Array<String> =
+    if (!nativeReady) targets else targets.distinct().sortedBy {
+        when (it) { Constants.PREF_OUTPUT -> 1; Constants.PREF_EQ -> 2; else -> 0 }
+    }.toTypedArray()
+
 abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspWrapper.JamesDspCallbacks? = null) : AutoCloseable {
     abstract var enabled: Boolean
     open var sampleRate: Float = 0.0f
@@ -46,6 +53,8 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
     fun clearCache() {
         cache.clear()
     }
+
+    protected open fun preferenceUpdateOrder(targets: Array<String>): Array<String> = targets
 
     private fun reportSampleRate(value: Float) {
         context.sendLocalBroadcast(Intent(Constants.ACTION_REPORT_SAMPLE_RATE).apply {
@@ -114,7 +123,7 @@ abstract class JamesDspBaseEngine(val context: Context, val callbacks: JamesDspW
             val convolverMode = cache.get(R.string.key_convolver_mode, "0").toInt()
 
             val targets = cache.changedNamespaces.toTypedArray() + (forceUpdateNamespaces ?: arrayOf())
-            targets.forEach {
+            preferenceUpdateOrder(targets).forEach {
                 Timber.i("Committing new changes in namespace '$it'")
 
                 val result = when (it) {
