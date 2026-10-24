@@ -10,11 +10,13 @@ by the original JamesDSP project. We retain the original authorship, contributor
 credits, upstream references and license notices; the new name does not replace
 that history.
 
-This integration version is **1.6.18** (root versionCode **63**). App and module
-the root app uses the requested new package ID `com.lightning.dsp`, while the
-rootless package remains unchanged. Existing installations under the previous
-`james.dsp` ID are left untouched. See
-[the compatibility inventory](REBRAND-COMPATIBILITY.md) before changing identities.
+This integration version is **1.6.18** (root versionCode **63**). The root app
+uses package ID `com.lightning.dsp`; the rootless package remains unchanged.
+When the companion module is explicitly flashed, it removes the old `james.dsp`
+package before installing LightningDSP. The old package's private data is not
+migrated. This is separate from updating `com.lightning.dsp`: a signature
+mismatch there still requires the existing volume-key confirmation and
+best-effort backup flow. See [the compatibility inventory](REBRAND-COMPATIBILITY.md).
 This is not a claim that the local source is newer than upstream ThePBone code.
 
 ## Root transport

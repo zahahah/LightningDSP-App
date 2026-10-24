@@ -8,14 +8,23 @@ than duplicating localized strings in flavor overlays.
 This fork is version **1.6.18**, shared code **59**, root code **63**. This is a
 local integration version, not a claim of newer upstream ThePBone source.
 
-## Explicit retained identities
+## Identity migration decisions
 
-The application-ID/module-ID decision is still pending. This revision does not
-choose a new opaque identity or migrate/delete any user data.
+The root package identity is `com.lightning.dsp`; the rootless package remains
+`me.timschneeberger.rootlessjamesdsp`. During an explicit flash of the companion
+module, its installer removes the old `james.dsp` package for all Android users
+before installing the new root app. The old package's private data is not
+migrated. This is intentional and distinct from a same-package signature
+mismatch, which still requires explicit volume-key confirmation and uses a
+best-effort backup/restore flow. The module also identity-checks, disables, and
+deletes the previous `ainur_jamesdsp` module directory; the normal reboot after
+installation replaces any active mounts.
+
+## Explicitly retained identities
 
 | Retained entry | Reason |
 | --- | --- |
-| `com.lightning.dsp` root and `me.timschneeberger.rootlessjamesdsp` rootless application IDs | Root package rebrands as requested; rootless remains distinct. The former `james.dsp` package stays installed separately and is never automatically removed or migrated. |
+| `com.lightning.dsp` root and `me.timschneeberger.rootlessjamesdsp` rootless application IDs | The root app uses the rebranded package; rootless remains distinct. The companion module performs the documented legacy-package migration during an explicit module flash. |
 | `${applicationId}.volume_manager`, provider method/extra names and authorized `moe.chensi.volume` caller | Existing VolumeManager contract; opt-in gate and authorization unchanged. |
 | `me.timschneeberger.rootlessjamesdsp.SET_POWER_STATE`, `rootlessjamesdsp.enabled` and `rootlessjamesdsp.ignore` | External broadcast/intent extras remain stable. |
 | Old `me.timschneeberger.rootlessjamesdsp.backup.BackupCreatorJob` worker class | WorkManager stores this FQCN in queued/manual/periodic WorkSpecs; a narrow forwarding subclass keeps reflection resolution and original parameters intact without cancellation/rescheduling. |
@@ -25,7 +34,6 @@ choose a new opaque identity or migrate/delete any user data.
 | `me.timschneeberger.rootlessjamesdsp.model.api.AeqSearchResult` | AutoEQ saves this Serializable array in activity instance state. Preserve the original class shape/FQCN exactly; new code uses a `lightning.dsp` typealias. Profile results themselves are Strings. |
 | Existing preference keys, preference-file namespaces and `AppTheme` enum names | Existing DSP settings and explicit theme choices remain readable. |
 | `jamesdsp_backup_*` export/import filenames | Existing backup discovery remains compatible. |
-| `/data/adb/modules/ainur_jamesdsp/` | Existing module ID pending user decision; no recovery command is executed automatically. |
 | Legacy `libjamesdsp.so` discovery paths and `jamesdsp` CMake backend target | Existing AudioEffect fallback and unmodified bundled rootless backend. New `lightningdsplib.so` paths are probed first. |
 | Vendored `JamesDSP*` C ABI, `jdsp_*`, headers and `app/src/main/cpp/libjamesdsp` submodule | Third-party DSP ABI/source and legal provenance are not rebranded. |
 | Upstream project/repository/update/store/Crowdin URLs, Google-services package configuration and historical changelogs | Existing endpoints/provenance are not invented or silently redirected. |
