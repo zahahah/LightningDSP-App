@@ -56,7 +56,7 @@ See [root build notes](BUILD_ROOT.md) and [native integration](NATIVE-CONTROL-V4
 ## Upstream and licensing
 
 This is a community fork of [ThePBone's RootlessJamesDSP](https://github.com/ThePBone/RootlessJamesDSP),
-using [JamesDSP](https://github.com/james34602). Original authorship, vendored
-submodule URLs, DSP APIs and [license](LICENSE) remain unchanged. Historical
+inspired by and using [JamesDSP by James Fung (james34602)](https://github.com/james34602/JamesDSPManager).
+Original authorship, vendored submodule URLs, DSP APIs and [license](LICENSE) remain unchanged. Historical
 screenshots/changelogs and upstream URLs are retained for provenance, not as
 current LightningDSP artwork or release claims.
