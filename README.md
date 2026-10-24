@@ -2,8 +2,13 @@
 
 Android DSP application with distinct **LightningDSP** root and
 **RootlessLightningDSP** capture-based builds. The root flavor uses the companion
-[JamesDSPManager module](https://github.com/zahahah/JamesDSPManager); rootless
+[LightningDSP module](https://github.com/zahahah/JamesDSPManager); rootless
 continues to use the bundled upstream DSP implementation.
+
+LightningDSP is the rebranded name for this maintained app integration, inspired
+by the original JamesDSP project. We retain the original authorship, contributor
+credits, upstream references and license notices; the new name does not replace
+that history.
 
 This integration version is **1.6.18** (root versionCode **63**). App and module
 the root app uses the requested new package ID `com.lightning.dsp`, while the
