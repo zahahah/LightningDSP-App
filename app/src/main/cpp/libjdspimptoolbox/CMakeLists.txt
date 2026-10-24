@@ -22,11 +22,11 @@ find_library( # Sets the name of the path variable.
         # you want CMake to locate.
         log)
 
-target_include_directories(ldspimprestoolbox PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/../libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/)
+target_include_directories(ldspimprestoolbox PUBLIC ${CMAKE_CURRENT_LIST_DIR}/../libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/)
 
 target_link_libraries( # Specifies the target library.
         ldspimprestoolbox
-        jamesdsp
+        lightningdsplib
 
         # Links the target library to the log library
         # included in the NDK.

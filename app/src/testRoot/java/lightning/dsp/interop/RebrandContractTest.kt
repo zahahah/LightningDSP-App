@@ -76,6 +76,13 @@ class RebrandContractTest {
         val wrapper = source("src/main/cpp/liblightningdsp-wrapper/LightningDspWrapper.cpp")
         assertTrue(wrapper.contains("Java_lightning_dsp_interop_LightningDspWrapper_setPostGain"))
         assertTrue(wrapper.contains("JamesDSPSetPostGain")) // Vendored ABI is intentionally retained.
+        val availability = source("src/main/java/lightning/dsp/interop/LightningDspRemoteEngine.kt")
+        assertTrue(availability.contains("/vendor/lib64/soundfx/lightningdsplib.so"))
+        assertFalse(availability.contains("libjamesdsp.so"))
+        val cmake = source("src/main/cpp/CMakeLists.txt") +
+            source("src/main/cpp/liblightningdsp-wrapper/CMakeLists.txt")
+        assertTrue(cmake.contains("lightningdsplib"))
+        assertFalse(cmake.contains("jamesdsp\n"))
     }
 
     @Test fun gainPolicyRunsBeforeSharedEngineDispatchAndRootlessCannotOptIn() {

@@ -9,7 +9,7 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -ffunction-sections -fdata-sections -Ofast -
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffunction-sections -fdata-sections -Ofast -ftree-vectorize -DDEBUG")
 
 # Declares and names the project.
-project(jamesdsp LANGUAGES C)
+project(lightningdsplib LANGUAGES C)
 project(lightningdsp-wrapper LANGUAGES CXX)
 
 include(libjdspimptoolbox/CMakeLists.txt)
@@ -20,7 +20,7 @@ file(GLOB_RECURSE VENDORED_DSP_SOURCE_FILES CONFIGURE_DEPENDS
         ${CMAKE_CURRENT_LIST_DIR}/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/*.h)
 
 add_library( # Sets the name of the library.
-        jamesdsp
+        lightningdsplib
 
         # Sets the library as a shared library.
         SHARED
@@ -30,9 +30,9 @@ add_library( # Sets the name of the library.
         EELStdOutExtension.c
         EELStdOutExtension.h)
 
-target_compile_options(jamesdsp PRIVATE -O2)
-target_compile_options(jamesdsp PRIVATE -std=gnu11)
-target_include_directories(jamesdsp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/)
+target_compile_options(lightningdsplib PRIVATE -O2)
+target_compile_options(lightningdsplib PRIVATE -std=gnu11)
+target_include_directories(lightningdsplib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/)
 
 find_library( # Sets the name of the path variable.
         log-lib
@@ -42,7 +42,7 @@ find_library( # Sets the name of the path variable.
         log)
 
 target_link_libraries( # Specifies the target library.
-        jamesdsp
+        lightningdsplib
 
         # Links the target library to the log library
         # included in the NDK.

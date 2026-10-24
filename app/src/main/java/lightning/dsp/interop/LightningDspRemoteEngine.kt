@@ -388,12 +388,6 @@ class LightningDspRemoteEngine(
                 "/odm/lib/soundfx/lightningdsplib.so",
                 "/system/lib64/soundfx/lightningdsplib.so",
                 "/system/lib/soundfx/lightningdsplib.so",
-                "/vendor/lib64/soundfx/libjamesdsp.so",
-                "/vendor/lib/soundfx/libjamesdsp.so",
-                "/odm/lib64/soundfx/libjamesdsp.so",
-                "/odm/lib/soundfx/libjamesdsp.so",
-                "/system/lib64/soundfx/libjamesdsp.so",
-                "/system/lib/soundfx/libjamesdsp.so",
             ).any { java.io.File(it).isFile }
         }
     }

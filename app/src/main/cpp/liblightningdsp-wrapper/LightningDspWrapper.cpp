@@ -120,7 +120,7 @@ Java_lightning_dsp_interop_LightningDspWrapper_alloc(JNIEnv *env, jobject obj, j
 
     if(!_dsp)
     {
-        LOGE("LightningDspWrapper::ctor: Failed to allocate memory for libjamesdsp class object");
+        LOGE("LightningDspWrapper::ctor: Failed to allocate memory for LightningDSP core object");
         delete self;
         return 1;
     }
@@ -615,7 +615,7 @@ Java_lightning_dsp_interop_LightningDspWrapper_setLiveprog(JNIEnv *env, jobject 
 
     env->CallVoidMethod(wrapper->callbackInterface, wrapper->callbackOnLiveprogExec, id);
 
-    int ret = LiveProgStringParser(dsp, (char*)nativeString); // Ignore constness, libjamesdsp does not modify it
+    int ret = LiveProgStringParser(dsp, (char*)nativeString); // The parser does not modify this buffer.
     env->ReleaseStringUTFChars(liveprogContent, nativeString);
 
     // Workaround due to library bug
@@ -656,7 +656,7 @@ Java_lightning_dsp_interop_LightningDspWrapper_enumerateEelVariables(JNIEnv *env
     {
         for (int j = 0; j < NSEEL_VARS_PER_BLOCK; j++)
         {
-            // TODO fix string handling (broke after last libjamesdsp update)
+            // TODO fix string handling after the upstream DSP API update.
             const char *valid = nullptr;//(char*)GetStringForIndex(ctx->region_context, ctx->varTable_Values[i][j], 1);
             bool isString = valid;
 
