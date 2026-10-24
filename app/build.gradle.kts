@@ -103,8 +103,8 @@ android {
 
             manifestPlaceholders["label"] = "LightningDSP"
             project.setProperty("archivesBaseName", "LightningDSP-v${AndroidConfig.versionName}-${AndroidConfig.versionCode + 4}")
-            applicationId = "james.dsp"
-            // Bump the root integration build so the module can update the bundled v1.6.15 app in place.
+            applicationId = "com.lightning.dsp"
+            // Root package identity changed; this version applies only to the new package.
             versionCode = AndroidConfig.versionCode + 4
             versionName = AndroidConfig.versionName
             AndroidConfig.minSdk = 26
