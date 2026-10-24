@@ -13,7 +13,7 @@ class RebrandContractTest {
     @Test fun brandingDoesNotMigrateOpaqueOrExternalIdentities() {
         val build = source("build.gradle.kts")
         assertTrue(build.contains("namespace = \"lightning.dsp\""))
-        assertTrue(build.contains("applicationId = \"james.dsp\""))
+        assertTrue(build.contains("applicationId = \"com.lightning.dsp\""))
         assertTrue(build.contains("applicationId = \"me.timschneeberger.rootlessjamesdsp\""))
         assertTrue(build.contains("manifestPlaceholders[\"label\"] = \"LightningDSP\""))
         assertTrue(build.contains("manifestPlaceholders[\"label\"] = \"RootlessLightningDSP\""))
@@ -26,6 +26,26 @@ class RebrandContractTest {
         assertTrue(provider.contains("AUTHORIZED_PACKAGE = \"moe.chensi.volume\""))
         assertTrue(provider.contains("METHOD_SET_POST_GAIN = \"set_post_gain\""))
         assertTrue(provider.contains("PostGainRangePolicy.accepts(value, extended)"))
+    }
+
+    @Test fun cloudCrashReportingIsNotRequiredOrPackaged() {
+        val appBuild = source("build.gradle.kts")
+        val rootBuild = File(app, "../build.gradle.kts").readText()
+        val manifest = source("src/main/AndroidManifest.xml")
+        val crashHooks = source("src/main/java/lightning/dsp/flavor/CrashlyticsImpl.kt")
+        val nativeLog = source("src/main/cpp/liblightningdsp-wrapper/Log.h")
+        val cmake = source("src/main/cpp/CMakeLists.txt") +
+            source("src/main/cpp/liblightningdsp-wrapper/CMakeLists.txt")
+        val nativeWrapper = source("src/main/cpp/liblightningdsp-wrapper/LightningDspWrapper.cpp")
+        assertFalse(appBuild.contains("com.google.firebase"))
+        assertFalse(appBuild.contains("com.google.gms.google-services"))
+        assertFalse(rootBuild.contains("google-services"))
+        assertFalse(rootBuild.contains("firebase-crashlytics-gradle"))
+        assertFalse(manifest.contains("firebase_crashlytics"))
+        assertFalse(crashHooks.contains("com.google.firebase"))
+        assertFalse(nativeLog.contains("toCrashlytics"))
+        assertFalse(cmake.contains("crashlytics-connector"))
+        assertFalse(nativeWrapper.contains("firebase::crashlytics"))
     }
 
     @Test fun defaultThemeIsSkyBlueAndDoesNotSelectWallpaperMonet() {

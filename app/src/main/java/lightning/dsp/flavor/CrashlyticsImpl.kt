@@ -2,7 +2,7 @@
 
 package lightning.dsp.flavor
 
-// Stubbed
+/** Crash-report hooks are retained as no-ops for source compatibility. */
 object CrashlyticsImpl {
     fun setCollectionEnabled(on: Boolean) {}
     fun setCustomKey(key: String, value: String) {}

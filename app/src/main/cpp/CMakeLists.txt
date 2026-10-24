@@ -12,7 +12,6 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -ffunction-sections -fdata-sections -Ofa
 project(jamesdsp LANGUAGES C)
 project(lightningdsp-wrapper LANGUAGES CXX)
 
-include(libcrashlytics-connector/CMakeLists.txt)
 include(libjdspimptoolbox/CMakeLists.txt)
 include(liblightningdsp-wrapper/CMakeLists.txt)
 

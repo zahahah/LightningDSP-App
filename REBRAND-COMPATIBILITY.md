@@ -15,7 +15,7 @@ choose a new opaque identity or migrate/delete any user data.
 
 | Retained entry | Reason |
 | --- | --- |
-| `james.dsp` and `me.timschneeberger.rootlessjamesdsp` application IDs | Keep root/rootless distinct and preserve existing data/update identities pending the user's decision. |
+| `com.lightning.dsp` root and `me.timschneeberger.rootlessjamesdsp` rootless application IDs | Root package rebrands as requested; rootless remains distinct. The former `james.dsp` package stays installed separately and is never automatically removed or migrated. |
 | `${applicationId}.volume_manager`, provider method/extra names and authorized `moe.chensi.volume` caller | Existing VolumeManager contract; opt-in gate and authorization unchanged. |
 | `me.timschneeberger.rootlessjamesdsp.SET_POWER_STATE`, `rootlessjamesdsp.enabled` and `rootlessjamesdsp.ignore` | External broadcast/intent extras remain stable. |
 | Old `me.timschneeberger.rootlessjamesdsp.backup.BackupCreatorJob` worker class | WorkManager stores this FQCN in queued/manual/periodic WorkSpecs; a narrow forwarding subclass keeps reflection resolution and original parameters intact without cancellation/rescheduling. |

@@ -1,7 +1,7 @@
 #include <android/log.h>
 
 #define TAG "LightningDspWrapper_JNI"
-#include <Log.h>
+#include "Log.h"
 
 #include <string>
 #include <jni.h>
@@ -749,9 +749,6 @@ void receiveLiveprogStdOut(const char *buffer, void* userData)
 
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *, void *)
 {
-#ifndef NO_CRASHLYTICS
-    firebase::crashlytics::Initialize();
-#endif
     LOGD("JNI_OnLoad called")
     return JNI_VERSION_1_6;
 }

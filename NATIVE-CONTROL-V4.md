@@ -29,7 +29,7 @@ Never uninstall automatically or clear data to resolve signer differences.
 Build and unit-test:
 
     ./gradlew :app:testRootFullReleaseUnitTest :app:assembleRootFullRelease \
-      :app:compileRootlessFullReleaseKotlin -x :app:uploadCrashlyticsSymbolFileRootFullRelease
+      :app:compileRootlessFullReleaseKotlin
 
 Read the signing instructions outside the repo; verify package and certificate
 before distributing. Lint currently reports upstream translation/resource

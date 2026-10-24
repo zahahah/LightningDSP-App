@@ -1,11 +1,7 @@
-import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("kotlin-kapt")
-    id("com.google.gms.google-services")
-    id("com.google.firebase.crashlytics")
     id("com.google.devtools.ksp") version AndroidConfig.kspVersion
     id("dev.rikka.tools.refine") version AndroidConfig.rikkaRefineVersion
     id("org.jetbrains.kotlin.plugin.serialization") version "2.1.0"
@@ -48,15 +44,8 @@ android {
         getByName("debug") {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-${getCommitCount()}"
-            manifestPlaceholders["crashlyticsCollectionEnabled"] = "false"
         }
         getByName("release") {
-            manifestPlaceholders += mapOf("crashlyticsCollectionEnabled" to "true")
-            configure<CrashlyticsExtension> {
-                nativeSymbolUploadEnabled = true
-                mappingFileUploadEnabled = false
-            }
-
             //proguardFiles("proguard-android-optimize.txt", "proguard-rules.pro")
             isMinifyEnabled = false
             isShrinkResources = false
@@ -81,7 +70,6 @@ android {
         create("fdroid") {
             dimension = "dependencies"
             buildConfigField("boolean", "FOSS_ONLY", "true")
-            android.defaultConfig.externalNativeBuild.cmake.arguments += "-DNO_CRASHLYTICS=1"
         }
         create("full") {
             dimension = "dependencies"
@@ -170,17 +158,6 @@ android {
     namespace = "lightning.dsp"
 }
 
-// Hooks to upload native symbols to crashlytics automatically
-afterEvaluate {
-    getTasksByName("bundleRootlessFullRelease", false).firstOrNull()?.finalizedBy("uploadCrashlyticsSymbolFileRootlessFullRelease")
-    getTasksByName("bundleRootFullRelease", false).firstOrNull()?.finalizedBy("uploadCrashlyticsSymbolFileRootFullRelease")
-    getTasksByName("assembleRootlessFullRelease", false).firstOrNull()?.finalizedBy("uploadCrashlyticsSymbolFileRootlessFullRelease")
-    getTasksByName("assembleRootFullRelease", false).firstOrNull()?.finalizedBy("uploadCrashlyticsSymbolFileRootFullRelease")
-
-    getTasksByName("assembleRootlessFullPreview", false).firstOrNull()?.finalizedBy("uploadCrashlyticsSymbolFileRootlessFullRelease")
-    getTasksByName("assembleRootFullPreview", false).firstOrNull()?.finalizedBy("uploadCrashlyticsSymbolFileRootFullRelease")
-}
-
 dependencies {
     // Kotlin extensions
     implementation("org.jetbrains.kotlin:kotlin-reflect:2.0.20")
@@ -208,12 +185,6 @@ dependencies {
     implementation("io.insert-koin:koin-android:3.3.3")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")
-
-    // Firebase
-    "fullImplementation"(platform("com.google.firebase:firebase-bom:33.7.0"))
-    "fullImplementation"("com.google.firebase:firebase-analytics-ktx")
-    "fullImplementation"("com.google.firebase:firebase-crashlytics-ktx")
-    "fullImplementation"("com.google.firebase:firebase-crashlytics-ndk")
 
     // Web API client
     implementation("com.google.code.gson:gson:2.11.0")

@@ -22,13 +22,10 @@ find_library( # Sets the name of the path variable.
 
 target_include_directories(lightningdsp-wrapper PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/libjamesdsp/Main/libjamesdsp/jni/jamesdsp/jdsp/)
 target_include_directories(lightningdsp-wrapper PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/libjdspimptoolbox/main)
-target_include_directories(lightningdsp-wrapper PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/libcrashlytics-connector)
-
 # Link libjamesdsp with the wrapper library
 target_link_libraries( # Specifies the target library.
         lightningdsp-wrapper
         ldspimprestoolbox
-        crashlytics-connector
         jamesdsp
 
         # Links the target library to the log library

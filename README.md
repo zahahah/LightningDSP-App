@@ -6,7 +6,9 @@ Android DSP application with distinct **LightningDSP** root and
 continues to use the bundled upstream DSP implementation.
 
 This integration version is **1.6.18** (root versionCode **63**). App and module
-opaque IDs are preserved pending the user's identity decision. See
+the root app uses the requested new package ID `com.lightning.dsp`, while the
+rootless package remains unchanged. Existing installations under the previous
+`james.dsp` ID are left untouched. See
 [the compatibility inventory](REBRAND-COMPATIBILITY.md) before changing identities.
 This is not a claim that the local source is newer than upstream ThePBone code.
 
@@ -36,9 +38,10 @@ Use Java 17 and an installed Android SDK:
 
 ```sh
 ./gradlew :app:testRootFullReleaseUnitTest :app:assembleRootFullRelease \
-  :app:compileRootlessFullReleaseKotlin :app:lintRootFullRelease \
-  -x :app:uploadCrashlyticsSymbolFileRootFullRelease
+  :app:compileRootlessFullReleaseKotlin :app:lintRootFullRelease
 ```
+
+Builds do not use Firebase or upload crash reports/symbols.
 
 Release outputs are unsigned until signed separately. CI preview builds use the
 Android development/debug signer and are not owner-signed distribution updates. Check the package and
