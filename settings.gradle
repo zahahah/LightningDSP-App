@@ -14,7 +14,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "RootlessJamesDSP"
+rootProject.name = "RootlessLightningDSP"
 include ':app'
 include ':codeview'
 include ':hidden-api-stubs'

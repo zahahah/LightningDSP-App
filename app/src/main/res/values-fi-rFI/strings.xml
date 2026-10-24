@@ -144,7 +144,7 @@
     <string name="filelibrary_no_file_selected">Ei valittua tiedostoa</string>
     <string name="filelibrary_new_file_name">Uusi tiedoston nimi</string>
     <string name="filelibrary_file_exists">Tiedosto on jo olemassa</string>
-    <!-- JamesDSP engine messages -->
+    <!-- LightningDSP engine messages -->
     <!-- GraphicEQ editor -->
     <string name="geq_edit_as_string">Muokkaa merkkijonona</string>
     <string name="gep_add_node">Lisää</string>

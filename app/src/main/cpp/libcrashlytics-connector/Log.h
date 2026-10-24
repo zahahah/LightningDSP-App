@@ -2,11 +2,11 @@
 // Created by tim on 08.07.22.
 // Do NOT include this file in a header
 //
-#ifndef ROOTLESSJAMESDSP_LOG_H
-#define ROOTLESSJAMESDSP_LOG_H
+#ifndef ROOTLESSLIGHTNINGDSP_LOG_H
+#define ROOTLESSLIGHTNINGDSP_LOG_H
 
 #ifndef TAG
-#define TAG "Global_JNI"
+#define TAG "LDSP_JNI"
 #endif
 
 #ifndef NO_CRASHLYTICS
@@ -41,4 +41,4 @@ namespace log {
     __android_log_print(ANDROID_LOG_VERBOSE, TAG, __VA_ARGS__); \
     log::toCrashlytics("V", TAG, __VA_ARGS__);
 
-#endif //ROOTLESSJAMESDSP_LOG_H
+#endif //ROOTLESSLIGHTNINGDSP_LOG_H

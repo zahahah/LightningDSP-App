@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Sky-blue default; paired on-colors preserve text contrast. -->
+    <color name="lightning_primary">#83D4FF</color>
+    <color name="lightning_onPrimary">#003549</color>
+    <color name="lightning_primaryContainer">#004C6B</color>
+    <color name="lightning_onPrimaryContainer">#C7EDFF</color>
+    <color name="lightning_secondary">#B4CAD6</color>
+    <color name="lightning_onSecondary">#20333E</color>
+    <color name="lightning_secondaryContainer">#364A55</color>
+    <color name="lightning_onSecondaryContainer">#D0E6F2</color>
+    <color name="lightning_tertiary">#55D6F0</color>
+    <color name="lightning_onTertiary">#003640</color>
+    <color name="lightning_tertiaryContainer">#004E5C</color>
+    <color name="lightning_onTertiaryContainer">#A7EDFF</color>
+    <color name="lightning_background">#101820</color>
+    <color name="lightning_onBackground">#DFE8F0</color>
+    <color name="lightning_surface">#101820</color>
+    <color name="lightning_onSurface">#DFE8F0</color>
+    <color name="lightning_surfaceVariant">#40484E</color>
+    <color name="lightning_onSurfaceVariant">#C0C8CE</color>
+    <color name="lightning_outline">#8A9298</color>
+    <color name="lightning_inverseOnSurface">#182027</color>
+    <color name="lightning_inverseSurface">#DFE8F0</color>
+    <color name="lightning_primaryInverse">#036992</color>
+</resources>

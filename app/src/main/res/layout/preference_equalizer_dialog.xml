@@ -4,7 +4,7 @@
     android:layout_height="match_parent"
     android:orientation="vertical">
 
-    <me.timschneeberger.rootlessjamesdsp.view.EqualizerSurface
+    <lightning.dsp.view.EqualizerSurface
         android:id="@+id/equalizer_surface"
         android:layout_width="match_parent"
         android:layout_height="0dp"

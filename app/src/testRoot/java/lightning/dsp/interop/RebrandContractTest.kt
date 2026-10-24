@@ -1,0 +1,76 @@
+package lightning.dsp.interop
+
+import java.io.File
+import org.junit.Assert.*
+import org.junit.Test
+
+/** Source contracts supplement runtime policy tests without a device or root shell. */
+class RebrandContractTest {
+    private val app = sequenceOf(File("."), File("app"))
+        .first { File(it, "src/main/AndroidManifest.xml").isFile }
+    private fun source(path: String) = File(app, path).readText()
+
+    @Test fun brandingDoesNotMigrateOpaqueOrExternalIdentities() {
+        val build = source("build.gradle.kts")
+        assertTrue(build.contains("namespace = \"lightning.dsp\""))
+        assertTrue(build.contains("applicationId = \"james.dsp\""))
+        assertTrue(build.contains("applicationId = \"me.timschneeberger.rootlessjamesdsp\""))
+        assertTrue(build.contains("manifestPlaceholders[\"label\"] = \"LightningDSP\""))
+        assertTrue(build.contains("manifestPlaceholders[\"label\"] = \"RootlessLightningDSP\""))
+        assertTrue(source("src/main/res/values/strings.xml").contains("Welcome to LightningDSP!"))
+        assertFalse(File(app, "src/root/res/values/strings_brand.xml").exists())
+        val manifest = source("src/main/AndroidManifest.xml")
+        assertTrue(manifest.contains("\${applicationId}.volume_manager"))
+        assertTrue(manifest.contains("me.timschneeberger.rootlessjamesdsp.SET_POWER_STATE"))
+        val provider = source("src/main/java/lightning/dsp/interop/VolumeManagerIntegrationProvider.kt")
+        assertTrue(provider.contains("AUTHORIZED_PACKAGE = \"moe.chensi.volume\""))
+        assertTrue(provider.contains("METHOD_SET_POST_GAIN = \"set_post_gain\""))
+        assertTrue(provider.contains("PostGainRangePolicy.accepts(value, extended)"))
+    }
+
+    @Test fun defaultThemeIsSkyBlueAndDoesNotSelectWallpaperMonet() {
+        val themes = lightning.dsp.delegates.ThemingDelegate
+        assertEquals(listOf(lightning.dsp.R.style.Theme_RootlessLightningDSP),
+            themes.getThemeResIds(lightning.dsp.model.preference.AppTheme.DEFAULT, false))
+        assertEquals(listOf(lightning.dsp.R.style.Theme_RootlessLightningDSP_Monet),
+            themes.getThemeResIds(lightning.dsp.model.preference.AppTheme.MONET, false))
+        val base = source("src/main/res/values/themes.xml")
+        assertTrue(base.contains("<item name=\"colorPrimary\">@color/lightning_primary</item>"))
+        for (qualifier in listOf("values-v31", "values-night-v31")) {
+            val qualified = source("src/main/res/$qualifier/themes.xml")
+            assertTrue(qualified.contains("name=\"Theme.RootlessLightningDSP.Monet\""))
+            assertFalse(qualified.contains("name=\"Theme.RootlessLightningDSP\""))
+        }
+        val about = source("src/main/res/xml/app_about_preferences.xml")
+        assertTrue(about.contains("https://github.com/thepbone/RootlessJamesDSP"))
+        assertTrue(about.contains("https://play.google.com/store/apps/details?id=me.timschneeberger.rootlessjamesdsp"))
+    }
+
+    @Test fun nativeWirePrefixChangesButProtocolDoesNot() {
+        assertNull(NativeControlReply.parse("JDSPCTL:OK:ready=1:protocol=3:contexts=1:writable=1:publication=3"))
+        assertTrue(NativeControlReply.parse("LDSPCTL:OK:ready=1:protocol=3:contexts=1:writable=1:publication=3")!!.ready)
+        val client = source("src/root/java/lightning/dsp/interop/LightningDspControlClient.kt")
+        assertTrue(client.contains("/vendor/bin/ldspctl"))
+        assertFalse(client.contains("/vendor/bin/jdspctl"))
+        assertTrue(client.contains("ldsp.control"))
+        val wrapper = source("src/main/cpp/liblightningdsp-wrapper/LightningDspWrapper.cpp")
+        assertTrue(wrapper.contains("Java_lightning_dsp_interop_LightningDspWrapper_setPostGain"))
+        assertTrue(wrapper.contains("JamesDSPSetPostGain")) // Vendored ABI is intentionally retained.
+    }
+
+    @Test fun gainPolicyRunsBeforeSharedEngineDispatchAndRootlessCannotOptIn() {
+        val engine = source("src/main/java/lightning/dsp/interop/LightningDspBaseEngine.kt")
+        assertTrue(engine.indexOf("val outputPostGain = PostGainRangePolicy.clamp") <
+            engine.indexOf("setOutputControl(limiterThreshold, limiterRelease, outputPostGain)"))
+        assertTrue(engine.contains("extendedPostGain && !BuildConfig.ROOTLESS"))
+        val fragment = source("src/main/java/lightning/dsp/fragment/PreferenceGroupFragment.kt")
+        assertTrue(fragment.contains("isVisible = !BuildConfig.ROOTLESS"))
+        assertTrue(fragment.contains("prepareRangeChange(newValue as Boolean)"))
+        val preference = source("src/main/java/lightning/dsp/preference/PostGainPreference.kt")
+        assertTrue(preference.contains("if (stored != target) preferences.edit().putFloat(key, target).apply()"))
+        val resources = source("src/main/res/values/strings.xml")
+        assertTrue(resources.contains(">Use it cautiously</string>"))
+        assertTrue(source("src/main/res/xml/dsp_output_control_preferences.xml")
+            .contains("android:defaultValue=\"false\""))
+    }
+}

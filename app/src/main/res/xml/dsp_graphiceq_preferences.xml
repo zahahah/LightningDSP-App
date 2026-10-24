@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
-    <me.timschneeberger.rootlessjamesdsp.preference.SwitchPreferenceGroup
+    <lightning.dsp.preference.SwitchPreferenceGroup
         android:disableDependentsState="false"
         android:key="@string/key_geq_enable"
         android:title="@string/geq_enable"
@@ -14,11 +14,11 @@
             android:title="@string/geq_nodes"
             android:inputType="textMultiLine"
             app:iconSpaceReserved="false"/>-->
-        <me.timschneeberger.rootlessjamesdsp.preference.GraphicEqualizerPreference
+        <lightning.dsp.preference.GraphicEqualizerPreference
             android:key="@string/key_geq_nodes"
             android:defaultValue="GraphicEQ: "
             android:dialogTitle="@string/geq_nodes"
             android:title="@string/geq_nodes"
             app:iconSpaceReserved="false"/>
-    </me.timschneeberger.rootlessjamesdsp.preference.SwitchPreferenceGroup>
+    </lightning.dsp.preference.SwitchPreferenceGroup>
 </PreferenceScreen>

@@ -1,8 +1,8 @@
-JamesDSP sebagai enjin pemprosesan global audio tanpa sebarang kebenaran root.
+LightningDSP sebagai enjin pemprosesan global audio tanpa sebarang kebenaran root.
 
 Aplikasi ini mempunyai keterbatasan yang mungkin akan menyebabkan salah faham kepada sesetengah pihak; sila baca keseluruhan dokumen sebelum menggunakan aplikasi ini. Shizuku(Android 11+) atau ADB melalui komputer adalah diperlukan untuk persediaan awal.
 
-JamesDSP menyokong kesan audio tersebut:
+LightningDSP menyokong kesan audio tersebut:
 * Penghad kawalan
 * Kawalan gandaan pengeluaran
 * Auto dynamic range compressor

@@ -8,7 +8,7 @@
             android:title="@string/troubleshooting_view_limitations"
             android:summary="@string/troubleshooting_view_limitations_summary"
             app:iconSpaceReserved="false"
-            app:fragment="me.timschneeberger.rootlessjamesdsp.fragment.LimitationsFragment" />
+            app:fragment="lightning.dsp.fragment.LimitationsFragment" />
     </PreferenceCategory>
 
     <PreferenceCategory app:title="@string/troubleshooting_actions"
@@ -28,7 +28,7 @@
 
     <PreferenceCategory app:title="@string/powersave"
         app:iconSpaceReserved="false">
-        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSwitchPreference
+        <lightning.dsp.preference.MaterialSwitchPreference
             app:key="@string/key_powersave_suspend"
             app:title="@string/powersave_suspend"
             app:defaultValue="@bool/default_powersave_suspend"
@@ -49,7 +49,7 @@
             app:defaultValue="@string/default_session_detection_method"
             app:iconSpaceReserved="false" />
 
-        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSwitchPreference
+        <lightning.dsp.preference.MaterialSwitchPreference
             app:key="@string/key_session_continuous_polling"
             app:title="@string/session_continuous_polling"
             app:defaultValue="@bool/default_session_continuous_polling"
@@ -67,7 +67,7 @@
             android:digits="0123456789-."
             app:iconSpaceReserved="false" />
 
-        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSwitchPreference
+        <lightning.dsp.preference.MaterialSwitchPreference
             app:key="@string/key_session_loss_ignore"
             app:title="@string/session_loss_ignore"
             app:defaultValue="@bool/default_session_loss_ignore"
@@ -75,7 +75,7 @@
             app:summaryOn="@string/session_loss_ignore_on"
             app:iconSpaceReserved="false" />
 
-        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSwitchPreference
+        <lightning.dsp.preference.MaterialSwitchPreference
             app:key="@string/key_session_app_problem_ignore"
             app:title="@string/session_app_problem_ignore"
             app:defaultValue="@bool/default_session_app_problem_ignore"
@@ -83,7 +83,7 @@
             app:summaryOn="@string/session_loss_ignore_on"
             app:iconSpaceReserved="false" />
 
-        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSwitchPreference
+        <lightning.dsp.preference.MaterialSwitchPreference
             app:key="@string/key_session_exclude_restricted"
             app:title="@string/session_exclude_restricted"
             app:defaultValue="@bool/default_session_exclude_restricted"

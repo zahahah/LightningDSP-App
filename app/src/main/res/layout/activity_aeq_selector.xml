@@ -95,7 +95,7 @@
             android:layout_height="match_parent"
             android:orientation="vertical">
 
-            <me.timschneeberger.rootlessjamesdsp.view.Card
+            <lightning.dsp.view.Card
                 android:id="@+id/partial_results_card"
                 android:visibility="gone"
                 android:layout_width="match_parent"

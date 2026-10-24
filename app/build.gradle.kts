@@ -15,14 +15,14 @@ android {
 
     val SUPPORTED_ABIS = setOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
     compileSdk = AndroidConfig.compileSdk
-    project.setProperty("archivesBaseName", "RootlessJamesDSP-v${AndroidConfig.versionName}")
+    project.setProperty("archivesBaseName", "RootlessLightningDSP-v${AndroidConfig.versionName}")
 
     defaultConfig {
         targetSdk = AndroidConfig.targetSdk
         versionCode = AndroidConfig.versionCode
         versionName = AndroidConfig.versionName
 
-        manifestPlaceholders["label"] = "RootlessJamesDSP"
+        manifestPlaceholders["label"] = "RootlessLightningDSP"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -60,10 +60,13 @@ android {
             //proguardFiles("proguard-android-optimize.txt", "proguard-rules.pro")
             isMinifyEnabled = false
             isShrinkResources = false
-            signingConfig = signingConfigs.getByName("debug")
+            // Release artifacts must be signed separately with the authorized owner key.
+            signingConfig = null
         }
         create("preview") {
             initWith(getByName("release"))
+            // Installable CI previews use development identity, never the owner release key.
+            signingConfig = signingConfigs.getByName("debug")
             buildConfigField("boolean", "PREVIEW", "true")
 
             val debugType = getByName("debug")
@@ -88,7 +91,7 @@ android {
         create("rootless") {
             dimension = "version"
 
-            manifestPlaceholders["label"] = "RootlessJamesDSP"
+            manifestPlaceholders["label"] = "RootlessLightningDSP"
             applicationId = "me.timschneeberger.rootlessjamesdsp"
             AndroidConfig.minSdk = 29
             minSdk = AndroidConfig.minSdk
@@ -98,8 +101,8 @@ android {
         create("root") {
             dimension = "version"
 
-            manifestPlaceholders["label"] = "JamesDSP"
-            project.setProperty("archivesBaseName", "JamesDSP-v${AndroidConfig.versionName}-${AndroidConfig.versionCode + 4}")
+            manifestPlaceholders["label"] = "LightningDSP"
+            project.setProperty("archivesBaseName", "LightningDSP-v${AndroidConfig.versionName}-${AndroidConfig.versionCode + 4}")
             applicationId = "james.dsp"
             // Bump the root integration build so the module can update the bundled v1.6.15 app in place.
             versionCode = AndroidConfig.versionCode + 4
@@ -152,7 +155,7 @@ android {
     buildFeatures {
         viewBinding = true
         // Disable unused features
-        // The root flavor consumes LightningDSP's optional jdsp.control Binder API.
+        // The root flavor consumes LightningDSP's optional ldsp.control Binder API.
         aidl = true
         renderScript = false
         shaders = false
@@ -164,7 +167,7 @@ android {
             version = "3.22.1"
         }
     }
-    namespace = "me.timschneeberger.rootlessjamesdsp"
+    namespace = "lightning.dsp"
 }
 
 // Hooks to upload native symbols to crashlytics automatically

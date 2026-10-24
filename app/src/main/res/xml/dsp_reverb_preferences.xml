@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
-    <me.timschneeberger.rootlessjamesdsp.preference.SwitchPreferenceGroup
+    <lightning.dsp.preference.SwitchPreferenceGroup
         android:key="@string/key_reverb_enable"
         android:disableDependentsState="false"
         android:title="@string/reverb_enable"
@@ -16,5 +16,5 @@
             android:key="@string/key_reverb_preset"
             app:useSimpleSummaryProvider="true"
             app:iconSpaceReserved="false"/>
-    </me.timschneeberger.rootlessjamesdsp.preference.SwitchPreferenceGroup>
+    </lightning.dsp.preference.SwitchPreferenceGroup>
 </PreferenceScreen>

@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
-    <me.timschneeberger.rootlessjamesdsp.preference.SwitchPreferenceGroup
+    <lightning.dsp.preference.SwitchPreferenceGroup
         android:key="@string/key_liveprog_enable"
         android:disableDependentsState="false"
         android:title="@string/liveprog_enable"
         android:icon="@drawable/ic_baseline_code_tags_24dp"
         app:iconSpaceReserved="false">
-        <me.timschneeberger.rootlessjamesdsp.preference.FileLibraryPreference
+        <lightning.dsp.preference.FileLibraryPreference
             android:title="@string/liveprog_file"
             android:key="@string/key_liveprog_file"
             android:defaultValue=""
@@ -28,5 +28,5 @@
             android:enabled="false"
             android:persistent="false"
             app:iconSpaceReserved="false"/>
-    </me.timschneeberger.rootlessjamesdsp.preference.SwitchPreferenceGroup>
+    </lightning.dsp.preference.SwitchPreferenceGroup>
 </PreferenceScreen>

@@ -1,6 +1,30 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme. -->
-    <style name="Base.Theme.RootlessJamesDSP" parent="Theme.Material3.DayNight.NoActionBar">
+    <style name="Base.Theme.RootlessLightningDSP" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- LightningDSP sky-blue default; explicit theme selections remain unchanged. -->
+        <item name="colorPrimary">@color/lightning_primary</item>
+        <item name="colorOnPrimary">@color/lightning_onPrimary</item>
+        <item name="colorPrimaryContainer">@color/lightning_primaryContainer</item>
+        <item name="colorOnPrimaryContainer">@color/lightning_onPrimaryContainer</item>
+        <item name="colorSecondary">@color/lightning_secondary</item>
+        <item name="colorOnSecondary">@color/lightning_onSecondary</item>
+        <item name="colorSecondaryContainer">@color/lightning_secondaryContainer</item>
+        <item name="colorOnSecondaryContainer">@color/lightning_onSecondaryContainer</item>
+        <item name="colorTertiary">@color/lightning_tertiary</item>
+        <item name="colorOnTertiary">@color/lightning_onTertiary</item>
+        <item name="colorTertiaryContainer">@color/lightning_tertiaryContainer</item>
+        <item name="colorOnTertiaryContainer">@color/lightning_onTertiaryContainer</item>
+        <item name="android:colorBackground">@color/lightning_background</item>
+        <item name="colorOnBackground">@color/lightning_onBackground</item>
+        <item name="colorSurface">@color/lightning_surface</item>
+        <item name="colorOnSurface">@color/lightning_onSurface</item>
+        <item name="colorSurfaceVariant">@color/lightning_surfaceVariant</item>
+        <item name="colorOnSurfaceVariant">@color/lightning_onSurfaceVariant</item>
+        <item name="colorOutline">@color/lightning_outline</item>
+        <item name="colorOnSurfaceInverse">@color/lightning_inverseOnSurface</item>
+        <item name="colorSurfaceInverse">@color/lightning_inverseSurface</item>
+        <item name="colorPrimaryInverse">@color/lightning_primaryInverse</item>
+
         <!-- Disallow "Force dark theme" -->
         <item name="android:forceDarkAllowed" tools:targetApi="Q" tools:ignore="ObsoleteSdkInt">false</item>
 
@@ -12,7 +36,7 @@
 
         <item name="materialSwitchStyle">@style/Widget.Material3.CompoundButton.MaterialSwitch</item>
         <item name="alertDialogTheme">@style/AppTheme.AlertDialogTheme</item>
-        <item name="materialCardViewStyle">@style/Theme.RootlessJamesDSP.CardView</item>
+        <item name="materialCardViewStyle">@style/Theme.RootlessLightningDSP.CardView</item>
         <item name="cardCornerRadius">@dimen/corner_radius</item>
     </style>
 
@@ -25,7 +49,31 @@
         <item name="android:backgroundDimEnabled">false</item>
     </style>
 
-    <style name="Base.Theme.RootlessJamesDSP.Dialog" parent="Theme.Material3.DayNight.Dialog">
+    <style name="Base.Theme.RootlessLightningDSP.Dialog" parent="Theme.Material3.DayNight.Dialog">
+        <!-- LightningDSP sky-blue default; explicit theme selections remain unchanged. -->
+        <item name="colorPrimary">@color/lightning_primary</item>
+        <item name="colorOnPrimary">@color/lightning_onPrimary</item>
+        <item name="colorPrimaryContainer">@color/lightning_primaryContainer</item>
+        <item name="colorOnPrimaryContainer">@color/lightning_onPrimaryContainer</item>
+        <item name="colorSecondary">@color/lightning_secondary</item>
+        <item name="colorOnSecondary">@color/lightning_onSecondary</item>
+        <item name="colorSecondaryContainer">@color/lightning_secondaryContainer</item>
+        <item name="colorOnSecondaryContainer">@color/lightning_onSecondaryContainer</item>
+        <item name="colorTertiary">@color/lightning_tertiary</item>
+        <item name="colorOnTertiary">@color/lightning_onTertiary</item>
+        <item name="colorTertiaryContainer">@color/lightning_tertiaryContainer</item>
+        <item name="colorOnTertiaryContainer">@color/lightning_onTertiaryContainer</item>
+        <item name="android:colorBackground">@color/lightning_background</item>
+        <item name="colorOnBackground">@color/lightning_onBackground</item>
+        <item name="colorSurface">@color/lightning_surface</item>
+        <item name="colorOnSurface">@color/lightning_onSurface</item>
+        <item name="colorSurfaceVariant">@color/lightning_surfaceVariant</item>
+        <item name="colorOnSurfaceVariant">@color/lightning_onSurfaceVariant</item>
+        <item name="colorOutline">@color/lightning_outline</item>
+        <item name="colorOnSurfaceInverse">@color/lightning_inverseOnSurface</item>
+        <item name="colorSurfaceInverse">@color/lightning_inverseSurface</item>
+        <item name="colorPrimaryInverse">@color/lightning_primaryInverse</item>
+
         <!-- Disallow "Force dark theme" -->
         <item name="android:forceDarkAllowed" tools:targetApi="Q" tools:ignore="ObsoleteSdkInt">false</item>
 
@@ -46,29 +94,29 @@
     </style>
 
 
-    <style name="Theme.RootlessJamesDSP" parent="Base.Theme.RootlessJamesDSP" />
-    <style name="Theme.RootlessJamesDSP.Dialog" parent="Base.Theme.RootlessJamesDSP.Dialog" />
+    <style name="Theme.RootlessLightningDSP" parent="Base.Theme.RootlessLightningDSP" />
+    <style name="Theme.RootlessLightningDSP.Dialog" parent="Base.Theme.RootlessLightningDSP.Dialog" />
 
-    <style name="ThemeOverlay.RootlessJamesDSP.Amoled" parent="" />
+    <style name="ThemeOverlay.RootlessLightningDSP.Amoled" parent="" />
 
     <style name="AppTheme.AlertDialogTheme" parent="@style/ThemeOverlay.Material3.MaterialAlertDialog">
         <item name="dialogCornerRadius">28dp</item>
         <item name="colorBackgroundFloating">?attr/colorSurface</item>
     </style>
 
-    <style name="Theme.RootlessJamesDSP.SearchButton" parent="Widget.AppCompat.ImageButton">
+    <style name="Theme.RootlessLightningDSP.SearchButton" parent="Widget.AppCompat.ImageButton">
         <item name="android:minWidth" tools:ignore="PrivateResource">@dimen/mtrl_min_touch_target_size</item>
         <item name="android:minHeight" tools:ignore="PrivateResource">@dimen/mtrl_min_touch_target_size</item>
         <item name="android:background">?attr/actionBarItemBackground</item>
     </style>
 
-    <style name="Theme.RootlessJamesDSP.CardView" parent="Widget.Material3.CardView.Elevated" />
+    <style name="Theme.RootlessLightningDSP.CardView" parent="Widget.Material3.CardView.Elevated" />
 
     <!-- === Custom themes taken from Tachiyomi: https://github.com/tachiyomiorg/tachiyomi === -->
-    <style name="Theme.RootlessJamesDSP.Monet" />
+    <style name="Theme.RootlessLightningDSP.Monet" />
 
     <!--== Green Apple Theme ==-->
-    <style name="Theme.RootlessJamesDSP.GreenApple">
+    <style name="Theme.RootlessLightningDSP.GreenApple">
         <!-- Theme Colors -->
         <item name="colorPrimary">@color/greenapple_primary</item>
         <item name="colorOnPrimary">@color/greenapple_onPrimary</item>
@@ -95,7 +143,7 @@
     </style>
 
     <!--== Strawberry Daiquiri Theme ==-->
-    <style name="Theme.RootlessJamesDSP.StrawberryDaiquiri">
+    <style name="Theme.RootlessLightningDSP.StrawberryDaiquiri">
         <!-- Theme Colors -->
         <item name="colorPrimary">@color/strawberry_primary</item>
         <item name="colorOnPrimary">@color/strawberry_onPrimary</item>
@@ -122,7 +170,7 @@
     </style>
 
     <!--== Honey Theme ==-->
-    <style name="Theme.RootlessJamesDSP.Honey">
+    <style name="Theme.RootlessLightningDSP.Honey">
         <!-- Theme Colors -->
         <item name="colorPrimary">@color/honey_primary</item>
         <item name="colorOnPrimary">@color/honey_onPrimary</item>
@@ -150,7 +198,7 @@
     </style>
 
     <!--== Teal & Turquoise Theme ==-->
-    <style name="Theme.RootlessJamesDSP.TealTurquoise">
+    <style name="Theme.RootlessLightningDSP.TealTurquoise">
         <!-- Theme Colors -->
         <item name="colorPrimary">@color/tealturquoise_primary</item>
         <item name="colorOnPrimary">@color/tealturquoise_onPrimary</item>
@@ -180,7 +228,7 @@
     </style>
 
     <!--== Yin & Yang Theme ==-->
-    <style name="Theme.RootlessJamesDSP.YinYang">
+    <style name="Theme.RootlessLightningDSP.YinYang">
         <!-- Theme Colors -->
         <item name="colorPrimary">@color/yinyang_primary</item>
         <item name="colorOnPrimary">@color/yinyang_onPrimary</item>
@@ -207,7 +255,7 @@
     </style>
 
     <!--== Yotsuba Theme ==-->
-    <style name="Theme.RootlessJamesDSP.Yotsuba">
+    <style name="Theme.RootlessLightningDSP.Yotsuba">
         <!-- Theme Colors -->
         <item name="colorPrimary">@color/yotsuba_primary</item>
         <item name="colorOnPrimary">@color/yotsuba_onPrimary</item>
@@ -234,7 +282,7 @@
     </style>
 
     <!--== Tidal Wave Theme ==-->
-    <style name="Theme.RootlessJamesDSP.TidalWave">
+    <style name="Theme.RootlessLightningDSP.TidalWave">
         <!-- Theme Colors -->
         <item name="colorPrimary">@color/tidalwave_primary</item>
         <item name="colorOnPrimary">@color/tidalwave_onPrimary</item>

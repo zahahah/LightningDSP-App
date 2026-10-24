@@ -6,5 +6,5 @@
 
     <fragment
         android:id="@+id/dspScreen"
-        android:name="me.timschneeberger.rootlessjamesdsp.fragment.DspFragment" />
+        android:name="lightning.dsp.fragment.DspFragment" />
 </navigation>

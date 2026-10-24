@@ -26,8 +26,8 @@
 
 -keep class me.timschneeberger.hiddenapi_impl.** { *; }
 
--keep,allowoptimization class me.timschneeberger.rootlessjamesdsp.interop.** { *; }
--keep,allowoptimization class me.timschneeberger.rootlessjamesdsp.fragment.** { *; }
+-keep,allowoptimization class lightning.dsp.interop.** { *; }
+-keep,allowoptimization class lightning.dsp.fragment.** { *; }
 
 -keepclasseswithmembernames class * {
     native <methods>;
@@ -40,3 +40,10 @@
 -keepclasseswithmembernames class * {
     public <init>(android.content.Context, android.util.AttributeSet, int);
 }
+
+# Existing WorkManager rows serialize this pre-rebrand FQCN and use its constructor.
+-keep class me.timschneeberger.rootlessjamesdsp.backup.BackupCreatorJob {
+    public <init>(android.content.Context, androidx.work.WorkerParameters);
+}
+# AutoEQ saved activity state contains Java-serialized arrays of this original class.
+-keep class me.timschneeberger.rootlessjamesdsp.model.api.AeqSearchResult { *; }

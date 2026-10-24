@@ -48,7 +48,7 @@
                 android:text="@string/onboarding_adb_caption"
                 android:textAppearance="?attr/textAppearanceBody1" />
 
-            <me.timschneeberger.rootlessjamesdsp.view.Card
+            <lightning.dsp.view.Card
                 android:id="@+id/step1"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -58,7 +58,7 @@
                 app:iconSrc="@drawable/ic_numeric_1_circle_outline"
                 app:iconTint="?attr/colorOnSurface" />
 
-            <me.timschneeberger.rootlessjamesdsp.view.Card
+            <lightning.dsp.view.Card
                 android:id="@+id/step2"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -68,7 +68,7 @@
                 app:iconSrc="@drawable/ic_numeric_2_circle_outline"
                 app:iconTint="?attr/colorOnSurface" />
 
-            <me.timschneeberger.rootlessjamesdsp.view.Card
+            <lightning.dsp.view.Card
                 android:id="@+id/step3"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -78,7 +78,7 @@
                 app:iconSrc="@drawable/ic_numeric_3_circle_outline"
                 app:iconTint="?attr/colorOnSurface" />
 
-            <me.timschneeberger.rootlessjamesdsp.view.Card
+            <lightning.dsp.view.Card
                 android:id="@+id/step4"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -87,7 +87,7 @@
                 app:iconSrc="@drawable/ic_numeric_4_circle_outline"
                 app:iconTint="?attr/colorOnSurface" />
 
-            <me.timschneeberger.rootlessjamesdsp.view.Card
+            <lightning.dsp.view.Card
                 android:id="@+id/step5b"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -97,7 +97,7 @@
                 app:iconTint="?attr/colorOnSurface" />
 
 
-            <me.timschneeberger.rootlessjamesdsp.view.Card
+            <lightning.dsp.view.Card
                 android:id="@+id/step5c_optional"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -106,7 +106,7 @@
                 app:iconSrc="@drawable/ic_twotone_info_24dp"
                 app:iconTint="?attr/colorOnSurface" />
 
-            <me.timschneeberger.rootlessjamesdsp.view.Card
+            <lightning.dsp.view.Card
                 android:id="@+id/step6"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
