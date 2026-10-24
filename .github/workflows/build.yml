@@ -137,7 +137,8 @@ jobs:
             sftpArgs: '-o ConnectTimeout=5'
        
       - name: Changelog
-        if: startsWith(github.ref, 'refs/tags/')
+        # Only the upstream release job consumes this generated changelog.
+        if: startsWith(github.ref, 'refs/tags/') && github.repository == 'timschneeb/RootlessJamesDSP'
         uses: ardalanamini/auto-changelog@v3
         id: changelog
         with:
