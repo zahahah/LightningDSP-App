@@ -406,7 +406,7 @@ object LightningDspVolumeManager {
                                         return@execute
                                     }
                                     if (response.optBoolean("show_panel")) {
-                                        if (isEnabled && overlayReady && Settings.canDrawOverlays(context)) LightningVolumeOverlay.show(context)
+                                        if (isEnabled && Settings.canDrawOverlays(context)) LightningVolumeOverlay.show(context)
                                         return@execute
                                     }
                                     if (response.has("volume_operation_result")) {
@@ -548,7 +548,7 @@ object LightningDspVolumeManager {
         val output = session ?: return
         val ignored = org.json.JSONArray()
         applications.filter { preferences.getBoolean("ignore_buttons:${it.packageName}", false) }.forEach { ignored.put(it.packageName) }
-        val rules = JSONObject().put("activate", output.sideEffectsAuthorized).put("foreground_known", foregroundPackage != null).put("ignored_packages", ignored).put("panel_enabled", isEnabled && overlayReady && Settings.canDrawOverlays(context))
+        val rules = JSONObject().put("activate", output.sideEffectsAuthorized).put("foreground_known", foregroundPackage != null).put("ignored_packages", ignored).put("panel_enabled", isEnabled && Settings.canDrawOverlays(context))
             .put("panel_bypass", foregroundPackage?.let { preferences.getBoolean("ignore_buttons:$it", false) } ?: false)
         applications.filter { application -> isEnabled && perAppEnabled && PlaybackVolumePolicy.canControl(uidCounts[application.uid] ?: 0) }.forEach { application ->
             val name = application.packageName

@@ -160,10 +160,17 @@ class VolumeManagerSettingsContractTest {
     @Test fun floatingPanelDismissesAfterTimeoutWithStationaryHalfSecondFade() {
         val overlay = ui("LightningVolumeOverlay")
         val hide = overlay.substringAfter("fun hide()").substringBefore("private fun scheduleDismiss")
+        val refresh = overlay.substringAfter("panel?.takeIf { it.isAttachedToWindow }")
+            .substringBefore("if (panel != null) hide()")
         assertTrue(overlay.contains("private const val DISMISS_TIMEOUT_MS = 2_500L"))
         assertTrue(overlay.contains("private const val FADE_OUT_DURATION_MS = 500L"))
+        assertTrue(refresh.contains("scheduleDismiss()"))
+        assertTrue(overlay.contains("scheduleDismiss(host)"))
         assertTrue(hide.contains("current.animate().alpha(0f).setDuration(FADE_OUT_DURATION_MS)"))
         assertTrue(hide.indexOf("withEndAction") < hide.indexOf("Lifecycle.State.DESTROYED"))
+        assertTrue(overlay.contains("handler.postDelayed({ finishDismissal(current, manager, generation) },"))
+        assertTrue(overlay.contains("FADE_OUT_DURATION_MS + DISMISS_CLEANUP_GRACE_MS"))
+        assertTrue(overlay.contains("dismissalGeneration != generation"))
         assertFalse(hide.contains("translationX"))
         assertFalse(hide.contains("translationY"))
     }

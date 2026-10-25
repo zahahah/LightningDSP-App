@@ -86,8 +86,7 @@ class LightningVolumeAccessibilityService : AccessibilityService() {
 
     private fun eligible(): Boolean {
         val state = LightningDspVolumeManager.state.value ?: return false
-        return state.enabled && state.connected && LightningDspVolumeManager.isOverlayReady &&
-            Settings.canDrawOverlays(this) &&
+        return state.enabled && state.connected && Settings.canDrawOverlays(this) &&
             foreground.mayIntercept(state.apps.filter { it.volumeButtonsIgnored }.map { it.packageName }.toSet())
     }
 

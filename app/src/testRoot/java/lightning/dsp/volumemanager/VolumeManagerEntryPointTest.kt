@@ -34,6 +34,24 @@ class VolumeManagerEntryPointTest {
             .contains("onShowOverlay = { LightningVolumeOverlay.show(this) }"))
     }
 
+    @Test fun volumeButtonsCanOpenThePanelBeforeItHasEverBeenShownManually() {
+        val manager = source("root/java/lightning/dsp/volumemanager/backend/LightningDspVolumeManager.kt")
+        val settings = manager.substringAfter("private fun sendSettings()")
+            .substringBefore("private fun publish(")
+        assertTrue(settings.contains(".put(\"panel_enabled\", isEnabled && Settings.canDrawOverlays(context))"))
+        assertFalse(settings.contains("isEnabled && overlayReady"))
+
+        val showReply = manager.substringAfter("if (response.optBoolean(\"show_panel\"))")
+            .substringBefore("if (response.has(\"volume_operation_result\"))")
+        assertTrue(showReply.contains("if (isEnabled && Settings.canDrawOverlays(context)) LightningVolumeOverlay.show(context)"))
+        assertFalse(showReply.contains("overlayReady"))
+
+        val accessibility = source("root/java/lightning/dsp/volumemanager/ui/LightningVolumeAccessibilityService.kt")
+        val eligible = accessibility.substringAfter("private fun eligible()")
+            .substringBefore("private fun adjust()")
+        assertFalse(eligible.contains("isOverlayReady"))
+    }
+
     @Test fun installerAndLauncherUseTheLightningDSPArtwork() {
         val manifest = source("main/AndroidManifest.xml")
         assertTrue(manifest.contains("android:icon=\"@mipmap/ic_dsp_launcher\""))

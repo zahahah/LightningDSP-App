@@ -30,11 +30,13 @@ import lightning.dsp.volumemanager.backend.VolumeManagerState
 object LightningVolumeOverlay {
     private const val DISMISS_TIMEOUT_MS = 2_500L
     private const val FADE_OUT_DURATION_MS = 500L
+    private const val DISMISS_CLEANUP_GRACE_MS = 100L
     private val handler = Handler(Looper.getMainLooper())
     private var windowManager: WindowManager? = null
     private var panel: FrameLayout? = null
     private var lifecycleOwner: PanelLifecycleOwner? = null
     private var isDismissing = false
+    private var dismissalGeneration = 0L
     private var state by mutableStateOf(VolumeManagerState())
     private var observer: Observer<VolumeManagerState>? = null
     private val dismiss = Runnable { hide() }
@@ -51,6 +53,7 @@ object LightningVolumeOverlay {
         }
         panel?.takeIf { it.isAttachedToWindow }?.let {
             it.animate().cancel()
+            dismissalGeneration++
             it.alpha = 1f
             isDismissing = false
             LightningDspVolumeManager.reportOverlayAvailable()
@@ -123,6 +126,7 @@ object LightningVolumeOverlay {
         windowManager = manager
         panel = host
         lifecycleOwner = owner
+        dismissalGeneration++
         isDismissing = false
         owner.lifecycleRegistry.currentState = Lifecycle.State.RESUMED
         LightningDspVolumeManager.reportOverlayAvailable()
@@ -146,19 +150,27 @@ object LightningVolumeOverlay {
         val manager = windowManager
         if (current == null || isDismissing) return
 
+        val generation = ++dismissalGeneration
         isDismissing = true
         current.animate().cancel()
         current.animate().alpha(0f).setDuration(FADE_OUT_DURATION_MS).withEndAction {
-            if (panel !== current || !isDismissing) return@withEndAction
-            observer?.let { LightningDspVolumeManager.state.removeObserver(it) }
-            observer = null
-            panel = null
-            windowManager = null
-            lifecycleOwner?.lifecycleRegistry?.currentState = Lifecycle.State.DESTROYED
-            lifecycleOwner = null
-            isDismissing = false
-            manager?.let { runCatching { it.removeView(current) } }
+            finishDismissal(current, manager, generation)
         }.start()
+        // Keep window cleanup deterministic if an OEM cancels the property animation callback.
+        handler.postDelayed({ finishDismissal(current, manager, generation) },
+            FADE_OUT_DURATION_MS + DISMISS_CLEANUP_GRACE_MS)
+    }
+
+    private fun finishDismissal(current: FrameLayout, manager: WindowManager?, generation: Long) {
+        if (panel !== current || !isDismissing || dismissalGeneration != generation) return
+        observer?.let { LightningDspVolumeManager.state.removeObserver(it) }
+        observer = null
+        panel = null
+        windowManager = null
+        lifecycleOwner?.lifecycleRegistry?.currentState = Lifecycle.State.DESTROYED
+        lifecycleOwner = null
+        isDismissing = false
+        manager?.let { runCatching { it.removeView(current) } }
     }
 
     private fun scheduleDismiss(expected: FrameLayout? = panel) {
