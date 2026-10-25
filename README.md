@@ -39,6 +39,24 @@ provider remains compatible: only `moe.chensi.volume` may call it after the user
 enables **Expose the VolumeManager integration API**. Its gain getter/setter use
 the currently selected range and cannot enable the extended range themselves.
 
+## Full backups
+
+Manual and scheduled full backups include LightningDSP Volume Manager's per-app
+volume, mute and balance rules, hardware-button exclusions, app order and pins,
+hidden apps, stream visibility and order, effect display order, panel theme,
+and enable/startup preferences. DSP effect values remain in the existing DSP
+backup section. Exporting a DSP preset does not export the mixer.
+
+A clean restore replaces portable mixer settings. A merge restore overwrites
+settings present in the backup and keeps other saved rules. Backups made before
+this section was added leave the current mixer untouched. Rules are saved by
+package name, including apps not currently installed, rather than device UIDs.
+
+Root and overlay permissions are not transferred. Live sessions, cleanup receipts
+and current Android system-stream volume/ringer/DND state are not backed up.
+After restoring, the app refreshes the mixer and uses its normal guarded
+start/stop path for the saved enable preference.
+
 ## Build
 
 Use Java 17 and an installed Android SDK:
@@ -54,6 +72,18 @@ Release outputs are unsigned until signed separately. CI preview builds use the
 Android development/debug signer and are not owner-signed distribution updates. Check the package and
 certificate before distribution; never automatically uninstall or delete data.
 See [root build notes](BUILD_ROOT.md) and [native integration](NATIVE-CONTROL-V4.md).
+
+## Contributors
+
+### App implementation
+
+- Lightning Zahah (@zahahah)
+- ThePBone (@thepbone)
+
+### Core library implementation
+
+- Lightning Zahah (@zahahah)
+- James Fung (@james34602)
 
 ## Upstream and licensing
 

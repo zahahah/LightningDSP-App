@@ -348,8 +348,6 @@
     <string name="privacy_share_crash_reports_off">Neodesílat zprávy o pádech vývojáři</string>
     <string name="credits">Poděkování</string>
     <string name="translators">Překladatelé</string>
-    <string name="credits_app">Vývojář aplikace &amp; implementace rootless</string>
-    <string name="credits_dsp">Vývojář jádra algorytmu LightningDSP</string>
     <string name="credits_project_page">Navštivte stránku projektu na GitHubu</string>
     <string name="credits_project_page_summary">Nahlašte chyby, Získejte další informace a přečtěte si zdrojový kód</string>
     <string name="credits_project_play_page">Navštivte LightningDSP na Google Play</string>

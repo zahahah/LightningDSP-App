@@ -74,7 +74,9 @@ object Notifications {
 
         notificationService.createNotificationChannelsCompat(
             listOf(
-                buildNotificationChannel(CHANNEL_SERVICE_STATUS, IMPORTANCE_NONE) {
+                // Keep the same ID: existing Android channel visibility is the user's choice.
+                // Root gets a silent status icon on new installs; preserve rootless defaults.
+                buildNotificationChannel(CHANNEL_SERVICE_STATUS, if (isRootless()) IMPORTANCE_NONE else IMPORTANCE_LOW) {
                     setName(context.getString(R.string.notification_channel_service))
                     setGroup(GROUP_SERVICE)
                     setShowBadge(false)

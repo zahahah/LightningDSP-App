@@ -1,0 +1,5 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="ldsp_vm_pin" tools:ignore="MissingTranslation">Pin</string>
+    <string name="ldsp_vm_unpin" tools:ignore="MissingTranslation">Unpin</string>
+    <string name="ldsp_vm_pinned_app" tools:ignore="MissingTranslation">%1$s, pinned</string>
+</resources>

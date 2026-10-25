@@ -1,0 +1,5 @@
+<resources>
+    <string name="ldsp_vm_enable_manager">Ativar Volume Manager</string>
+    <string name="ldsp_vm_disable_manager">Desativar Volume Manager</string>
+    <string name="ldsp_vm_open_floating_footer">Exibir painel flutuante</string>
+</resources>

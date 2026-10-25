@@ -58,21 +58,25 @@ object ServiceNotificationHelper: KoinComponent {
     fun pushServiceNotification(context: Context, sessions: Array<IEffectSession>) {
         context.getSystemService<NotificationManager>()
             ?.notify(Notifications.ID_SERVICE_STATUS, createServiceNotification(context, sessions))
+        StatusNotificationGroup.refresh(context)
     }
 
     fun pushServiceNotificationLegacy(context: Context) {
         context.getSystemService<NotificationManager>()
             ?.notify(Notifications.ID_SERVICE_STATUS, createServiceNotificationLegacy(context))
+        StatusNotificationGroup.refresh(context)
     }
 
     fun createServiceNotificationLegacy(context: Context): Notification {
+        val enabled = preferences.get<Boolean>(R.string.key_powered_on)
         return createServiceNotification(
             context,
             context.getString(
-                if(preferences.get<Boolean>(R.string.key_powered_on)) R.string.notification_processing_title
+                if(enabled) R.string.notification_processing_title
                 else R.string.notification_processing_disabled_title
             ),
-            context.getString(R.string.notification_processing_legacy)
+            context.getString(R.string.notification_processing_legacy),
+            enabled = enabled
         )
     }
 
@@ -100,20 +104,21 @@ object ServiceNotificationHelper: KoinComponent {
             ), when {
                 sessions.isNotEmpty() -> context.getString(R.string.notification_processing, apps)
                 else -> context.getString(R.string.notification_idle)
-            })
+            }, enabled = enabled)
     }
 
     private fun createServiceNotification(
         context: Context,
         title: String,
-        message: String
+        message: String,
+        enabled: Boolean
     ) = NotificationCompat.Builder(context, Notifications.CHANNEL_SERVICE_STATUS)
         .setShowWhen(false)
         .setOnlyAlertOnce(true)
         .setCategory(Notification.CATEGORY_SERVICE)
         .setContentTitle(title)
         .setContentText(message)
-        .setSmallIcon(R.drawable.ic_tune_vertical_variant_24dp)
+        .setSmallIcon(processingNotificationIcon(enabled))
         .setContentIntent(
             PendingIntent.getActivity(
                 context,
@@ -275,3 +280,7 @@ object ServiceNotificationHelper: KoinComponent {
         }
         else throw IllegalStateException()
 }
+/** Enabled is the app power/capture state, not a claim that frames are currently processing. */
+@DrawableRes
+internal fun processingNotificationIcon(enabled: Boolean): Int =
+    if (enabled) R.drawable.ic_lightning_status_24dp else R.drawable.ic_lightning_off_status_24dp

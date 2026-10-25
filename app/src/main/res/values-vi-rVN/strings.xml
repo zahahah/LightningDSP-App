@@ -351,8 +351,6 @@
     <string name="privacy_share_crash_reports_off">Không gửi báo cáo sự cố cho nhà phát triển</string>
     <string name="credits">Tín dụng</string>
     <string name="translators">Dịch thuật</string>
-    <string name="credits_app">Ứng dụng &amp; triển khai không cần root được phát triển bởi</string>
-    <string name="credits_dsp">Thư viện thuật toán cốt lõi LightningDSP được phát triển bởi</string>
     <string name="credits_project_page">Ghé thăm trang web dự án trên GitHub</string>
     <string name="credits_project_page_summary">Báo cáo sự cố, giữ bạn luôn được cập nhật và đọc mã nguồn</string>
     <string name="credits_project_play_page">Ghé thăm LightningDSP trên Cửa hàng Play</string>

@@ -351,8 +351,6 @@
     <string name="privacy_share_crash_reports_off">Не надсилати звіти про збої розробнику</string>
     <string name="credits">Подяки</string>
     <string name="translators">Автори перекладів</string>
-    <string name="credits_app">Додаток та rootless версія</string>
-    <string name="credits_dsp">Бібліотека алгоритмів ядра LightningDSP</string>
     <string name="credits_project_page">Сторінка проекту на GitHub</string>
     <string name="credits_project_page_summary">Повідомляйте про проблеми, стежте за оновленнями та читайте програмний код</string>
     <string name="credits_project_play_page">Відвідати LightningDSP в Google Play</string>

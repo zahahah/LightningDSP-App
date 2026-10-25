@@ -351,8 +351,6 @@
     <string name="privacy_share_crash_reports_off">Jangan kirim laporan kerusakan</string>
     <string name="credits">Kredit</string>
     <string name="translators">Penerjemah</string>
-    <string name="credits_app">Aplikasi &amp; implementasi rootless dikembangkan oleh</string>
-    <string name="credits_dsp">Pustaka inti algoritma LightningDSP dikembangkan oleh</string>
     <string name="credits_project_page">Kunjungi situs project di GitHub</string>
     <string name="credits_project_page_summary">Laporkan masalah, pastikan anda terus update dan lihat source code</string>
     <string name="credits_project_play_page">Kunjungi LightningDSP di Play Store</string>

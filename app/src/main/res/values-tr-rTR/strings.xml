@@ -334,8 +334,6 @@
     <string name="privacy_share_crash_reports_off">Geliştiriciye çökme raporları göndermeyin</string>
     <string name="credits">Emektarlar</string>
     <string name="translators">Çevirmenler</string>
-    <string name="credits_app">Uygulama &amp; tarafından geliştirilen köksüz program</string>
-    <string name="credits_dsp">Tarafından geliştirilen LightningDSP çekirdek algoritma kitaplığı</string>
     <string name="credits_project_page">GitHub\'da projenin web sitesini ziyaret edin</string>
     <string name="credits_project_page_summary">Sorunları bildirin, kendinizi güncel tutun ve kaynak kodunu okuyun</string>
     <string name="credits_project_play_page">Google Play\'de Rootless LightningDSP\'yi ziyaret edin</string>

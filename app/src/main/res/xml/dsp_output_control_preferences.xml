@@ -30,12 +30,6 @@
       app:updatesContinuously="true"
       app:showSeekBarValue="true"
       app:iconSpaceReserved="false" />
-  <lightning.dsp.preference.MaterialSwitchPreference
-      android:key="@string/key_output_extra_postgain"
-      android:title="@string/output_extra_postgain"
-      android:summary="@string/output_extra_postgain_warning"
-      android:defaultValue="false"
-      app:iconSpaceReserved="false" />
   <lightning.dsp.preference.PostGainPreference
       android:key="@string/key_output_postgain"
       android:title="@string/output_control_postgain"

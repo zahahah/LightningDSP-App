@@ -352,8 +352,6 @@
     <string name="privacy_share_crash_reports_off">อย่าส่งรายงานข้อขัดข้องไปยังผู้พัฒนา</string>
     <string name="credits">เครดิต</string>
     <string name="translators">ผู้แปลภาษา</string>
-    <string name="credits_app">แอพ &amp;  การใช้งานแบบไม่มี Root พัฒนาโดย</string>
-    <string name="credits_dsp">ไลบรารีอัลกอริทึมหลักของ LightningDSP ที่พัฒนาโดย</string>
     <string name="credits_project_page">เยี่ยมชมเว็บไซต์โครงการบน GitHub</string>
     <string name="credits_project_page_summary">รายงานปัญหา อัปเดตตัวเองอยู่เสมอ และอ่านซอร์สโค้ด</string>
     <string name="credits_project_play_page">เยี่ยมชม LightningDSP บน Google Play</string>

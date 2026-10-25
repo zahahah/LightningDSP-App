@@ -1,0 +1,5 @@
+<resources>
+    <string name="ldsp_vm_pin">Fixar</string>
+    <string name="ldsp_vm_unpin">Desafixar</string>
+    <string name="ldsp_vm_pinned_app">%1$s, fixado</string>
+</resources>

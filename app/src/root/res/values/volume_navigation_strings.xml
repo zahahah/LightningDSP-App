@@ -1,0 +1,4 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Other app locales use the English fallback until translations are available. -->
+    <string name="ldsp_vm_group_system_streams" tools:ignore="MissingTranslation">Group call, ring, alarm and notifications under Media</string>
+</resources>

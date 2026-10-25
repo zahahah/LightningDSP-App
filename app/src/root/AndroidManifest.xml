@@ -13,6 +13,16 @@
         <activity
             android:name="lightning.dsp.volumemanager.ui.LightningDspVolumeManagerActivity"
             android:exported="false" />
+        <!-- Override the existing historical component, not a second DSP service. -->
+        <service
+            android:name="me.timschneeberger.rootlessjamesdsp.service.RootAudioProcessorService"
+            android:foregroundServiceType="mediaPlayback|specialUse"
+            tools:replace="android:foregroundServiceType"
+            tools:targetApi="upside_down_cake">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Root audio effect lifecycle and opted-in audio processing" />
+        </service>
         <service
             android:name="lightning.dsp.volumemanager.backend.LightningDspVolumeService"
             android:exported="false"

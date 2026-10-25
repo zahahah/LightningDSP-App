@@ -68,6 +68,8 @@ class LightningDspRootVolumeController private constructor(
     override fun close() {
         if (closed) return
         val current = getController.invoke(audio) as? IInterface
+        // setVolumeController resets framework visibility when restoring the previous owner.
+        // Never notify using another owner's binder or undo a newer controller's visibility.
         if (current?.asBinder() == callback) setController.invoke(audio, previous)
         closed = true
     }
@@ -92,6 +94,11 @@ class LightningDspRootVolumeController private constructor(
             }
             val descriptor = descriptorField.apply { isAccessible = true }.get(null) as String
             val transaction = stub.getDeclaredField("TRANSACTION_volumeChanged").apply { isAccessible = true }.getInt(null)
+            // Resolve the complete contract before replacing SystemUI. If a vendor lacks it,
+            // leave the platform controller installed rather than swallowing volume keys.
+            val notifyVisible = AudioManager::class.java.getDeclaredMethod(
+                "notifyVolumeControllerVisible", contract, Boolean::class.javaPrimitiveType
+            ).apply { isAccessible = true }
             val previous = get.invoke(audio)
             val controller = LightningDspRootVolumeController(
                 audio, get, set, previous, descriptor, transaction, shouldBypassPanel, onShowPanel
@@ -103,6 +110,13 @@ class LightningDspRootVolumeController private constructor(
                 check((get.invoke(audio) as? IInterface)?.asBinder() == controller.callback) {
                     "Volume controller registration was not retained"
                 }
+                // AudioService suppresses default-stream adjustments while its controller is
+                // invisible (except during playback). This replacement accepts volume changes
+                // immediately, even when its transient panel is hidden: keep it adjustment-ready
+                // for the ownership lifetime, not the overlay animation lifetime. Only Android
+                // performs the hardware-key step; volumeChanged must never replay an increment.
+                // Old SystemUI visibility calls use its old binder and cannot clear this state.
+                notifyVisible.invoke(audio, proxy, true)
             } catch (error: Exception) {
                 runCatching { controller.close() }
                 throw error

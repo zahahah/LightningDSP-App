@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,10 +22,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -38,6 +39,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -60,9 +67,19 @@ import lightning.dsp.interop.PreferenceCache
 import lightning.dsp.utils.Constants
 import lightning.dsp.utils.extensions.ContextExtensions.sendLocalBroadcast
 import java.util.Locale
+import org.json.JSONArray
+import kotlin.math.abs
 
 private val DspBlue = Color(0xFF4997D0)
 private val DspBlueOn = Color(0xFF002B43)
+
+/** Track-only styling: effect buttons and the native DSP state are independent. */
+internal fun dspTrackColors(monochrome: Boolean, lightTheme: Boolean, floating: Boolean): Pair<Color, Color> = when {
+    monochrome && lightTheme -> FloatingLightBaseTrack to FloatingLightProgressTrack
+    monochrome -> Color(0xFF8D969C) to Color(0xFFD1D5D8)
+    floating -> Color(0xFFA6B6C4) to Color(0xFF347FB6)
+    else -> DspBlue.copy(alpha = 0.22f) to DspBlue
+}
 
 private data class DspParameter(
     val namespace: String,
@@ -129,6 +146,56 @@ internal fun LightningDspVolumeCard(onOpenEffect: (() -> Unit)?, floating: Boole
     }
     @Suppress("UNUSED_VARIABLE") val currentPreferenceRevision = preferenceRevision
 
+    // Presentation order is deliberately separate from the native DSP processing chain.
+    val displayPreferences = remember(context) {
+        context.getSharedPreferences(LightningVolumePanel.PREFERENCES, android.content.Context.MODE_PRIVATE)
+    }
+    var monochromeBar by remember(displayPreferences) {
+        mutableStateOf(displayPreferences.getBoolean("dsp_bar_monochrome", false))
+    }
+    var effectOrder by remember(displayPreferences) {
+        mutableStateOf(runCatching {
+            val saved = JSONArray(displayPreferences.getString("dsp_effect_display_order", "[]"))
+            VolumeDisplayOrder.resolve(List(saved.length()) { saved.getString(it) }, dspEffects.map { it.id })
+        }.getOrElse { dspEffects.map { it.id } })
+    }
+    DisposableEffect(displayPreferences) {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, changed ->
+            if (changed == null || changed == "dsp_bar_monochrome") {
+                monochromeBar = displayPreferences.getBoolean("dsp_bar_monochrome", false)
+            }
+            if (changed == null || changed == "dsp_effect_display_order") {
+                effectOrder = runCatching {
+                    val saved = JSONArray(displayPreferences.getString("dsp_effect_display_order", "[]"))
+                    VolumeDisplayOrder.resolve(List(saved.length()) { saved.getString(it) }, dspEffects.map { it.id })
+                }.getOrElse { dspEffects.map { it.id } }
+            }
+        }
+        displayPreferences.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { displayPreferences.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+    var draggingEffect by remember { mutableStateOf<String?>(null) }
+    var dragDistance by remember { mutableFloatStateOf(0f) }
+    val effectsScroll = rememberScrollState()
+    val cellPitch = with(LocalDensity.current) { 62.dp.toPx() }
+    fun moveEffect(id: String, direction: Int): Boolean {
+        val index = effectOrder.indexOf(id)
+        val target = effectOrder.getOrNull(index + direction) ?: return false
+        effectOrder = VolumeDisplayOrder.move(effectOrder, id, target)
+        displayPreferences.edit().putString("dsp_effect_display_order", JSONArray(effectOrder).toString()).apply()
+        // Keep the moving button reachable as it crosses the visible row edges.
+        val left = ((effectOrder.indexOf(id) + 1) * cellPitch).toInt()
+        val right = left + cellPitch.toInt()
+        val scrollTarget = when {
+            left < effectsScroll.value -> left
+            right > effectsScroll.value + effectsScroll.viewportSize -> right - effectsScroll.viewportSize
+            else -> effectsScroll.value
+        }
+        scope.launch { effectsScroll.scrollTo(scrollTarget.coerceAtLeast(0)) }
+        return true
+    }
+    val latestMoveEffect = rememberUpdatedState<(String, Int) -> Boolean> { id, direction -> moveEffect(id, direction) }
+
     var expanded by rememberSaveable { mutableStateOf(false) }
     var selectedParameter by remember { mutableStateOf<DspParameter?>(null) }
     var pendingValue by remember { mutableStateOf<Float?>(null) }
@@ -186,77 +253,78 @@ internal fun LightningDspVolumeCard(onOpenEffect: (() -> Unit)?, floating: Boole
     val buttonFill = if (powered) DspBlue else MaterialTheme.colorScheme.outlineVariant
     val buttonContent = if (powered) DspBlueOn else MaterialTheme.colorScheme.onSurfaceVariant
 
-    Surface(
-        shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-    ) {
-        Column(
-            modifier = Modifier.padding(start = if (floating) 0.dp else 14.dp, end = if (floating) 0.dp else 14.dp, top = 10.dp, bottom = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(
-                    modifier = Modifier.size(44.dp).clip(CircleShape).background(buttonFill)
-                        .combinedClickable(
-                            onClick = { selectedParameter = null; expanded = !expanded },
-                            onLongClick = { selectedParameter = null; expanded = true },
-                        )
-                        .semantics {
-                            contentDescription = "LightningDSP effects"
-                            role = Role.Button
-                            stateDescription = if (expanded) "Expanded" else "Collapsed"
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_lightning_volume_mixer),
-                        contentDescription = null,
-                        tint = buttonContent,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
+    val lightTheme = if (floating) floatingLightTheme else MaterialTheme.colorScheme.background.luminance() > 0.5f
+    val (baseTrack, progressTrack) = dspTrackColors(monochromeBar, lightTheme, floating)
+    // Labels are drawn twice, clipped against the fill, so both portions need contrast.
+    val baseText = dspTrackTextColor(baseTrack.compositeOver(MaterialTheme.colorScheme.background))
+    val progressText = dspTrackTextColor(progressTrack)
 
-                TrackSurface(
-                    value = sliderValue,
-                    range = range,
-                    enabled = true,
-                    label = parameter?.shortTitle ?: context.getString(R.string.output_control_postgain),
-                    valueLabel = if (parameter?.key == R.string.key_stereowide_mode)
-                        String.format(Locale.getDefault(), "%.1f", sliderValue)
-                    else String.format(Locale.getDefault(), "%+.1f dB", sliderValue),
-                    onValue = ::queueValue,
-                    modifier = Modifier.weight(1f),
-                    baseTrackColor = when {
-                        floatingLightTheme -> FloatingLightBaseTrack
-                        floating -> Color(0xFFA6B6C4)
-                        else -> DspBlue.copy(alpha = 0.22f)
+    Column(
+        // Each track/button owns its background; do not paint a second padded card behind it.
+        modifier = Modifier.padding(start = if (floating) 0.dp else 14.dp, end = if (floating) 0.dp else 14.dp,
+            bottom = if (expanded) 8.dp else 0.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // Standard track icons are 32dp with a 16dp inset: center = 32dp.
+        // A 44dp DSP button needs 10dp inset to share that center without shrinking its hit area.
+        Row(modifier = Modifier.padding(start = if (floating) 10.dp else 0.dp),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(
+                modifier = Modifier.size(44.dp).clip(CircleShape).background(buttonFill)
+                    .combinedClickable(
+                        onClick = { selectedParameter = null; expanded = !expanded },
+                        onLongClick = { selectedParameter = null; expanded = true },
+                    )
+                    .semantics {
+                        contentDescription = "LightningDSP effects"
+                        role = Role.Button
+                        stateDescription = if (expanded) "Expanded" else "Collapsed"
                     },
-                    progressFillColor = when {
-                        floatingLightTheme -> FloatingLightProgressTrack
-                        floating -> Color(0xFF347FB6)
-                        else -> DspBlue
-                    },
-                    trackContentColor = if (floatingLightTheme) FloatingIceWhite else null,
-                    progressContentColor = if (floatingLightTheme) FloatingIceWhite else DspBlueOn,
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_lightning_volume_mixer),
+                    contentDescription = null,
+                    tint = buttonContent,
+                    modifier = Modifier.size(24.dp)
                 )
             }
 
-            if (expanded) {
-                Row(
-                    modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    DspRoundControl(
-                        shortTitle = null,
-                        title = "Power",
-                        checked = powered,
-                        power = true,
-                        onClick = {
-                            appPreferences.edit().putBoolean(context.getString(R.string.key_powered_on), !powered).apply()
-                            notifyEngine()
-                        }
-                    )
-                    dspEffects.forEach { effect ->
+            TrackSurface(
+                value = sliderValue,
+                range = range,
+                enabled = true,
+                label = parameter?.shortTitle ?: context.getString(R.string.output_control_postgain),
+                valueLabel = if (parameter?.key == R.string.key_stereowide_mode)
+                    String.format(Locale.getDefault(), "%.1f", sliderValue)
+                else String.format(Locale.getDefault(), "%+.1f dB", sliderValue),
+                onValue = ::queueValue,
+                modifier = Modifier.weight(1f),
+                baseTrackColor = baseTrack,
+                progressFillColor = progressTrack,
+                trackContentColor = baseText,
+                progressContentColor = progressText,
+            )
+        }
+
+        if (expanded) {
+            Row(
+                modifier = Modifier.horizontalScroll(effectsScroll),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                DspRoundControl(
+                    shortTitle = null,
+                    title = "Power",
+                    checked = powered,
+                    power = true,
+                    onClick = {
+                        appPreferences.edit().putBoolean(context.getString(R.string.key_powered_on), !powered).apply()
+                        notifyEngine()
+                    }
+                )
+                effectOrder.forEach { effectId ->
+                    key(effectId) {
+                        val effect = dspEffects.first { it.id == effectId }
                         val prefs = effectPreferences.getValue(effect.namespace)
                         val checked = prefs.getBoolean(context.getString(effect.enabledKey), false)
                         DspRoundControl(
@@ -267,14 +335,38 @@ internal fun LightningDspVolumeCard(onOpenEffect: (() -> Unit)?, floating: Boole
                                 prefs.edit().putBoolean(context.getString(effect.enabledKey), !checked).apply()
                                 notifyEngine()
                             },
-                            onLongClick = {
+                            modifier = if (floating) Modifier else Modifier
+                                .pointerInput(effect.id) {
+                                    detectDragGesturesAfterLongPress(
+                                        onDragStart = { draggingEffect = effect.id; dragDistance = 0f },
+                                        onDragEnd = { draggingEffect = null; dragDistance = 0f },
+                                        onDragCancel = { draggingEffect = null; dragDistance = 0f },
+                                        onDrag = { change, amount ->
+                                            change.consume()
+                                            dragDistance += amount.x
+                                            if (abs(dragDistance) >= cellPitch) {
+                                                val direction = if (dragDistance > 0) 1 else -1
+                                                latestMoveEffect.value(effect.id, direction)
+                                                dragDistance -= cellPitch * direction
+                                            }
+                                        }
+                                    )
+                                }
+                                .semantics {
+                                    customActions = listOf(
+                                        CustomAccessibilityAction("Move effect left") { moveEffect(effect.id, -1) },
+                                        CustomAccessibilityAction("Move effect right") { moveEffect(effect.id, 1) },
+                                    )
+                                    stateDescription = if (draggingEffect == effect.id) "Moving" else "Hold and drag to reorder"
+                                },
+                            onLongClick = if (floating) ({
                                 val control = effect.parameter
                                 if (control != null) {
                                     selectedParameter = control
                                 } else {
                                     openEffect(effect)
                                 }
-                            }
+                            }) else null
                         )
                     }
                 }
@@ -289,6 +381,7 @@ private fun DspRoundControl(
     shortTitle: String?,
     title: String,
     checked: Boolean,
+    modifier: Modifier = Modifier,
     power: Boolean = false,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
@@ -297,7 +390,7 @@ private fun DspRoundControl(
     val fill = if (checked) DspBlue else DspBlue.copy(alpha = 0.24f)
     val content = if (checked) DspBlueOn else inactiveColor
     Column(
-        modifier = Modifier.width(58.dp),
+        modifier = Modifier.width(58.dp).then(modifier),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
@@ -330,3 +423,7 @@ private fun DspRoundControl(
         )
     }
 }
+
+/** Choose a readable foreground from the actual opaque track, independent of app theme. */
+internal fun dspTrackTextColor(background: Color): Color =
+    if (background.luminance() > 0.179f) Color.Black else Color.White

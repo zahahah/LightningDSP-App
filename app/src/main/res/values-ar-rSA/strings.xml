@@ -351,8 +351,6 @@
     <string name="privacy_share_crash_reports_off">لا ترسل تقارير الأعطال إلى المطور</string>
     <string name="credits">شكر وتقدير</string>
     <string name="translators">المترجمون</string>
-    <string name="credits_app">تم تطوير التطبيق &amp; لتنفيذ بدون صلاحية الجذر بواسطة</string>
-    <string name="credits_dsp">مكتبة الخوارزمية الأساسية LightningDSP التي طورتها</string>
     <string name="credits_project_page">زيارة موقع المشروع على GitHub</string>
     <string name="credits_project_page_summary">الإبلاغ عن المشكلات، الحفاظ على تحديثاتك، وقراءة رمز المصدر</string>
     <string name="credits_project_play_page">زيارة LightningDSP على Google Play</string>

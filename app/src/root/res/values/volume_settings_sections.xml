@@ -1,0 +1,7 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="ldsp_vm_settings_behavior" tools:ignore="MissingTranslation">Manager behavior</string>
+    <string name="ldsp_vm_settings_app_list" tools:ignore="MissingTranslation">App list</string>
+    <string name="ldsp_vm_settings_dsp_card" tools:ignore="MissingTranslation">LightningDSP card</string>
+    <string name="ldsp_vm_settings_floating_controls" tools:ignore="MissingTranslation">Floating panel controls</string>
+    <string name="ldsp_vm_monochrome_dsp_bar" tools:ignore="MissingTranslation">Enable monochrome LightningDSP bar</string>
+</resources>

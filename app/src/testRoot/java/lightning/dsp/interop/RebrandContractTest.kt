@@ -70,7 +70,7 @@ class RebrandContractTest {
             assertFalse(qualified.contains("name=\"Theme.RootlessLightningDSP\""))
         }
         val about = source("src/main/res/xml/app_about_preferences.xml")
-        assertTrue(about.contains("https://github.com/thepbone/RootlessJamesDSP"))
+        assertTrue(about.contains("https://github.com/zahahah/RootJamesDSP"))
         assertTrue(about.contains("https://play.google.com/store/apps/details?id=me.timschneeberger.rootlessjamesdsp"))
     }
 
@@ -98,14 +98,21 @@ class RebrandContractTest {
         assertTrue(engine.indexOf("val outputPostGain = PostGainRangePolicy.clamp") <
             engine.indexOf("setOutputControl(limiterThreshold, limiterRelease, outputPostGain)"))
         assertTrue(engine.contains("extendedPostGain && !BuildConfig.ROOTLESS"))
-        val fragment = source("src/main/java/lightning/dsp/fragment/PreferenceGroupFragment.kt")
-        assertTrue(fragment.contains("isVisible = !BuildConfig.ROOTLESS"))
-        assertTrue(fragment.contains("prepareRangeChange(newValue as Boolean)"))
+        val fragment = source("src/main/java/lightning/dsp/fragment/settings/SettingsAudioFormatFragment.kt")
+        assertTrue(fragment.contains("extraPostGain?.apply"))
+        assertTrue(fragment.contains("isVisible = isRoot()"))
+        assertTrue(fragment.contains("getSharedPreferences(Constants.PREF_OUTPUT"))
+        assertTrue(fragment.contains("PostGainRangePolicy.onToggle"))
         val preference = source("src/main/java/lightning/dsp/preference/PostGainPreference.kt")
         assertTrue(preference.contains("if (stored != target) preferences.edit().putFloat(key, target).apply()"))
         val resources = source("src/main/res/values/strings.xml")
         assertTrue(resources.contains(">Use it cautiously</string>"))
-        assertTrue(source("src/main/res/xml/dsp_output_control_preferences.xml")
+        val audioProcessing = source("src/main/res/xml/app_audio_format_preferences.xml")
+        assertTrue(audioProcessing.contains("android:key=\"@string/key_output_extra_postgain\""))
+        assertTrue(audioProcessing.contains("android:persistent=\"false\""))
+        assertFalse(source("src/main/res/xml/dsp_output_control_preferences.xml")
+            .contains("key_output_extra_postgain"))
+        assertTrue(audioProcessing
             .contains("android:defaultValue=\"false\""))
     }
 }

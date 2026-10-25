@@ -1,0 +1,9 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Broken bolt silhouette leaves a transparent gap around the off slash. -->
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M13,2 L7.85,9.73 L10.12,12 L11,12 L10.91,12.79 L15.93,17.81 L19,9 L13,9 Z M6.15,12.27 L5,14 L9.29,14 L10,22 L13.35,17.4 Z M3.27,2 L2,3.27 L20.73,22 L22,20.73 Z" />
+</vector>

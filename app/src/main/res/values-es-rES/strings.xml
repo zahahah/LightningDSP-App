@@ -351,8 +351,6 @@
     <string name="privacy_share_crash_reports_off">No enviar reportes de errores al desarrollador</string>
     <string name="credits">Créditos</string>
     <string name="translators">Traductores</string>
-    <string name="credits_app">Implementación de aplicación &amp; rootless desarrollada por</string>
-    <string name="credits_dsp">Biblioteca de algoritmos de núcleo LightningDSP desarrollada por</string>
     <string name="credits_project_page">Visite el sitio web del proyecto en GitHub</string>
     <string name="credits_project_page_summary">Reportar problemas, mantenerse al día y leer el código fuente</string>
     <string name="credits_project_play_page">Visite LightningDSP en Google Play</string>

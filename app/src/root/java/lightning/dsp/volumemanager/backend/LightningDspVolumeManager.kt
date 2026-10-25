@@ -86,9 +86,10 @@ object LightningDspVolumeManager {
     }
     val isEnabled: Boolean get() = ::preferences.isInitialized && preferences.getBoolean("enabled", false)
 
-    val accessMode: VolumeAccessMode get() = if (::preferences.isInitialized)
-        runCatching { VolumeAccessMode.valueOf(preferences.getString("access_mode", "ROOT")!!) }.getOrDefault(VolumeAccessMode.ROOT)
-        else VolumeAccessMode.ROOT
+    // Root is the only exposed backend in LightningDSP. Keep the Shizuku binding,
+    // permission lifecycle and stored choice intact for a future opt-in surface.
+    // Ignore an older saved Shizuku choice so hiding the chooser cannot strand users.
+    val accessMode: VolumeAccessMode get() = VolumeAccessMode.ROOT
 
     fun setAccessMode(mode: VolumeAccessMode) {
         preferences.edit().putString("access_mode", mode.name).apply()
@@ -101,13 +102,42 @@ object LightningDspVolumeManager {
         }
     }
 
-    /** Permission prompts are explicitly initiated by the user, never by startup/boot. */
-    fun requestShizukuPermission() {
-        android.os.Handler(android.os.Looper.getMainLooper()).post {
-            runCatching {
-                check(rikka.shizuku.Shizuku.pingBinder()) { "Shizuku is not running" }
-                rikka.shizuku.Shizuku.requestPermission(7392)
-            }.onFailure { failure -> worker.execute { error = failure.message; publish() } }
+    /** User-initiated only. The returned cancellation removes listeners without retaining a UI. */
+    fun requestShizukuPermission(onFinished: (() -> Unit)? = null): () -> Unit {
+        val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        val completed = java.util.concurrent.atomic.AtomicBoolean(false)
+        lateinit var resultListener: rikka.shizuku.Shizuku.OnRequestPermissionResultListener
+        lateinit var deadListener: rikka.shizuku.Shizuku.OnBinderDeadListener
+        fun complete() {
+            if (!completed.compareAndSet(false, true)) return
+            rikka.shizuku.Shizuku.removeRequestPermissionResultListener(resultListener)
+            rikka.shizuku.Shizuku.removeBinderDeadListener(deadListener)
+            onFinished?.invoke()
+        }
+        resultListener = rikka.shizuku.Shizuku.OnRequestPermissionResultListener { requestCode, _ ->
+            if (requestCode == 7392) handler.post { complete() }
+        }
+        deadListener = rikka.shizuku.Shizuku.OnBinderDeadListener { handler.post { complete() } }
+        handler.post {
+            if (!completed.get()) {
+                runCatching {
+                    check(rikka.shizuku.Shizuku.pingBinder()) { "Shizuku is not running" }
+                    if (rikka.shizuku.Shizuku.checkSelfPermission() == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                        complete()
+                    } else {
+                        rikka.shizuku.Shizuku.addRequestPermissionResultListener(resultListener)
+                        rikka.shizuku.Shizuku.addBinderDeadListener(deadListener)
+                        rikka.shizuku.Shizuku.requestPermission(7392)
+                    }
+                }.onFailure { failure ->
+                    complete()
+                    worker.execute { error = failure.message; publish() }
+                }
+            }
+        }
+        return {
+            if (android.os.Looper.myLooper() == handler.looper) complete()
+            else handler.post { complete() }
         }
     }
 
@@ -199,6 +229,29 @@ object LightningDspVolumeManager {
             }
             publish()
             sendSettings()
+        }
+    }
+
+    /** Backup reads follow pending per-app writes on the same worker. No runtime ownership is exported. */
+    fun snapshotSettings(): java.util.concurrent.Future<Map<String, *>> {
+        check(::preferences.isInitialized)
+        return worker.submit(java.util.concurrent.Callable { preferences.all })
+    }
+
+    /** Apply validated portable preferences without replacing the local process-cleanup ledger. */
+    fun restoreSettings(writePreferences: () -> Unit): java.util.concurrent.Future<*> {
+        check(::preferences.isInitialized)
+        return worker.submit {
+            try {
+                writePreferences()
+            } finally {
+                // A disk failure can still update SharedPreferences in memory. Reconcile the
+                // effective state even when a partial restore is reported as failed.
+                LightningVolumeOverlay.hide()
+                // Reuse the normal opt-in/start/stop path; never bypass guarded cleanup.
+                // setEnabled also refreshes package-to-UID mapping and live playback rules.
+                setEnabled(isEnabled)
+            }
         }
     }
 

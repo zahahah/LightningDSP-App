@@ -31,7 +31,7 @@ import lightning.dsp.volumemanager.backend.VolumeManagerState
 
 /** Touch-friendly floating mixer styled like the reference app's centered, rounded panel. */
 object LightningVolumeOverlay {
-    private const val DISMISS_TIMEOUT_MS = 2_500L
+    private const val DISMISS_TIMEOUT_MS = 3_300L
     private const val FADE_OUT_DURATION_MS = 500L
     private const val DISMISS_CLEANUP_GRACE_MS = 100L
     private val handler = Handler(Looper.getMainLooper())

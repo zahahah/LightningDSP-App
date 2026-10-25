@@ -25,7 +25,7 @@
         android:icon="@drawable/ic_baseline_github_24dp">
         <intent
             android:action="android.intent.action.VIEW"
-            android:data="https://github.com/thepbone/RootlessJamesDSP" />
+            android:data="https://github.com/zahahah/RootJamesDSP" />
     </Preference>
 
     <Preference
@@ -43,36 +43,50 @@
         android:title="@string/credits_project_check_update"
         android:summary="@string/credits_project_check_update_summary"
         android:icon="@drawable/ic_twotone_download_24">
-    </Preference>
-
-    <Preference
-        android:title="@string/credits_project_translate"
-        android:summary="@string/credits_project_translate_summary"
-        android:icon="@drawable/ic_twotone_translate_24dp">
         <intent
             android:action="android.intent.action.VIEW"
-            android:data="https://crowdin.com/project/rootlessjamesdsp" />
+            android:data="https://github.com/zahahah/RootJamesDSP/releases" />
     </Preference>
 
     <PreferenceCategory
     app:title="@string/credits"
     app:iconSpaceReserved="false">
-    <Preference
-        android:title="@string/credits_app"
-        android:summary="Tim Schneeberger (@thepbone)"
+    <PreferenceCategory
+        android:title="@string/credits_app_implementation"
         app:iconSpaceReserved="false">
-        <intent
-            android:action="android.intent.action.VIEW"
-            android:data="https://github.com/thepbone" />
-    </Preference>
-    <Preference
-        android:title="@string/credits_dsp"
-        android:summary="James Fung (@james34602)"
+        <Preference
+            android:title="@string/credits_lightning_zahah"
+            app:iconSpaceReserved="false">
+            <intent
+                android:action="android.intent.action.VIEW"
+                android:data="https://github.com/zahahah" />
+        </Preference>
+        <Preference
+            android:title="@string/credits_thepbone"
+            app:iconSpaceReserved="false">
+            <intent
+                android:action="android.intent.action.VIEW"
+                android:data="https://github.com/thepbone" />
+        </Preference>
+    </PreferenceCategory>
+    <PreferenceCategory
+        android:title="@string/credits_core_library_implementation"
         app:iconSpaceReserved="false">
-        <intent
-            android:action="android.intent.action.VIEW"
-            android:data="https://github.com/james34602" />
-    </Preference>
+        <Preference
+            android:title="@string/credits_lightning_zahah"
+            app:iconSpaceReserved="false">
+            <intent
+                android:action="android.intent.action.VIEW"
+                android:data="https://github.com/zahahah" />
+        </Preference>
+        <Preference
+            android:title="@string/credits_james_fung"
+            app:iconSpaceReserved="false">
+            <intent
+                android:action="android.intent.action.VIEW"
+                android:data="https://github.com/james34602" />
+        </Preference>
+    </PreferenceCategory>
 
     <PreferenceCategory
         android:key="@string/key_translators"

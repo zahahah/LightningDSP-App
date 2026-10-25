@@ -1,5 +1,6 @@
 package lightning.dsp.fragment.settings
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.preference.ListPreference
@@ -10,6 +11,7 @@ import kotlinx.coroutines.launch
 import lightning.dsp.R
 import lightning.dsp.activity.OnboardingActivity
 import lightning.dsp.interop.BenchmarkManager
+import lightning.dsp.interop.PostGainRangePolicy
 import lightning.dsp.preference.MaterialSeekbarPreference
 import lightning.dsp.preference.MaterialSwitchPreference
 import lightning.dsp.service.RootAudioProcessorService
@@ -34,12 +36,34 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
     private val enhancedModeInfo by lazy { findPreference<Preference>(getString(R.string.key_audioformat_enhanced_processing_info)) }
     private val benchmark by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_optimization_benchmark)) }
     private val benchmarkRefresh by lazy { findPreference<Preference>(getString(R.string.key_audioformat_optimization_refresh)) }
+    private val extraPostGain by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_output_extra_postgain)) }
 
     private val preferences: Preferences.App by inject()
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         preferenceManager.sharedPreferencesName = Constants.PREF_APP
         setPreferencesFromResource(R.xml.app_audio_format_preferences, rootKey)
+
+        extraPostGain?.apply {
+            isVisible = isRoot()
+            isChecked = requireContext()
+                .getSharedPreferences(Constants.PREF_OUTPUT, Context.MODE_PRIVATE)
+                .getBoolean(getString(R.string.key_output_extra_postgain), PostGainRangePolicy.DEFAULT_EXTENDED)
+            setOnPreferenceChangeListener { _, newValue ->
+                val enabled = newValue as Boolean
+                val outputPreferences = requireContext()
+                    .getSharedPreferences(Constants.PREF_OUTPUT, Context.MODE_PRIVATE)
+                val key = getString(R.string.key_output_extra_postgain)
+                val storedGain = outputPreferences.getFloat(getString(R.string.key_output_postgain), 0f)
+                val currentExtended = outputPreferences.getBoolean(key, PostGainRangePolicy.DEFAULT_EXTENDED)
+                val boundedGain = PostGainRangePolicy.onToggle(storedGain, currentExtended, enabled)
+                outputPreferences.edit()
+                    .putBoolean(key, enabled)
+                    .putFloat(getString(R.string.key_output_postgain), boundedGain)
+                    .apply()
+                true
+            }
+        }
 
         // Root: Hide audio format & benchmark category
         encoding?.parent?.isVisible = isRootless()

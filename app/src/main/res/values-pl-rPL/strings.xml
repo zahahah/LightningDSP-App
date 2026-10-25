@@ -352,8 +352,6 @@ Graphic eq</string>
     <string name="privacy_share_crash_reports_off">Nie wysyłaj raportów o awarii do dewelopera</string>
     <string name="credits">Autorzy</string>
     <string name="translators">Tłumacze</string>
-    <string name="credits_app">Aplikacja &amp; niewymagająca dostępu do uprawnień root implementacja opracowana przez</string>
-    <string name="credits_dsp">Biblioteka algorytmu LightningDSP opracowana przez</string>
     <string name="credits_project_page">Odwiedź stronę projektu na GitHub</string>
     <string name="credits_project_page_summary">Zgłoś problemy, aktualizuj aplikację i przeczytaj kod źródłowy</string>
     <string name="credits_project_play_page">Odwiedź LightningDSP na Google Play</string>

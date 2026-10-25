@@ -351,8 +351,6 @@
     <string name="privacy_share_crash_reports_off">Verstuur crash rapporten niet naar de ontwikkelaar</string>
     <string name="credits">Credits</string>
     <string name="translators">Vertalers</string>
-    <string name="credits_app">App &amp; rootless implementatie ontwikkeld door</string>
-    <string name="credits_dsp">LightningDSP core algoritme library ontwikkeld door</string>
     <string name="credits_project_page">Bezoek de projectwebsite op GitHub</string>
     <string name="credits_project_page_summary">Rapporteer problemen, houd jezelf op de hoogte en lees de source-code</string>
     <string name="credits_project_play_page">Bezoek LightningDSP op Google Play</string>

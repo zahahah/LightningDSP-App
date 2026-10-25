@@ -79,6 +79,8 @@ class BackupManager(private val context: Context): KoinComponent {
                     ?.filter { it.extension == "xml" }
                     ?.forEach { c.add(it, "shared_prefs/${it.name}") }
 
+                VolumeManagerBackup.addTo(context, c)
+
                 if(preferences.get<Boolean>(R.string.key_device_profiles_enable)) {
                     c.metadata[META_HAS_DEVICE_PROFILES] = true.toString()
                     File(context.applicationInfo.dataDir + "/files/profiles").let { root ->
@@ -110,56 +112,64 @@ class BackupManager(private val context: Context): KoinComponent {
 
         context.contentResolver.openInputStream(uri)!!.source().gzip().buffer().inputStream().use { stream ->
             val targetFolder = File(context.cacheDir, "restore")
-            val metadata = Tar.Reader(stream, ::isKnownFile).extract(targetFolder)
-            if(metadata == null) {
-                targetFolder.deleteRecursively()
-                throw UnsupportedOperationException(context.getString(R.string.backup_restore_error_format))
-            }
-
-            if(BuildConfig.VERSION_CODE < (metadata[META_MIN_VERSION_CODE]?.toIntOrNull() ?: 0)) {
-                targetFolder.deleteRecursively()
-                throw UnsupportedOperationException(context.getString(R.string.backup_restore_error_version_too_new))
-            }
-
-            // Clean restore
-            if(!dirty) {
-                // Remove profiles
-                File(context.applicationInfo.dataDir + "/files/profiles").deleteRecursively()
-
-                // Remove shared dsp prefs
-                File(context.applicationInfo.dataDir + "/shared_prefs").listFiles { file: File ->
-                    file.name.startsWith("dsp_") && file.extension == "xml"
-                }?.forEach { it.delete() }
-                // Remove external files
-                context.getExternalFilesDir(null)
-                    ?.absoluteFile
-                    ?.listFiles()
-                    ?.forEach { it.deleteRecursively() }
-            }
-
-            var enableDeviceProfiles = false
-            targetFolder.listFiles()?.forEach { file ->
-                if(file.isDirectory && file.name == "shared_prefs")
-                    file.copyRecursively(File(context.applicationInfo.dataDir + "/shared_prefs"), true)
-                else if(file.isDirectory && file.name == "profiles") {
-                    enableDeviceProfiles = true
-                    file.copyRecursively(
-                        File(context.applicationInfo.dataDir + "/files/profiles"),
-                        true
-                    )
+            // A failed older extraction must not supply a stale optional mixer section.
+            check(!targetFolder.exists() || targetFolder.deleteRecursively()) { "Could not clear backup staging directory" }
+            try {
+                val metadata = Tar.Reader(stream, ::isKnownFile).extract(targetFolder)
+                if(metadata == null) {
+                    targetFolder.deleteRecursively()
+                    throw UnsupportedOperationException(context.getString(R.string.backup_restore_error_format))
                 }
-                else if(file.isDirectory && FileLibraryPreference.types.any { file.name.startsWith(it.key) }) {
-                    file.copyRecursively(File(context.getExternalFilesDir(null)!!.absolutePath + "/" + file.name), true)
+
+                if(BuildConfig.VERSION_CODE < (metadata[META_MIN_VERSION_CODE]?.toIntOrNull() ?: 0)) {
+                    targetFolder.deleteRecursively()
+                    throw UnsupportedOperationException(context.getString(R.string.backup_restore_error_version_too_new))
                 }
+
+                val restoreVolumeManager = VolumeManagerBackup.prepareRestore(context, targetFolder, dirty)
+
+                // Clean restore
+                if(!dirty) {
+                    // Remove profiles
+                    File(context.applicationInfo.dataDir + "/files/profiles").deleteRecursively()
+
+                    // Remove shared dsp prefs
+                    File(context.applicationInfo.dataDir + "/shared_prefs").listFiles { file: File ->
+                        file.name.startsWith("dsp_") && file.extension == "xml"
+                    }?.forEach { it.delete() }
+                    // Remove external files
+                    context.getExternalFilesDir(null)
+                        ?.absoluteFile
+                        ?.listFiles()
+                        ?.forEach { it.deleteRecursively() }
+                }
+
+                var enableDeviceProfiles = false
+                targetFolder.listFiles()?.forEach { file ->
+                    if(file.isDirectory && file.name == "shared_prefs")
+                        file.copyRecursively(File(context.applicationInfo.dataDir + "/shared_prefs"), true)
+                    else if(file.isDirectory && file.name == "profiles") {
+                        enableDeviceProfiles = true
+                        file.copyRecursively(
+                            File(context.applicationInfo.dataDir + "/files/profiles"),
+                            true
+                        )
+                    }
+                    else if(file.isDirectory && FileLibraryPreference.types.any { file.name.startsWith(it.key) }) {
+                        file.copyRecursively(File(context.getExternalFilesDir(null)!!.absolutePath + "/" + file.name), true)
+                    }
+                }
+
+                restoreVolumeManager()
+
+                context.broadcastPresetLoadEvent()
+                context.sendLocalBroadcast(Intent(Constants.ACTION_BACKUP_RESTORED))
+
+                if(enableDeviceProfiles)
+                    preferences.set(R.string.key_device_profiles_enable, true)
+            } finally {
+                targetFolder.deleteRecursively()
             }
-
-            targetFolder.deleteRecursively()
-
-            context.broadcastPresetLoadEvent()
-            context.sendLocalBroadcast(Intent(Constants.ACTION_BACKUP_RESTORED))
-
-            if(enableDeviceProfiles)
-                preferences.set(R.string.key_device_profiles_enable, true)
         }
     }
 
@@ -170,7 +180,10 @@ class BackupManager(private val context: Context): KoinComponent {
         const val META_IS_BACKUP = "is_backup"
 
         private fun isKnownFile(name: String): Boolean {
-            return (name.contains("dsp_") && name.endsWith(".xml")) ||
+            // Accept the optional mixer section only at its exact archive path.
+            if (name.startsWith("/") || '\\' in name || name.split('/').any { it == ".." }) return false
+            return name == VolumeManagerBackup.ARCHIVE_PATH ||
+                    (name.contains("dsp_") && name.endsWith(".xml")) ||
                     name.startsWith("profiles/") ||
                     FileLibraryPreference.types.any { name.contains(it.key) && it.value.any { ext -> name.endsWith(ext) } }
         }

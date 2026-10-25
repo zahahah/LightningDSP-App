@@ -6,25 +6,15 @@ import android.os.Bundle
 import androidx.preference.Preference
 import androidx.preference.PreferenceGroup
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import lightning.dsp.BuildConfig
 import lightning.dsp.R
-import lightning.dsp.flavor.UpdateManager
 import lightning.dsp.model.Translator
-import lightning.dsp.utils.Result
-import lightning.dsp.utils.extensions.ContextExtensions.toast
 import lightning.dsp.utils.isPlugin
 import lightning.dsp.utils.isRoot
-import org.koin.android.ext.android.inject
 import java.util.Locale
 
 
 class SettingsAboutFragment : SettingsBaseFragment() {
-
-    private val updateManager: UpdateManager by inject()
 
     private val version by lazy { findPreference<Preference>(getString(R.string.key_credits_version)) }
     private val buildInfo by lazy { findPreference<Preference>(getString(R.string.key_credits_build_info)) }
@@ -48,10 +38,6 @@ class SettingsAboutFragment : SettingsBaseFragment() {
 
         googlePlay?.isVisible = !isRoot()
         selfCheckUpdates?.isVisible = isRoot()
-        selfCheckUpdates?.setOnPreferenceClickListener {
-            checkForUpdates()
-            true
-        }
 
         Translator.readLanguageMap(requireContext()).forEach { (cc, tls) ->
             translatorsGroup?.addPreference(Preference(requireContext()).apply {
@@ -81,27 +67,6 @@ class SettingsAboutFragment : SettingsBaseFragment() {
                     true
                 }
             })
-        }
-    }
-
-    private fun checkForUpdates() {
-        if(!isRoot())
-            return
-
-        CoroutineScope(Dispatchers.Default).launch {
-            updateManager.isUpdateAvailable().collect {
-                when(it) {
-                    is Result.Success -> it.data
-                    else -> false
-                }.let { hasUpdate ->
-                    withContext(Dispatchers.Main) {
-                        if (hasUpdate)
-                            updateManager.installUpdate(requireActivity())
-                        else
-                            context?.toast(getString(R.string.self_update_no_updates))
-                    }
-                }
-            }
         }
     }
 

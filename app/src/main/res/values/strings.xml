@@ -382,8 +382,11 @@
     <string name="privacy_share_crash_reports_off">Don\'t send crash reports to the developer</string>
     <string name="credits">Credits</string>
     <string name="translators">Translators</string>
-    <string name="credits_app">App &amp; rootless implementation developed by</string>
-    <string name="credits_dsp">LightningDSP core algorithm library developed by</string>
+    <string name="credits_app_implementation">App implementation</string>
+    <string name="credits_core_library_implementation">Core library implementation</string>
+    <string name="credits_lightning_zahah">Lightning Zahah (@zahahah)</string>
+    <string name="credits_thepbone">ThePBone (@thepbone)</string>
+    <string name="credits_james_fung">James Fung (@james34602)</string>
     <string name="credits_project_page">Visit project website on GitHub</string>
     <string name="credits_project_page_summary">Report issues, keep yourself updated, and read the source code</string>
     <string name="credits_project_play_page">Visit LightningDSP on Google Play</string>

@@ -14,6 +14,10 @@ import androidx.core.content.getSystemService
 import androidx.lifecycle.Observer
 import androidx.lifecycle.asLiveData
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
@@ -32,10 +36,12 @@ import lightning.dsp.utils.Constants
 import lightning.dsp.utils.extensions.ContextExtensions.sendLocalBroadcast
 import lightning.dsp.utils.extensions.ContextExtensions.registerLocalReceiver
 import lightning.dsp.utils.extensions.ContextExtensions.unregisterLocalReceiver
+import lightning.dsp.utils.notifications.StatusNotificationGroup
 import lightning.dsp.utils.notifications.Notifications
 import lightning.dsp.utils.notifications.ServiceNotificationHelper
 import lightning.dsp.utils.preferences.Preferences
 import lightning.dsp.utils.sdkAbove
+import lightning.dsp.utils.isRoot
 import org.koin.android.ext.android.inject
 import org.koin.core.component.KoinComponent
 import timber.log.Timber
@@ -49,6 +55,9 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
 
     // Termination flags
     private var isServiceDisposing = false
+
+    private val backgroundScope = MainScope()
+    private var backgroundStartup: Job? = null
 
     // Enhanced processing
     private var sessionDumpManager: RootSessionDumpManager? = null
@@ -111,7 +120,9 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
             startForeground(
                 Notifications.ID_SERVICE_STATUS,
                 notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                if (isRoot() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                else ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
             )
         }.below {
             startForeground(
@@ -120,22 +131,36 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
             )
         }
 
-        // Initialize shared preferences manually
-        arrayOf(R.string.key_powered_on, R.string.key_audioformat_enhanced_processing).forEach {
-            onSharedPreferenceChanged(preferences.preferences, getString(it))
-        }
+        StatusNotificationGroup.serviceStarted(this, Notifications.ID_SERVICE_STATUS)
+
+        // Preserve power without creating/clearing contexts before factory discovery.
+        onSharedPreferenceChanged(preferences.preferences, getString(R.string.key_powered_on))
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Timber.d("onStartCommand")
-        if (intent == null)
+        if (intent == null) {
+            if (isRoot()) startBackgroundDiscovery()
             return START_STICKY
+        }
 
-        if(LightningDspRemoteEngine.discoveredPluginState() == LightningDspRemoteEngine.PluginState.Unavailable) {
-            Timber.e("onStartCommand: Ignoring command because audio factory has no LightningDSP descriptor")
+        if (intent.action == ACTION_STOP) {
+            backgroundStartup?.cancel()
             stopSelf()
             return START_NOT_STICKY
         }
+        if (intent.action == ACTION_START_BACKGROUND && isRoot()) {
+            startBackgroundDiscovery()
+            return START_REDELIVER_INTENT
+        }
+
+        if(LightningDspRemoteEngine.discoveredPluginState() == LightningDspRemoteEngine.PluginState.Unavailable) {
+            Timber.e("onStartCommand: Ignoring command because audio factory has no LightningDSP descriptor")
+            if (backgroundStartup?.isActive != true) stopSelf(startId)
+            return START_NOT_STICKY
+        }
+
+        initializeProcessingIfNeeded()
 
         // Handle intent action
         when (intent.action) {
@@ -148,15 +173,13 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
                 }
                 sendLocalBroadcast(Intent(Constants.ACTION_SERVICE_STARTED))
             }
-            ACTION_STOP -> {
-                stopSelf()
-                return START_NOT_STICKY
-            }
             AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION -> {
                 if(app.rootSessionDatabase.sessionList.isEmpty())
                     sendLocalBroadcast(Intent(Constants.ACTION_SERVICE_STARTED))
 
-                if(!isServiceDisposing && !app.isEnhancedProcessing)
+                val duplicateGlobal = intent.getIntExtra(AudioEffect.EXTRA_AUDIO_SESSION, -1) == 0 &&
+                    app.rootSessionDatabase.hasUsableGlobalSession()
+                if(!isServiceDisposing && !app.isEnhancedProcessing && !duplicateGlobal)
                     app.rootSessionDatabase.addSessionByIntent(intent)
             }
             AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION -> {
@@ -180,6 +203,8 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
     override fun onDestroy() {
         super.onDestroy()
         isServiceDisposing = true
+        backgroundStartup?.cancel()
+        backgroundScope.cancel()
 
         // Stop foreground service
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -197,6 +222,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
         app.rootSessionDatabase.unregisterOnSessionChangeListener(this)
 
         notificationManager.cancel(Notifications.ID_SERVICE_STATUS)
+        StatusNotificationGroup.serviceStopped(this, Notifications.ID_SERVICE_STATUS)
     }
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
@@ -221,6 +247,38 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
         }
     }
 
+    /** Discovery retries are limited to boot/late-load requests, never normal controls. */
+    private fun startBackgroundDiscovery() {
+        if (backgroundStartup?.isActive == true) return
+        backgroundStartup = backgroundScope.launch {
+            for (attempt in 0 until BackgroundAudioStartupPolicy.MAX_ATTEMPTS) {
+                val state = withContext(Dispatchers.IO) {
+                    LightningDspRemoteEngine.discoveredPluginState()
+                }
+                if (state == LightningDspRemoteEngine.PluginState.Available) {
+                    initializeProcessingIfNeeded()
+                    if (BackgroundAudioStartupPolicy.shouldOpenGlobalSession(
+                            app.isLegacyMode, app.rootSessionDatabase.hasUsableGlobalSession())) {
+                        if (app.rootSessionDatabase.sessionList.containsKey(0))
+                            app.rootSessionDatabase.removeSession(0)
+                        app.rootSessionDatabase.addSession(0, android.os.Process.myUid(), packageName)
+                    }
+                    sendLocalBroadcast(Intent(Constants.ACTION_SERVICE_STARTED))
+                    return@launch
+                }
+                if (!BackgroundAudioStartupPolicy.shouldRetry(
+                        attempt, state == LightningDspRemoteEngine.PluginState.Unsupported)) break
+                delay(BackgroundAudioStartupPolicy.RETRY_INTERVAL_MS)
+            }
+            // Keep existing contexts and foreground lifecycle intact on discovery failure.
+            Timber.w("Background audio startup: descriptor unavailable after bounded discovery")
+        }
+    }
+
+    private fun initializeProcessingIfNeeded() {
+        if (app.isEnhancedProcessing && sessionDumpManager == null) setupEnhancedProcessing()
+    }
+
     private fun setupEnhancedProcessing() {
         app.rootSessionDatabase.clearSessions()
 
@@ -243,13 +301,28 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
 
     companion object {
         const val ACTION_START_ENHANCED_PROCESSING = BuildConfig.APPLICATION_ID + ".root.service.START_ENHANCED"
+        const val ACTION_START_BACKGROUND = BuildConfig.APPLICATION_ID + ".root.service.START_BACKGROUND"
         const val ACTION_STOP = BuildConfig.APPLICATION_ID + ".root.service.STOP"
+
+        /** No Activity or synchronous root/plugin probe on the boot receiver thread. */
+        fun startBackground(context: Context) {
+            val intent = Intent(context,
+                me.timschneeberger.rootlessjamesdsp.service.RootAudioProcessorService::class.java
+            ).setAction(ACTION_START_BACKGROUND)
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
+                else context.startService(intent)
+            } catch (ex: Exception) {
+                Timber.w(ex, "Background audio startup was not permitted")
+            }
+        }
 
         fun startService(context: Context, intent: Intent) {
             Timber.d("startService: intent=$intent")
 
             // Prevent launch if plugin missing
-            if(LightningDspRemoteEngine.isPluginInstalled() == LightningDspRemoteEngine.PluginState.Unavailable) {
+            if(intent.action != ACTION_STOP &&
+                LightningDspRemoteEngine.isPluginInstalled() == LightningDspRemoteEngine.PluginState.Unavailable) {
                 Timber.e("Service launch cancelled. Plugin not installed.")
                 return
             }

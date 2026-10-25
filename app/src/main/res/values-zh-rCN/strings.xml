@@ -351,8 +351,6 @@
     <string name="privacy_share_crash_reports_off">不要向开发人员发送崩溃报告</string>
     <string name="credits">鸣谢</string>
     <string name="translators">翻译人员</string>
-    <string name="credits_app">应用程序和免 root 执行开发</string>
-    <string name="credits_dsp">LightningDSP 核心算法库开发</string>
     <string name="credits_project_page">在 GitHub 上访问项目网站</string>
     <string name="credits_project_page_summary">报告问题、保持更新并查看源码</string>
     <string name="credits_project_play_page">在 Google Play 上查看 LightningDSP</string>

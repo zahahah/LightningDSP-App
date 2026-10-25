@@ -14,7 +14,6 @@ import androidx.preference.Preference.SummaryProvider
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.PreferenceScreen
 import androidx.recyclerview.widget.RecyclerView
-import lightning.dsp.BuildConfig
 import lightning.dsp.R
 import lightning.dsp.activity.GraphicEqualizerActivity
 import lightning.dsp.activity.LiveprogEditorActivity
@@ -85,16 +84,7 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
         requireContext().registerLocalReceiver(receiver, IntentFilter(Constants.ACTION_PRESET_LOADED))
 
         when(args.getInt(BUNDLE_XML_RES)) {
-            R.xml.dsp_output_control_preferences -> {
-                findPreference<Preference>(getString(R.string.key_output_extra_postgain))?.apply {
-                    isVisible = !BuildConfig.ROOTLESS
-                    setOnPreferenceChangeListener { _, newValue ->
-                        findPreference<PostGainPreference>(getString(R.string.key_output_postgain))
-                            ?.prepareRangeChange(newValue as Boolean)
-                        true
-                    }
-                }
-            }
+            R.xml.dsp_output_control_preferences -> Unit
             R.xml.dsp_compander_preferences -> {
                 findPreference<MaterialSeekbarPreference>(getString(R.string.key_compander_granularity))?.valueLabelOverride =
                     fun(it: Float): String {

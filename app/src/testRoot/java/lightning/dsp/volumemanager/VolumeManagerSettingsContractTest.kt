@@ -26,7 +26,7 @@ class VolumeManagerSettingsContractTest {
         assertTrue(activity.contains("LightningVolumeManagerScreen("))
         assertTrue(composeUi.contains("internal fun LightningVolumeFloatingPanel("))
         assertTrue(overlay.contains("LightningVolumeFloatingPanel("))
-        assertTrue(composeUi.contains("SystemVolumeControls(context, compact = true, showVisibilityOptions = false, floatingLightTheme = !dark)"))
+        assertTrue(composeUi.contains("SystemVolumeControls(context, compact = true, showVisibilityOptions = false, floatingLightTheme = !dark, floatingPanel = true)"))
     }
 
     @Test fun managerAndPerAppOptInsRemainIndependentOfCardVisibility() {
@@ -84,11 +84,11 @@ class VolumeManagerSettingsContractTest {
         assertTrue(composeUi.contains("FloatingLightBaseTrack = Color(0xFF727C85)"))
         assertTrue(composeUi.contains("FloatingIceWhite = Color(0xFFF0F5F7)"))
         assertTrue(composeUi.contains("DspCard(onOpenEffect = onClose, floating = true, floatingLightTheme = !dark)"))
-        assertTrue(composeUi.contains("AppVolumeTrack(app, showOptions = false, floatingLightTheme = !dark)"))
+        assertTrue(composeUi.contains("AppVolumeTrack(app, showOptions = false, floatingLightTheme = !dark,"))
         assertTrue(dspCard.contains("end = if (floating) 0.dp else 14.dp"))
         assertTrue(dspCard.contains("floating -> Color(0xFFA6B6C4)"))
-        assertTrue(dspCard.contains("floating -> Color(0xFF347FB6)"))
-        assertTrue(dspCard.contains("floatingLightTheme -> FloatingLightProgressTrack"))
+        assertTrue(dspCard.contains("dspTrackColors(monochromeBar, lightTheme, floating)"))
+        assertTrue(dspCard.contains("monochrome && lightTheme -> FloatingLightBaseTrack to FloatingLightProgressTrack"))
     }
 
     @Test fun dspCardUsesPanelEffectNamesWithOnlyTheThreeRequestedAliasesAndCenteredLabels() {
@@ -187,11 +187,13 @@ class VolumeManagerSettingsContractTest {
         val root = File(app, "src/root/java/lightning/dsp/volumemanager/backend/LightningDspVolumeRoot.kt").readText()
         val composeUi = ui("LightningVolumeComposeUi")
         val activity = ui("LightningDspVolumeManagerActivity")
-        for (source in listOf(composeUi, activity)) {
+        for (source in listOf(composeUi)) {
             assertTrue(source.contains("LightningDspVolumeManager.setSystemRingerMode("))
             assertTrue(source.contains("LightningDspVolumeManager.setSystemInterruptionFilter("))
             assertFalse(source.contains("ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS"))
         }
+        assertFalse(activity.contains("LightningDspVolumeManager.setSystemRingerMode("))
+        assertFalse(activity.contains("LightningDspVolumeManager.setSystemInterruptionFilter("))
         assertTrue(manager.contains("SystemVolumeOperation.ringer(nextOperationId(), mode)"))
         assertTrue(manager.contains("SystemVolumeOperation.interruptionFilter(nextOperationId(), filter)"))
         assertTrue(manager.contains("if (activeSession?.sideEffectsAuthorized == true)"))
@@ -204,6 +206,36 @@ class VolumeManagerSettingsContractTest {
         assertTrue(manager.contains("systemVolumeOperationId = operationId"))
         assertTrue(composeUi.contains("LaunchedEffect(state.systemVolumeOperationId)"))
         assertTrue(composeUi.contains("state.systemVolumeError?.let { message ->"))
+    }
+
+    @Test fun settingsOnlyExposeRootAndKeepPanelControlsInTheManager() {
+        val settings = ui("LightningDspVolumeManagerActivity").substringAfter("private fun showSettings()")
+        for (removed in listOf("ldsp_vm_access_mode", "ldsp_vm_access_backend",
+            "ldsp_vm_shizuku_permission", "ldsp_vm_open_panel", "ldsp_vm_accessibility_enable",
+            "ldsp_vm_accessibility_disable", "ACTION_ACCESSIBILITY_SETTINGS", "ldsp_vm_show_stream",
+            "ldsp_vm_ringer", "ldsp_vm_dnd")) {
+            assertFalse("Settings must not expose $removed", settings.contains(removed))
+        }
+        val manager = backend()
+        assertTrue(manager.contains("val accessMode: VolumeAccessMode get() = VolumeAccessMode.ROOT"))
+        assertTrue(manager.contains("ROOT, SHIZUKU"))
+        assertTrue(manager.contains("fun requestShizukuPermission("))
+        assertTrue(manager.contains("putString(\"access_mode\", mode.name)"))
+        assertTrue(manager.contains("VolumeShizukuProcess(context, receipt, nonce)"))
+        assertTrue(settings.contains("ldsp_vm_grant_overlay"))
+        val section = settings.indexOf("setText(R.string.ldsp_vm_floating_theme_section)")
+        assertTrue(section > settings.lastIndexOf("controls.addView(MaterialSwitch"))
+        assertTrue(section > settings.indexOf("ldsp_vm_grant_overlay"))
+        assertTrue(settings.indexOf("controls.addView(floatingThemeButton)") > section)
+        assertTrue(settings.contains("floatingThemeButton.setText(theme.labelRes)"))
+    }
+
+    @Test fun settingsAndFloatingDspCardShareTheDarkBlueAccentWithoutChangingAppTracks() {
+        val theme = File(app, "src/root/res/values/volume_settings_theme.xml").readText()
+        assertTrue(theme.contains("<color name=\"ldsp_vm_control_blue\">#347FB6</color>"))
+        assertTrue(theme.contains("<item name=\"colorPrimary\">@color/ldsp_vm_control_blue</item>"))
+        assertTrue(ui("LightningDspVolumeManagerActivity").contains("R.style.ThemeOverlay_LightningDSP_VolumeSettings"))
+        assertTrue(ui("LightningDspVolumeCard").contains("floating -> Color(0xFFA6B6C4) to Color(0xFF347FB6)"))
     }
 
     @Test fun floatingPanelThemeFollowsDeviceByDefaultAndSupportsLightDarkOverrides() {
@@ -230,7 +262,7 @@ class VolumeManagerSettingsContractTest {
         val hide = overlay.substringAfter("fun hide()").substringBefore("private fun scheduleDismiss")
         val refresh = overlay.substringAfter("panel?.takeIf { it.isAttachedToWindow }")
             .substringBefore("if (panel != null) hide()")
-        assertTrue(overlay.contains("private const val DISMISS_TIMEOUT_MS = 2_500L"))
+        assertTrue(overlay.contains("private const val DISMISS_TIMEOUT_MS = 3_300L"))
         assertTrue(overlay.contains("private const val FADE_OUT_DURATION_MS = 500L"))
         assertTrue(refresh.contains("scheduleDismiss()"))
         assertTrue(overlay.contains("scheduleDismiss(host)"))

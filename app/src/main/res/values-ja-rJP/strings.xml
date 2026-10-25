@@ -354,8 +354,6 @@
     <string name="privacy_share_crash_reports_off">開発者にクラッシュレポートを送信しない</string>
     <string name="credits">クレジット</string>
     <string name="translators">翻訳者</string>
-    <string name="credits_app">App &amp; rootless implementation developed by</string>
-    <string name="credits_dsp">LightningDSP コアアルゴリズムライブラリ</string>
     <string name="credits_project_page">GitHubのプロジェクトページを開く</string>
     <string name="credits_project_page_summary">問題の報告、最新情報の入手、ソースコードが確認できます</string>
     <string name="credits_project_play_page">Google PlayのLightningDSPページを開く</string>

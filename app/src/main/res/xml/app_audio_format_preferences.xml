@@ -47,6 +47,14 @@
             android:dependency="@string/key_audioformat_processing"
             app:iconSpaceReserved="false" />
 
+        <lightning.dsp.preference.MaterialSwitchPreference
+            android:key="@string/key_output_extra_postgain"
+            android:title="@string/output_extra_postgain"
+            android:summary="@string/output_extra_postgain_warning"
+            android:defaultValue="false"
+            android:persistent="false"
+            app:iconSpaceReserved="false" />
+
         <Preference
             android:key="@string/key_audioformat_enhanced_processing_info"
             android:title="@string/audio_format_enhanced_processing_info_title"

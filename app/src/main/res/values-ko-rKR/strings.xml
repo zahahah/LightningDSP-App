@@ -351,8 +351,6 @@
     <string name="privacy_share_crash_reports_off">개발자에게 충돌 보고서 전송 안 함</string>
     <string name="credits">크레딧</string>
     <string name="translators">번역가</string>
-    <string name="credits_app">앱 &amp; 루트리스 구현 개발</string>
-    <string name="credits_dsp">LightningDSP 핵심 알고리즘 라이브러리 개발</string>
     <string name="credits_project_page">Github에서 프로젝트 웹 사이트 방문</string>
     <string name="credits_project_page_summary">문제 보고, 최신 상태 유지, 소스 코드 읽기</string>
     <string name="credits_project_play_page">Google Play에서 LightningDSP 방문</string>
