@@ -9,6 +9,7 @@ import android.media.AudioManager
 import android.provider.Settings
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
@@ -75,6 +76,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.State
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
@@ -327,6 +329,7 @@ internal fun LightningVolumeManagerScreen(
 internal fun LightningVolumeFloatingPanel(
     state: VolumeManagerState,
     onClose: () -> Unit,
+    onPanelFocusChanged: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
@@ -371,7 +374,9 @@ internal fun LightningVolumeFloatingPanel(
 
     MaterialTheme(colorScheme = lightningVolumeColorScheme(scheme, dark)) {
         Surface(
-            modifier = Modifier.widthIn(min = minWidth.dp, max = maxWidth.dp),
+            modifier = Modifier.widthIn(min = minWidth.dp, max = maxWidth.dp)
+                .onFocusChanged { onPanelFocusChanged(it.hasFocus) }
+                .focusGroup(),
             shape = RoundedCornerShape(28.dp),
             color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f),
             contentColor = MaterialTheme.colorScheme.onSurface

@@ -4,11 +4,14 @@ import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.ContextThemeWrapper
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.WindowManager
+import android.view.View
+import android.view.accessibility.AccessibilityEvent
 import android.widget.FrameLayout
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
@@ -39,7 +42,11 @@ object LightningVolumeOverlay {
     private var dismissalGeneration = 0L
     private var state by mutableStateOf(VolumeManagerState())
     private var observer: Observer<VolumeManagerState>? = null
-    private val dismiss = Runnable { hide() }
+    private var idlePolicy: VolumeOverlayIdlePolicy? = null
+    private val dismiss = Runnable {
+        if (idlePolicy?.remainingMillis(SystemClock.uptimeMillis()) == 0L) hide()
+        else scheduleDismiss()
+    }
 
     fun show(context: Context) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
@@ -57,6 +64,7 @@ object LightningVolumeOverlay {
             it.alpha = 1f
             isDismissing = false
             LightningDspVolumeManager.reportOverlayAvailable()
+            idlePolicy?.activity(SystemClock.uptimeMillis())
             scheduleDismiss()
             return
         }
@@ -65,21 +73,38 @@ object LightningVolumeOverlay {
 
         val owner = PanelLifecycleOwner()
         val panelContext = ContextThemeWrapper(context.applicationContext, lightning.dsp.R.style.Theme_RootlessLightningDSP)
+        val idle = VolumeOverlayIdlePolicy(DISMISS_TIMEOUT_MS, SystemClock.uptimeMillis())
         val host = object : FrameLayout(panelContext) {
             override fun dispatchTouchEvent(event: MotionEvent): Boolean {
                 when (event.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> {
-                        handler.removeCallbacks(dismiss)
-                        if (panel === this && isDismissing) {
-                            animate().cancel()
-                            alpha = 1f
-                            isDismissing = false
-                        }
-                    }
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> scheduleDismiss(this)
+                    MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_MOVE ->
+                        updateInteraction(this, idle, VolumeOverlayIdlePolicy.Interaction.TOUCH, true)
                     MotionEvent.ACTION_OUTSIDE -> { hide(); return true }
                 }
-                return super.dispatchTouchEvent(event)
+                return try { super.dispatchTouchEvent(event) } finally {
+                    if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL)
+                        updateInteraction(this, idle, VolumeOverlayIdlePolicy.Interaction.TOUCH, false)
+                }
+            }
+
+            override fun dispatchHoverEvent(event: MotionEvent): Boolean {
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_HOVER_ENTER, MotionEvent.ACTION_HOVER_MOVE ->
+                        updateInteraction(this, idle, VolumeOverlayIdlePolicy.Interaction.HOVER, true)
+                    MotionEvent.ACTION_HOVER_EXIT ->
+                        updateInteraction(this, idle, VolumeOverlayIdlePolicy.Interaction.HOVER, false)
+                }
+                return super.dispatchHoverEvent(event)
+            }
+
+            override fun requestSendAccessibilityEvent(child: View, event: AccessibilityEvent): Boolean {
+                when (event.eventType) {
+                    AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED ->
+                        updateInteraction(this, idle, VolumeOverlayIdlePolicy.Interaction.ACCESSIBILITY, true)
+                    AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED ->
+                        updateInteraction(this, idle, VolumeOverlayIdlePolicy.Interaction.ACCESSIBILITY, false)
+                }
+                return super.requestSendAccessibilityEvent(child, event)
             }
         }
         // Compose's window recomposer looks up owners from the WindowManager root.
@@ -93,7 +118,10 @@ object LightningVolumeOverlay {
             setContent {
                 LightningVolumeFloatingPanel(
                     state = state,
-                    onClose = ::hide
+                    onClose = ::hide,
+                    onPanelFocusChanged = { focused ->
+                        updateInteraction(host, idle, VolumeOverlayIdlePolicy.Interaction.FOCUS, focused)
+                    }
                 )
             }
         }
@@ -125,6 +153,7 @@ object LightningVolumeOverlay {
         }
         windowManager = manager
         panel = host
+        idlePolicy = idle
         lifecycleOwner = owner
         dismissalGeneration++
         isDismissing = false
@@ -166,6 +195,7 @@ object LightningVolumeOverlay {
         observer?.let { LightningDspVolumeManager.state.removeObserver(it) }
         observer = null
         panel = null
+        idlePolicy = null
         windowManager = null
         lifecycleOwner?.lifecycleRegistry?.currentState = Lifecycle.State.DESTROYED
         lifecycleOwner = null
@@ -173,11 +203,26 @@ object LightningVolumeOverlay {
         manager?.let { runCatching { it.removeView(current) } }
     }
 
+    private fun updateInteraction(host: FrameLayout, idle: VolumeOverlayIdlePolicy,
+                                  kind: VolumeOverlayIdlePolicy.Interaction, active: Boolean) {
+        idle.setInteraction(kind, active, SystemClock.uptimeMillis())
+        if (panel !== host || idlePolicy !== idle) return
+        handler.removeCallbacks(dismiss)
+        if (active && isDismissing) {
+            host.animate().cancel()
+            dismissalGeneration++
+            host.alpha = 1f
+            isDismissing = false
+        }
+        scheduleDismiss(host)
+    }
+
     private fun scheduleDismiss(expected: FrameLayout? = panel) {
         val current = expected ?: return
-        if (panel !== current || !current.isAttachedToWindow) return
+        if (panel !== current || !current.isAttachedToWindow || isDismissing) return
         handler.removeCallbacks(dismiss)
-        handler.postDelayed(dismiss, DISMISS_TIMEOUT_MS)
+        val delay = idlePolicy?.remainingMillis(SystemClock.uptimeMillis()) ?: return
+        handler.postDelayed(dismiss, delay)
     }
 
     private class PanelLifecycleOwner : SavedStateRegistryOwner {

@@ -226,6 +226,20 @@ class VolumeManagerSettingsContractTest {
         assertFalse(hide.contains("translationY"))
     }
 
+    @Test fun floatingPanelIdleTimerObservesInputAndFocusInsteadOfAnUnconditionalTimeout() {
+        val overlay = ui("LightningVolumeOverlay")
+        val composeUi = ui("LightningVolumeComposeUi")
+        assertTrue(overlay.contains("MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_MOVE"))
+        assertTrue(overlay.contains("MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL"))
+        assertTrue(overlay.contains("VolumeOverlayIdlePolicy.Interaction.HOVER"))
+        assertTrue(overlay.contains("AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED"))
+        assertTrue(overlay.contains("idlePolicy?.remainingMillis(SystemClock.uptimeMillis()) == 0L"))
+        assertTrue(overlay.contains("handler.postDelayed(dismiss, delay)"))
+        assertTrue(overlay.contains("idlePolicy !== idle"))
+        assertTrue(composeUi.contains("onPanelFocusChanged(it.hasFocus)"))
+        assertTrue(composeUi.contains(".focusGroup()"))
+    }
+
     @Test fun enablingRequestsOverlayPermissionAndOnlyStartsAfterGrant() {
         val activity = ui("LightningDspVolumeManagerActivity")
         assertTrue(activity.contains("Settings.ACTION_MANAGE_OVERLAY_PERMISSION"))
