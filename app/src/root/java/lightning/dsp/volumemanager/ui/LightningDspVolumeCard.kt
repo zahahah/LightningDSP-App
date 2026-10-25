@@ -107,7 +107,7 @@ private val dspEffects = listOf(
 /** Compact LightningDSP control card, styled after the reference's circular DSP controls. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun LightningDspVolumeCard(onOpenEffect: (() -> Unit)?) {
+internal fun LightningDspVolumeCard(onOpenEffect: (() -> Unit)?, floating: Boolean = false, floatingLightTheme: Boolean = false) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val appPreferences = remember(context) { PreferenceCache.getPreferences(context, Constants.PREF_APP) }
@@ -188,7 +188,7 @@ internal fun LightningDspVolumeCard(onOpenEffect: (() -> Unit)?) {
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            modifier = Modifier.padding(start = 14.dp, end = if (floating) 0.dp else 14.dp, top = 10.dp, bottom = 10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -223,9 +223,18 @@ internal fun LightningDspVolumeCard(onOpenEffect: (() -> Unit)?) {
                     else String.format(Locale.getDefault(), "%+.1f dB", sliderValue),
                     onValue = ::queueValue,
                     modifier = Modifier.weight(1f),
-                    baseTrackColor = DspBlue.copy(alpha = 0.22f),
-                    progressFillColor = DspBlue,
-                    progressContentColor = DspBlueOn,
+                    baseTrackColor = when {
+                        floatingLightTheme -> FloatingLightBaseTrack
+                        floating -> Color(0xFFA6B6C4)
+                        else -> DspBlue.copy(alpha = 0.22f)
+                    },
+                    progressFillColor = when {
+                        floatingLightTheme -> FloatingLightProgressTrack
+                        floating -> Color(0xFF347FB6)
+                        else -> DspBlue
+                    },
+                    trackContentColor = if (floatingLightTheme) FloatingIceWhite else null,
+                    progressContentColor = if (floatingLightTheme) FloatingIceWhite else DspBlueOn,
                 )
             }
 

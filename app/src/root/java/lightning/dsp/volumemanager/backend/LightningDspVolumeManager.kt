@@ -58,6 +58,7 @@ object LightningDspVolumeManager {
     private var connected = false
     private var error: String? = null
     @Volatile private var systemVolumeError: String? = null
+    private var systemVolumeOperationId = 0L
     private var generation = 0
     private var lastResponseAt = 0L
     private var heartbeatWatch: ScheduledFuture<*>? = null
@@ -281,11 +282,54 @@ object LightningDspVolumeManager {
         }
     }
 
+    /** Modes controls use the owned privileged pipe without granting persistent app access. */
+    fun setSystemRingerMode(mode: Int): Boolean {
+        if (!::context.isInitialized) return false
+        val operation = runCatching { SystemVolumeOperation.ringer(nextOperationId(), mode) }.getOrNull() ?: return false
+        return submitSystemModeOperation(operation) {
+            context.getSystemService(AudioManager::class.java).ringerMode = mode
+        }
+    }
+
+    fun setSystemInterruptionFilter(filter: Int): Boolean {
+        if (!::context.isInitialized) return false
+        val operation = runCatching { SystemVolumeOperation.interruptionFilter(nextOperationId(), filter) }.getOrNull() ?: return false
+        return submitSystemModeOperation(operation) {
+            val notifications = context.getSystemService(android.app.NotificationManager::class.java)
+            check(notifications.isNotificationPolicyAccessGranted) { "Privileged volume manager or Modes access is required" }
+            notifications.setInterruptionFilter(filter)
+        }
+    }
+
+    /** True means queued on the privileged route, not proof that Android applied it. */
+    private fun submitSystemModeOperation(operation: SystemVolumeOperation, fallback: () -> Unit): Boolean {
+        val activeSession = commandSession
+        if (activeSession?.sideEffectsAuthorized == true) {
+            val queued = activeSession.offerVolumeOperation(operation)
+            if (!queued) {
+                systemVolumeError = "Mode change could not be queued"
+                worker.execute { publish() }
+            }
+            return queued
+        }
+        return try {
+            fallback()
+            systemVolumeError = null
+            worker.execute { publish() }
+            true
+        } catch (exception: Exception) {
+            systemVolumeError = "Mode change unavailable: ${exception.message ?: exception.javaClass.simpleName}"
+            worker.execute { publish() }
+            false
+        }
+    }
+
     private fun nextOperationId(): Long = operationSequence.incrementAndGet().coerceAtLeast(1L)
 
     private fun handleVolumeOperationResult(response: JSONObject) {
         val operationId = response.optLong("volume_operation_result", -1L)
         if (operationId <= 0L) return
+        systemVolumeOperationId = operationId
         systemVolumeError = if (response.optBoolean("ok")) null else
             response.optString("volume_operation_error").ifEmpty { "System volume change was rejected" }
         publish()
@@ -576,7 +620,7 @@ object LightningDspVolumeManager {
         val mediaVolume = runCatching { audio.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() /
             audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1) }.getOrDefault(1f)
         val next = VolumeManagerState(isEnabled, connected, error ?: overlayError, apps, mediaVolume,
-            perAppEnabled, overlayReady, systemVolumeError)
+            perAppEnabled, overlayReady, systemVolumeError, systemVolumeOperationId)
         if (force || next != lastPublished) {
             lastPublished = next
             mutableState.postValue(next)
@@ -606,5 +650,6 @@ data class VolumeManagerState(
     val masterVolume: Float = 1f,
     val perAppEnabled: Boolean = true,
     val overlayReady: Boolean = false,
-    val systemVolumeError: String? = null
+    val systemVolumeError: String? = null,
+    val systemVolumeOperationId: Long = 0L
 )

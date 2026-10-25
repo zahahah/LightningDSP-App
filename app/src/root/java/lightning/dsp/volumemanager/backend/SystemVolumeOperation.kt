@@ -1,6 +1,7 @@
 package lightning.dsp.volumemanager.backend
 
 import android.media.AudioManager
+import android.app.NotificationManager
 import java.util.LinkedHashMap
 import java.util.LinkedHashSet
 
@@ -11,7 +12,7 @@ internal data class SystemVolumeOperation(
     val stream: Int,
     val value: Int,
 ) {
-    enum class Kind { SET, ADJUST }
+    enum class Kind { SET, ADJUST, RINGER, INTERRUPTION_FILTER }
 
     fun toJson(): org.json.JSONObject = org.json.JSONObject()
         .put("volume_operation", org.json.JSONObject()
@@ -38,6 +39,20 @@ internal data class SystemVolumeOperation(
             return SystemVolumeOperation(id, Kind.ADJUST, stream, direction)
         }
 
+        fun ringer(id: Long, mode: Int): SystemVolumeOperation {
+            require(id > 0)
+            require(mode == AudioManager.RINGER_MODE_NORMAL || mode == AudioManager.RINGER_MODE_VIBRATE ||
+                mode == AudioManager.RINGER_MODE_SILENT)
+            return SystemVolumeOperation(id, Kind.RINGER, AudioManager.USE_DEFAULT_STREAM_TYPE, mode)
+        }
+
+        fun interruptionFilter(id: Long, filter: Int): SystemVolumeOperation {
+            require(id > 0)
+            require(filter == NotificationManager.INTERRUPTION_FILTER_ALL ||
+                filter == NotificationManager.INTERRUPTION_FILTER_PRIORITY)
+            return SystemVolumeOperation(id, Kind.INTERRUPTION_FILTER, AudioManager.USE_DEFAULT_STREAM_TYPE, filter)
+        }
+
         fun parse(json: org.json.JSONObject): SystemVolumeOperation? = runCatching {
             val payload = json.getJSONObject("volume_operation")
             val id = payload.getLong("id")
@@ -51,6 +66,8 @@ internal data class SystemVolumeOperation(
                     SystemVolumeOperation(id, Kind.SET, stream, value)
                 }
                 "adjust" -> adjust(id, value, stream)
+                "ringer" -> { require(stream == AudioManager.USE_DEFAULT_STREAM_TYPE); ringer(id, value) }
+                "interruption_filter" -> { require(stream == AudioManager.USE_DEFAULT_STREAM_TYPE); interruptionFilter(id, value) }
                 else -> null
             }
         }.getOrNull()
@@ -72,6 +89,8 @@ internal class SystemVolumeOperationQueue(private val capacity: Int = 32) {
         val key = when (operation.kind) {
             SystemVolumeOperation.Kind.SET -> "set:${operation.stream}"
             SystemVolumeOperation.Kind.ADJUST -> "adjust:${operation.id}"
+            SystemVolumeOperation.Kind.RINGER -> "ringer"
+            SystemVolumeOperation.Kind.INTERRUPTION_FILTER -> "interruption_filter"
         }
         pending.remove(key)
         if (pending.size >= capacity) return@synchronized false

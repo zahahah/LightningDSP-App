@@ -26,7 +26,7 @@ class VolumeManagerSettingsContractTest {
         assertTrue(activity.contains("LightningVolumeManagerScreen("))
         assertTrue(composeUi.contains("internal fun LightningVolumeFloatingPanel("))
         assertTrue(overlay.contains("LightningVolumeFloatingPanel("))
-        assertTrue(composeUi.contains("SystemVolumeControls(context, compact = true, showVisibilityOptions = false)"))
+        assertTrue(composeUi.contains("SystemVolumeControls(context, compact = true, showVisibilityOptions = false, floatingLightTheme = !dark)"))
     }
 
     @Test fun managerAndPerAppOptInsRemainIndependentOfCardVisibility() {
@@ -44,15 +44,15 @@ class VolumeManagerSettingsContractTest {
         val dspCard = ui("LightningDspVolumeCard")
         val appTrack = composeUi.substringAfter("private fun AppVolumeTrack(")
             .substringBefore("private fun AppOptions(")
-        assertTrue(appTrack.contains("baseTrackColor = SystemVolumeBaseTrack"))
-        assertTrue(appTrack.contains("progressFillColor = SystemVolumeProgressTrack"))
-        assertTrue(appTrack.contains("trackContentColor = AppVolumeContent"))
-        assertTrue(appTrack.contains("progressContentColor = AppVolumeContent"))
+        assertTrue(appTrack.contains("baseTrackColor = if (floatingLightTheme) FloatingLightBaseTrack else SystemVolumeBaseTrack"))
+        assertTrue(appTrack.contains("progressFillColor = if (floatingLightTheme) FloatingLightProgressTrack else SystemVolumeProgressTrack"))
+        assertTrue(appTrack.contains("trackContentColor = if (floatingLightTheme) FloatingIceWhite else AppVolumeContent"))
+        assertTrue(appTrack.contains("progressContentColor = if (floatingLightTheme) FloatingIceWhite else AppVolumeContent"))
         assertTrue(composeUi.contains("private val AppVolumeContent = Color(0xFF101820)"))
         assertTrue(composeUi.contains("fontWeight = FontWeight.SemiBold"))
         assertFalse(appTrack.contains("0xFF607D8B"))
         assertFalse(appTrack.contains("isSystemInDarkTheme"))
-        assertTrue(dspCard.contains("progressFillColor = DspBlue"))
+        assertTrue(dspCard.contains("else -> DspBlue"))
         assertTrue(dspCard.contains(".size(42.dp).clip(CircleShape)"))
         assertTrue(dspCard.contains("DspRoundControl("))
     }
@@ -65,9 +65,9 @@ class VolumeManagerSettingsContractTest {
         assertTrue(composeUi.contains("private val SystemVolumeBaseTrack = Color(0xFF8D969C)"))
         assertTrue(composeUi.contains("private val SystemVolumeProgressTrack = Color(0xFFD1D5D8)"))
         assertTrue(composeUi.contains("private val SystemVolumeContent = Color(0xFF263238)"))
-        assertTrue(composeUi.contains("streamIconTint = SystemVolumeContent"))
-        assertTrue(composeUi.contains("baseTrackColor = SystemVolumeBaseTrack"))
-        assertTrue(composeUi.contains("progressFillColor = SystemVolumeProgressTrack"))
+        assertTrue(composeUi.contains("streamIconTint = if (floatingLightTheme) FloatingIceWhite else SystemVolumeContent"))
+        assertTrue(composeUi.contains("baseTrackColor = if (floatingLightTheme) FloatingLightBaseTrack else SystemVolumeBaseTrack"))
+        assertTrue(composeUi.contains("progressFillColor = if (floatingLightTheme) FloatingLightProgressTrack else SystemVolumeProgressTrack"))
         assertTrue(composeUi.contains("setSystemStreamVolume(stream, it.roundToInt())"))
         assertTrue(composeUi.contains("putBoolean(\"stream_\$stream\", checked)"))
         assertFalse(composeUi.contains("showCallVolume"))
@@ -75,6 +75,20 @@ class VolumeManagerSettingsContractTest {
         assertFalse(floatingPanel.contains("No active players"))
         assertFalse(floatingPanel.contains("Show all apps"))
         assertFalse(overlay.contains("onShowAllApps"))
+    }
+
+    @Test fun floatingThemesUseExplicitTracksAndDspTrackReachesTheRightEdge() {
+        val composeUi = ui("LightningVolumeComposeUi")
+        val dspCard = ui("LightningDspVolumeCard")
+        assertTrue(composeUi.contains("FloatingLightProgressTrack = Color(0xFF4B535B)"))
+        assertTrue(composeUi.contains("FloatingLightBaseTrack = Color(0xFF727C85)"))
+        assertTrue(composeUi.contains("FloatingIceWhite = Color(0xFFF0F5F7)"))
+        assertTrue(composeUi.contains("DspCard(onOpenEffect = onClose, floating = true, floatingLightTheme = !dark)"))
+        assertTrue(composeUi.contains("AppVolumeTrack(app, showOptions = false, floatingLightTheme = !dark)"))
+        assertTrue(dspCard.contains("end = if (floating) 0.dp else 14.dp"))
+        assertTrue(dspCard.contains("floating -> Color(0xFFA6B6C4)"))
+        assertTrue(dspCard.contains("floating -> Color(0xFF347FB6)"))
+        assertTrue(dspCard.contains("floatingLightTheme -> FloatingLightProgressTrack"))
     }
 
     @Test fun inactiveAppControlsRemainEditableAndCatalogSupportsSearchAndSystemFiltering() {
@@ -136,6 +150,30 @@ class VolumeManagerSettingsContractTest {
         assertTrue(session.contains("pendingVolumeOperations"))
         assertTrue(accessibility.contains("LightningDspVolumeManager.adjustSystemVolume(direction)"))
         assertTrue(accessibility.contains("if (!adjust())"))
+    }
+
+    @Test fun activeModeControlsUsePrivilegedCommandsWithoutAutomaticallyOpeningModesSettings() {
+        val manager = backend()
+        val root = File(app, "src/root/java/lightning/dsp/volumemanager/backend/LightningDspVolumeRoot.kt").readText()
+        val composeUi = ui("LightningVolumeComposeUi")
+        val activity = ui("LightningDspVolumeManagerActivity")
+        for (source in listOf(composeUi, activity)) {
+            assertTrue(source.contains("LightningDspVolumeManager.setSystemRingerMode("))
+            assertTrue(source.contains("LightningDspVolumeManager.setSystemInterruptionFilter("))
+            assertFalse(source.contains("ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS"))
+        }
+        assertTrue(manager.contains("SystemVolumeOperation.ringer(nextOperationId(), mode)"))
+        assertTrue(manager.contains("SystemVolumeOperation.interruptionFilter(nextOperationId(), filter)"))
+        assertTrue(manager.contains("if (activeSession?.sideEffectsAuthorized == true)"))
+        assertTrue(root.contains("SystemVolumeOperation.Kind.RINGER ->"))
+        assertTrue(root.contains("SystemVolumeOperation.Kind.INTERRUPTION_FILTER ->"))
+        assertTrue(root.contains("currentAudio.ringerMode = operation.value"))
+        assertTrue(root.contains(".setInterruptionFilter(operation.value)"))
+        assertFalse(manager.contains("setNotificationPolicyAccessGranted"))
+        assertFalse(manager.contains("enabled_accessibility_services"))
+        assertTrue(manager.contains("systemVolumeOperationId = operationId"))
+        assertTrue(composeUi.contains("LaunchedEffect(state.systemVolumeOperationId)"))
+        assertTrue(composeUi.contains("state.systemVolumeError?.let { message ->"))
     }
 
     @Test fun floatingPanelThemeFollowsDeviceByDefaultAndSupportsLightDarkOverrides() {

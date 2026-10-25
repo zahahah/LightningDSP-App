@@ -101,6 +101,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import lightning.dsp.R
 import lightning.dsp.volumemanager.backend.AppVolume
 import lightning.dsp.volumemanager.backend.LightningDspVolumeManager
 import lightning.dsp.volumemanager.backend.VolumeManagerState
@@ -113,6 +114,9 @@ private val SystemVolumeBaseTrack = Color(0xFF8D969C)
 private val SystemVolumeProgressTrack = Color(0xFFD1D5D8)
 private val SystemVolumeContent = Color(0xFF263238)
 private val AppVolumeContent = Color(0xFF101820)
+internal val FloatingLightProgressTrack = Color(0xFF4B535B)
+internal val FloatingLightBaseTrack = Color(0xFF727C85)
+internal val FloatingIceWhite = Color(0xFFF0F5F7)
 
 private fun lightningVolumeColorScheme(base: ColorScheme, dark: Boolean): ColorScheme = if (dark) {
     base.copy(
@@ -292,7 +296,7 @@ internal fun LightningVolumeManagerScreen(
                             }
                         }
                     } else {
-                        items(activeApps, key = { it.packageName }) { app -> AppVolumeTrack(app, showOptions = false) }
+                        items(activeApps, key = { it.packageName }) { app -> AppVolumeTrack(app, showOptions = false, floatingLightTheme = !dark) }
                     }
                 } else {
                         val sections = listOf(
@@ -326,6 +330,13 @@ internal fun LightningVolumeFloatingPanel(
 ) {
     val context = LocalContext.current
     val configuration = LocalConfiguration.current
+    androidx.compose.runtime.LaunchedEffect(state.systemVolumeOperationId) {
+        if (state.systemVolumeOperationId > 0L) {
+            state.systemVolumeError?.let { message ->
+                android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
+    }
     val panelPrefs = remember(context) {
         context.getSharedPreferences("lightningdsp_volume_panel", Context.MODE_PRIVATE)
     }
@@ -371,10 +382,10 @@ internal fun LightningVolumeFloatingPanel(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 if (showDspCard && state.enabled) {
-                    item(key = "dsp_card") { DspCard(onOpenEffect = onClose) }
+                    item(key = "dsp_card") { DspCard(onOpenEffect = onClose, floating = true, floatingLightTheme = !dark) }
                 }
                 item(key = "system_controls") {
-                    SystemVolumeControls(context, compact = true, showVisibilityOptions = false)
+                    SystemVolumeControls(context, compact = true, showVisibilityOptions = false, floatingLightTheme = !dark)
                 }
                 val activeApps = if (state.enabled && state.perAppEnabled) {
                     state.apps.filter { it.active && !panelPrefs.getBoolean("hidden_${it.packageName}", false) &&
@@ -382,7 +393,7 @@ internal fun LightningVolumeFloatingPanel(
                         .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.label })
                 } else emptyList()
                 items(activeApps, key = { it.packageName }) { app ->
-                    AppVolumeTrack(app, showOptions = false)
+                    AppVolumeTrack(app, showOptions = false, floatingLightTheme = !dark)
                 }
             }
         }
@@ -432,13 +443,13 @@ private fun SettingRow(title: String, subtitle: String, checked: Boolean, onChec
 }
 
 @Composable
-private fun DspCard(onOpenEffect: (() -> Unit)?) {
-    LightningDspVolumeCard(onOpenEffect)
+private fun DspCard(onOpenEffect: (() -> Unit)?, floating: Boolean = false, floatingLightTheme: Boolean = false) {
+    LightningDspVolumeCard(onOpenEffect, floating, floatingLightTheme)
 }
 
 /** The same compact track rows are used on the manager screen and in the floating panel. */
 @Composable
-private fun SystemVolumeControls(context: Context, compact: Boolean, showVisibilityOptions: Boolean) {
+private fun SystemVolumeControls(context: Context, compact: Boolean, showVisibilityOptions: Boolean, floatingLightTheme: Boolean = false) {
     val audio = remember(context) { context.getSystemService(AudioManager::class.java) }
     val notifications = remember(context) { context.getSystemService(android.app.NotificationManager::class.java) }
     val preferences = remember(context) { context.getSharedPreferences("lightningdsp_volume_panel", Context.MODE_PRIVATE) }
@@ -487,11 +498,11 @@ private fun SystemVolumeControls(context: Context, compact: Boolean, showVisibil
                         AudioManager.STREAM_ALARM -> Icons.Default.Alarm
                         else -> Icons.Default.Notifications
                     },
-                    streamIconTint = SystemVolumeContent,
-                    baseTrackColor = SystemVolumeBaseTrack,
-                    progressFillColor = SystemVolumeProgressTrack,
-                    trackContentColor = SystemVolumeContent,
-                    progressContentColor = SystemVolumeContent,
+                    streamIconTint = if (floatingLightTheme) FloatingIceWhite else SystemVolumeContent,
+                    baseTrackColor = if (floatingLightTheme) FloatingLightBaseTrack else SystemVolumeBaseTrack,
+                    progressFillColor = if (floatingLightTheme) FloatingLightProgressTrack else SystemVolumeProgressTrack,
+                    trackContentColor = if (floatingLightTheme) FloatingIceWhite else SystemVolumeContent,
+                    progressContentColor = if (floatingLightTheme) FloatingIceWhite else SystemVolumeContent,
                     onValue = {
                         value = it
                         if (!LightningDspVolumeManager.setSystemStreamVolume(stream, it.roundToInt())) {
@@ -499,8 +510,8 @@ private fun SystemVolumeControls(context: Context, compact: Boolean, showVisibil
                         }
                     }, trailing = {
                         if (stream == AudioManager.STREAM_RING) {
-                            RingerModeButton(audio, ringerMode) { ringerMode = it }
-                            DoNotDisturbButton(context, notifications, dndFilter) { dndFilter = it }
+                            RingerModeButton(ringerMode)
+                            DoNotDisturbButton(dndFilter)
                         }
                         if (showVisibilityOptions) {
                             VolumeManagerIconToggle(
@@ -519,7 +530,7 @@ private fun SystemVolumeControls(context: Context, compact: Boolean, showVisibil
 }
 
 @Composable
-private fun RingerModeButton(audio: AudioManager, mode: Int, onModeChanged: (Int) -> Unit) {
+private fun RingerModeButton(mode: Int) {
     val context = LocalContext.current
     val next = when (mode) {
         AudioManager.RINGER_MODE_NORMAL -> AudioManager.RINGER_MODE_VIBRATE
@@ -527,13 +538,8 @@ private fun RingerModeButton(audio: AudioManager, mode: Int, onModeChanged: (Int
         else -> AudioManager.RINGER_MODE_NORMAL
     }
     androidx.compose.material3.IconButton(onClick = {
-        try {
-            audio.ringerMode = next
-            onModeChanged(audio.ringerMode)
-        } catch (_: SecurityException) {
-            LightningVolumeOverlay.hide()
-            context.startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        if (!LightningDspVolumeManager.setSystemRingerMode(next)) {
+            android.widget.Toast.makeText(context, R.string.ldsp_vm_mode_unavailable, android.widget.Toast.LENGTH_LONG).show()
         }
     }) {
         Icon(
@@ -546,28 +552,14 @@ private fun RingerModeButton(audio: AudioManager, mode: Int, onModeChanged: (Int
 }
 
 @Composable
-private fun DoNotDisturbButton(
-    context: Context,
-    notifications: android.app.NotificationManager,
-    currentFilter: Int,
-    onFilterChanged: (Int) -> Unit,
-) {
+private fun DoNotDisturbButton(currentFilter: Int) {
+    val context = LocalContext.current
     androidx.compose.material3.IconButton(onClick = {
-        if (!notifications.isNotificationPolicyAccessGranted) {
-            LightningVolumeOverlay.hide()
-            context.startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        } else try {
-            notifications.setInterruptionFilter(
-                if (currentFilter == android.app.NotificationManager.INTERRUPTION_FILTER_ALL)
-                    android.app.NotificationManager.INTERRUPTION_FILTER_PRIORITY
-                else android.app.NotificationManager.INTERRUPTION_FILTER_ALL
-            )
-            onFilterChanged(notifications.currentInterruptionFilter)
-        } catch (_: SecurityException) {
-            LightningVolumeOverlay.hide()
-            context.startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        val next = if (currentFilter == android.app.NotificationManager.INTERRUPTION_FILTER_ALL)
+            android.app.NotificationManager.INTERRUPTION_FILTER_PRIORITY
+        else android.app.NotificationManager.INTERRUPTION_FILTER_ALL
+        if (!LightningDspVolumeManager.setSystemInterruptionFilter(next)) {
+            android.widget.Toast.makeText(context, R.string.ldsp_vm_mode_unavailable, android.widget.Toast.LENGTH_LONG).show()
         }
     }) {
         Icon(
@@ -579,7 +571,7 @@ private fun DoNotDisturbButton(
 }
 
 @Composable
-private fun AppVolumeTrack(app: AppVolume, showOptions: Boolean) {
+private fun AppVolumeTrack(app: AppVolume, showOptions: Boolean, floatingLightTheme: Boolean = false) {
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences("lightningdsp_volume_panel", Context.MODE_PRIVATE) }
     var value by remember(app.packageName, app.volume) { mutableFloatStateOf(app.volume) }
@@ -602,8 +594,8 @@ private fun AppVolumeTrack(app: AppVolume, showOptions: Boolean) {
         icon = appIcon, muted = app.muted, onValue = {
             value = it.coerceIn(0f, 1f)
             LightningDspVolumeManager.setAppVolume(app.packageName, value)
-        }, baseTrackColor = SystemVolumeBaseTrack, progressFillColor = SystemVolumeProgressTrack,
-        trackContentColor = AppVolumeContent, progressContentColor = AppVolumeContent, trailing = {
+        }, baseTrackColor = if (floatingLightTheme) FloatingLightBaseTrack else SystemVolumeBaseTrack, progressFillColor = if (floatingLightTheme) FloatingLightProgressTrack else SystemVolumeProgressTrack,
+        trackContentColor = if (floatingLightTheme) FloatingIceWhite else AppVolumeContent, progressContentColor = if (floatingLightTheme) FloatingIceWhite else AppVolumeContent, trailing = {
             if (showOptions) {
                 VolumeManagerIconToggle(
                     checked = !hidden,

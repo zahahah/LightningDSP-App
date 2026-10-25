@@ -200,10 +200,9 @@ class LightningDspVolumeManagerActivity : BaseActivity() {
                     .setSingleChoiceItems(arrayOf(getString(R.string.ldsp_vm_sound),
                         getString(R.string.ldsp_vm_vibrate), getString(R.string.ldsp_vm_silent)),
                         when (audio.ringerMode) { AudioManager.RINGER_MODE_NORMAL -> 0; AudioManager.RINGER_MODE_VIBRATE -> 1; else -> 2 }) { dialog, index ->
-                        try {
-                            audio.ringerMode = intArrayOf(AudioManager.RINGER_MODE_NORMAL,
-                                AudioManager.RINGER_MODE_VIBRATE, AudioManager.RINGER_MODE_SILENT)[index]
-                        } catch (_: SecurityException) { requestNotificationPolicy() }
+                        val mode = intArrayOf(AudioManager.RINGER_MODE_NORMAL,
+                            AudioManager.RINGER_MODE_VIBRATE, AudioManager.RINGER_MODE_SILENT)[index]
+                        if (!LightningDspVolumeManager.setSystemRingerMode(mode)) showModeUnavailable()
                         dialog.dismiss()
                     }.show()
             }
@@ -212,15 +211,9 @@ class LightningDspVolumeManagerActivity : BaseActivity() {
             setText(R.string.ldsp_vm_dnd)
             setOnClickListener {
                 val notifications = getSystemService(NotificationManager::class.java)
-                if (!notifications.isNotificationPolicyAccessGranted) {
-                    requestNotificationPolicy()
-                } else {
-                    try {
-                        notifications.setInterruptionFilter(if (notifications.currentInterruptionFilter ==
-                            NotificationManager.INTERRUPTION_FILTER_ALL) NotificationManager.INTERRUPTION_FILTER_PRIORITY
-                            else NotificationManager.INTERRUPTION_FILTER_ALL)
-                    } catch (_: SecurityException) { requestNotificationPolicy() }
-                }
+                val filter = if (notifications.currentInterruptionFilter == NotificationManager.INTERRUPTION_FILTER_ALL)
+                    NotificationManager.INTERRUPTION_FILTER_PRIORITY else NotificationManager.INTERRUPTION_FILTER_ALL
+                if (!LightningDspVolumeManager.setSystemInterruptionFilter(filter)) showModeUnavailable()
             }
         })
         MaterialAlertDialogBuilder(this).setTitle(R.string.ldsp_vm_settings)
@@ -228,7 +221,7 @@ class LightningDspVolumeManagerActivity : BaseActivity() {
             .setPositiveButton(android.R.string.ok, null).show()
     }
 
-    private fun requestNotificationPolicy() {
-        startActivity(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
+    private fun showModeUnavailable() {
+        Toast.makeText(this, R.string.ldsp_vm_mode_unavailable, Toast.LENGTH_LONG).show()
     }
 }

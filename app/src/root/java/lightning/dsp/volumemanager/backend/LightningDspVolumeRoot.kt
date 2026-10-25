@@ -141,9 +141,9 @@ object LightningDspVolumeRoot {
                     val result = try {
                         check(replayGuard.accept(operation.id)) { "Duplicate volume operation" }
                         val currentAudio = audio ?: error("Audio service unavailable")
-                        check(!currentAudio.isVolumeFixed) { "System volume is fixed by the device" }
                         when (operation.kind) {
                             SystemVolumeOperation.Kind.SET -> {
+                                check(!currentAudio.isVolumeFixed) { "System volume is fixed by the device" }
                                 check(SystemVolumeOperation.isSupportedStream(operation.stream)) { "Unsupported system stream" }
                                 val minimum = if (Build.VERSION.SDK_INT >= 28) currentAudio.getStreamMinVolume(operation.stream) else 0
                                 val maximum = currentAudio.getStreamMaxVolume(operation.stream)
@@ -151,12 +151,20 @@ object LightningDspVolumeRoot {
                                 currentAudio.setStreamVolume(operation.stream, operation.value, 0)
                             }
                             SystemVolumeOperation.Kind.ADJUST -> {
+                                check(!currentAudio.isVolumeFixed) { "System volume is fixed by the device" }
                                 check(operation.value == AudioManager.ADJUST_RAISE || operation.value == AudioManager.ADJUST_LOWER) {
                                     "Unsupported volume direction"
                                 }
                                 check(operation.stream == AudioManager.USE_DEFAULT_STREAM_TYPE ||
                                     SystemVolumeOperation.isSupportedStream(operation.stream)) { "Unsupported system stream" }
                                 currentAudio.adjustSuggestedStreamVolume(operation.value, operation.stream, 0)
+                            }
+                            SystemVolumeOperation.Kind.RINGER -> {
+                                currentAudio.ringerMode = operation.value
+                            }
+                            SystemVolumeOperation.Kind.INTERRUPTION_FILTER -> {
+                                context.getSystemService(android.app.NotificationManager::class.java)
+                                    .setInterruptionFilter(operation.value)
                             }
                         }
                         null
