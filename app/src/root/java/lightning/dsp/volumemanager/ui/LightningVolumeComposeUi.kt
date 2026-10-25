@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -57,7 +56,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -111,9 +109,10 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 private val LightningBlue = Color(0xFF0277BD)
-private val SystemVolumeBaseTrack = Color(0xFFB0BEC5)
-private val SystemVolumeProgressTrack = Color(0xFFEEF1F3)
+private val SystemVolumeBaseTrack = Color(0xFF8D969C)
+private val SystemVolumeProgressTrack = Color(0xFFD1D5D8)
 private val SystemVolumeContent = Color(0xFF263238)
+private val AppVolumeContent = Color(0xFF101820)
 
 private fun lightningVolumeColorScheme(base: ColorScheme, dark: Boolean): ColorScheme = if (dark) {
     base.copy(
@@ -188,13 +187,6 @@ internal fun LightningVolumeManagerScreen(
                     },
                     actions = {
                         if (!compact) {
-                            IconButton(onClick = {
-                                searchExpanded = !searchExpanded
-                                if (!searchExpanded) searchQuery = ""
-                            }) {
-                                Icon(if (searchExpanded) Icons.Default.Close else Icons.Default.Search,
-                                    contentDescription = if (searchExpanded) "Close app search" else "Search apps")
-                            }
                             IconButton(onClick = { showAll = !showAll }) {
                                 Icon(if (showAll) Icons.Default.Check else Icons.Default.Tune,
                                     contentDescription = if (showAll) "Show active apps" else "Show all apps")
@@ -242,20 +234,20 @@ internal fun LightningVolumeManagerScreen(
                 item(key = "system_controls") {
                     SystemVolumeControls(context, compact, showAll)
                 }
-                if (!compact && searchExpanded) {
-                    item(key = "app_search") {
-                        AppSearchField(searchQuery, onQueryChange = { searchQuery = it }, onClose = {
-                            searchQuery = ""
-                            searchExpanded = false
-                        })
-                    }
-                }
                 if (!compact) {
-                    item(key = "app_filters") {
-                        AppCatalogFilters(hideSystemApps = hideSystemApps, onHideSystemAppsChange = { hidden ->
-                            hideSystemApps = hidden
-                            panelPrefs.edit().putBoolean("hide_system_apps", hidden).apply()
-                        })
+                    item(key = "app_search") {
+                        if (searchExpanded) {
+                            AppSearchField(searchQuery, onQueryChange = { searchQuery = it }, onClose = {
+                                searchQuery = ""
+                                searchExpanded = false
+                            })
+                        } else {
+                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                IconButton(onClick = { searchExpanded = true }) {
+                                    Icon(Icons.Default.Search, contentDescription = "Search apps")
+                                }
+                            }
+                        }
                     }
                 }
                 if (!state.enabled || !state.perAppEnabled) {
@@ -338,8 +330,6 @@ internal fun LightningVolumeFloatingPanel(
         context.getSharedPreferences("lightningdsp_volume_panel", Context.MODE_PRIVATE)
     }
     var showDspCard by remember { mutableStateOf(panelPrefs.getBoolean("show_dsp_card", true)) }
-    var searchExpanded by rememberSaveable { mutableStateOf(false) }
-    var searchQuery by rememberSaveable { mutableStateOf("") }
     var hideSystemApps by remember { mutableStateOf(panelPrefs.getBoolean("hide_system_apps", false)) }
     var panelTheme by remember {
         mutableStateOf(LightningVolumePanelTheme.fromPreference(
@@ -386,60 +376,17 @@ internal fun LightningVolumeFloatingPanel(
                 item(key = "system_controls") {
                     SystemVolumeControls(context, compact = true, showVisibilityOptions = false)
                 }
-                item(key = "floating_app_filters") {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        AppCatalogFilters(hideSystemApps, onHideSystemAppsChange = { hidden ->
-                            hideSystemApps = hidden
-                            panelPrefs.edit().putBoolean("hide_system_apps", hidden).apply()
-                        })
-                        Spacer(Modifier.weight(1f))
-                        IconButton(onClick = {
-                            searchExpanded = !searchExpanded
-                            if (!searchExpanded) searchQuery = ""
-                        }) {
-                            Icon(if (searchExpanded) Icons.Default.Close else Icons.Default.Search,
-                                contentDescription = if (searchExpanded) "Close app search" else "Search apps")
-                        }
-                    }
-                }
-                if (searchExpanded) {
-                    item(key = "floating_app_search") {
-                        AppSearchField(searchQuery, onQueryChange = { searchQuery = it }, onClose = {
-                            searchQuery = ""
-                            searchExpanded = false
-                        })
-                    }
-                }
-
-                val query = searchQuery.trim()
                 val activeApps = if (state.enabled && state.perAppEnabled) {
                     state.apps.filter { it.active && !panelPrefs.getBoolean("hidden_${it.packageName}", false) &&
-                        (!hideSystemApps || !it.systemApp) && (query.isEmpty() ||
-                        it.label.contains(query, ignoreCase = true) || it.packageName.contains(query, ignoreCase = true)) }
+                        (!hideSystemApps || !it.systemApp) }
                         .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.label })
                 } else emptyList()
-                if (searchExpanded && query.isNotBlank() && activeApps.isEmpty()) {
-                    item(key = "floating_no_search_results") {
-                        Text("No active app matches ‘$query’.",
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
                 items(activeApps, key = { it.packageName }) { app ->
                     AppVolumeTrack(app, showOptions = false)
                 }
             }
         }
     }
-}
-
-@Composable
-private fun AppCatalogFilters(hideSystemApps: Boolean, onHideSystemAppsChange: (Boolean) -> Unit) {
-    FilterChip(
-        selected = hideSystemApps,
-        onClick = { onHideSystemAppsChange(!hideSystemApps) },
-        label = { Text("Hide system apps") }
-    )
 }
 
 @Composable
@@ -656,7 +603,7 @@ private fun AppVolumeTrack(app: AppVolume, showOptions: Boolean) {
             value = it.coerceIn(0f, 1f)
             LightningDspVolumeManager.setAppVolume(app.packageName, value)
         }, baseTrackColor = SystemVolumeBaseTrack, progressFillColor = SystemVolumeProgressTrack,
-        trackContentColor = SystemVolumeContent, progressContentColor = SystemVolumeContent, trailing = {
+        trackContentColor = AppVolumeContent, progressContentColor = AppVolumeContent, trailing = {
             if (showOptions) {
                 VolumeManagerIconToggle(
                     checked = !hidden,
@@ -809,7 +756,7 @@ internal fun TrackSurface(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     TrackContent(icon, streamIcon, label, valueLabel, muted,
-                        if (enabled) progressContentColor ?: MaterialTheme.colorScheme.onPrimary
+                        progressContentColor ?: if (enabled) MaterialTheme.colorScheme.onPrimary
                         else MaterialTheme.colorScheme.onSurface, streamIconTint)
                 }
             }
@@ -839,7 +786,7 @@ private fun RowScope.TrackContent(
                 modifier = Modifier.size(32.dp), tint = streamIconTint ?: contentColor)
         }
         Text(label, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
-            style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+            style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
         Text(valueLabel, style = MaterialTheme.typography.bodySmall, maxLines = 1)
     }
 }

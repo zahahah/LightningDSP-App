@@ -109,6 +109,13 @@ class LightningDspVolumeManagerActivity : BaseActivity() {
                 preferences.edit().putBoolean("show_dsp_card", checked).apply()
             }
         })
+        controls.addView(MaterialSwitch(this).apply {
+            setText(R.string.ldsp_vm_hide_system_apps)
+            isChecked = preferences.getBoolean("hide_system_apps", false)
+            setOnCheckedChangeListener { _, checked ->
+                preferences.edit().putBoolean("hide_system_apps", checked).apply()
+            }
+        })
         val floatingThemeButton = MaterialButton(this)
         fun updateFloatingThemeLabel(theme: LightningVolumePanelTheme) {
             floatingThemeButton.text = getString(R.string.ldsp_vm_floating_theme, getString(theme.labelRes))

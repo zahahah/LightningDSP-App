@@ -52,6 +52,7 @@
     <string name="ldsp_vm_accessibility_explanation">This optional service opens the LightningDSP floating panel with your volume keys. Enable the volume manager and allow display over other apps first. Your normal system volume keys are unchanged when the mixer is off, unavailable, or excluded for the foreground app. Screen contents are not read.</string>
     <string name="ldsp_vm_per_app">Per-app volume control</string>
     <string name="ldsp_vm_show_dsp">Show LightningDSP controls</string>
+    <string name="ldsp_vm_hide_system_apps">Hide system apps</string>
     <string name="ldsp_vm_capped_volume">%1$d / %2$d%%</string>
     <string name="ldsp_vm_hide_inactive_dsp">Hide LightningDSP controls when inactive</string>
     <string name="ldsp_vm_floating_theme">Floating panel appearance: %1$s</string>
