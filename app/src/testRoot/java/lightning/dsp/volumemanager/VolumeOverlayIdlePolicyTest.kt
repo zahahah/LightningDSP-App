@@ -37,6 +37,28 @@ class VolumeOverlayIdlePolicyTest {
         assertEquals(0L, policy.remainingMillis(12500))
     }
 
+    @Test fun explicitCloseCannotBeRescuedByHoverOrDowngradedByIdleDismissal() {
+        val policy = VolumeOverlayIdlePolicy(2500, 0)
+        policy.requestDismissal(explicit = true)
+        policy.setInteraction(Interaction.HOVER, true, 1000)
+        assertFalse(policy.mayResumeOnInteraction())
+        policy.requestDismissal(explicit = false)
+        assertFalse(policy.mayResumeOnInteraction())
+    }
+
+    @Test fun idleFadeCanBeRescuedButOnlyANewShowReopensExplicitClose() {
+        val policy = VolumeOverlayIdlePolicy(2500, 0)
+        policy.requestDismissal(explicit = false)
+        policy.setInteraction(Interaction.TOUCH, true, 2600)
+        assertTrue(policy.mayResumeOnInteraction())
+        assertNull(policy.remainingMillis(3000))
+        policy.requestDismissal(explicit = true)
+        assertFalse(policy.mayResumeOnInteraction())
+        policy.reopened(4000)
+        assertTrue(policy.mayResumeOnInteraction())
+        assertNull(policy.remainingMillis(10000)) // reopening does not release the touch
+    }
+
     @Test fun anOlderTimestampCannotMoveTheDeadlineBackwards() {
         val policy = VolumeOverlayIdlePolicy(2500, 1000)
         policy.activity(500)

@@ -236,6 +236,8 @@ class VolumeManagerSettingsContractTest {
         assertTrue(overlay.contains("idlePolicy?.remainingMillis(SystemClock.uptimeMillis()) == 0L"))
         assertTrue(overlay.contains("handler.postDelayed(dismiss, delay)"))
         assertTrue(overlay.contains("idlePolicy !== idle"))
+        assertTrue(overlay.contains("beginDismissal(explicit = true)"))
+        assertTrue(overlay.contains("active && isDismissing && idle.mayResumeOnInteraction()"))
         assertTrue(composeUi.contains("onPanelFocusChanged(it.hasFocus)"))
         assertTrue(composeUi.contains(".focusGroup()"))
     }

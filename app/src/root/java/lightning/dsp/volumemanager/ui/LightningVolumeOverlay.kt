@@ -44,7 +44,7 @@ object LightningVolumeOverlay {
     private var observer: Observer<VolumeManagerState>? = null
     private var idlePolicy: VolumeOverlayIdlePolicy? = null
     private val dismiss = Runnable {
-        if (idlePolicy?.remainingMillis(SystemClock.uptimeMillis()) == 0L) hide()
+        if (idlePolicy?.remainingMillis(SystemClock.uptimeMillis()) == 0L) beginDismissal(explicit = false)
         else scheduleDismiss()
     }
 
@@ -64,7 +64,7 @@ object LightningVolumeOverlay {
             it.alpha = 1f
             isDismissing = false
             LightningDspVolumeManager.reportOverlayAvailable()
-            idlePolicy?.activity(SystemClock.uptimeMillis())
+            idlePolicy?.reopened(SystemClock.uptimeMillis())
             scheduleDismiss()
             return
         }
@@ -174,6 +174,11 @@ object LightningVolumeOverlay {
 
     fun hide() {
         if (Looper.myLooper() != Looper.getMainLooper()) { handler.post { hide() }; return }
+        beginDismissal(explicit = true)
+    }
+
+    private fun beginDismissal(explicit: Boolean) {
+        idlePolicy?.requestDismissal(explicit)
         handler.removeCallbacks(dismiss)
         val current = panel
         val manager = windowManager
@@ -208,7 +213,7 @@ object LightningVolumeOverlay {
         idle.setInteraction(kind, active, SystemClock.uptimeMillis())
         if (panel !== host || idlePolicy !== idle) return
         handler.removeCallbacks(dismiss)
-        if (active && isDismissing) {
+        if (active && isDismissing && idle.mayResumeOnInteraction()) {
             host.animate().cancel()
             dismissalGeneration++
             host.alpha = 1f
