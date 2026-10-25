@@ -94,17 +94,17 @@ private val tubeParameter = DspParameter(
 )
 
 private val dspEffects = listOf(
-    DspEffect("compander", Constants.PREF_COMPANDER, R.string.key_compander_enable, R.string.compander_enable, "CP"),
-    DspEffect("bass", Constants.PREF_BASS, R.string.key_bass_enable, R.string.ldsp_vm_effect_bass, "BS", bassParameter),
-    DspEffect("equalizer", Constants.PREF_EQ, R.string.key_eq_enable, R.string.eq_enable, "EQ"),
-    DspEffect("graphic_eq", Constants.PREF_GEQ, R.string.key_geq_enable, R.string.geq_enable, "GE"),
-    DspEffect("reverb", Constants.PREF_REVERB, R.string.key_reverb_enable, R.string.ldsp_vm_effect_reverb, "RV"),
+    DspEffect("compander", Constants.PREF_COMPANDER, R.string.key_compander_enable, R.string.compander_enable, "DRC"),
+    DspEffect("bass", Constants.PREF_BASS, R.string.key_bass_enable, R.string.ldsp_vm_effect_bass, "BASS", bassParameter),
+    DspEffect("equalizer", Constants.PREF_EQ, R.string.key_eq_enable, R.string.eq_enable, "MEQ"),
+    DspEffect("graphic_eq", Constants.PREF_GEQ, R.string.key_geq_enable, R.string.geq_enable, "AREQ"),
+    DspEffect("reverb", Constants.PREF_REVERB, R.string.key_reverb_enable, R.string.ldsp_vm_effect_reverb, "REV"),
     DspEffect("stereo_wide", Constants.PREF_STEREOWIDE, R.string.key_stereowide_enable, R.string.ldsp_vm_effect_stereo, "ST", stereoParameter),
     DspEffect("crossfeed", Constants.PREF_CROSSFEED, R.string.key_crossfeed_enable, R.string.crossfeed_enable, "CF"),
-    DspEffect("tube", Constants.PREF_TUBE, R.string.key_tube_enable, R.string.tube_enable, "TU", tubeParameter),
-    DspEffect("ddc", Constants.PREF_DDC, R.string.key_ddc_enable, R.string.ddc_enable, "DD"),
-    DspEffect("liveprog", Constants.PREF_LIVEPROG, R.string.key_liveprog_enable, R.string.liveprog_enable, "LP"),
-    DspEffect("convolver", Constants.PREF_CONVOLVER, R.string.key_convolver_enable, R.string.convolver_enable, "CV"),
+    DspEffect("tube", Constants.PREF_TUBE, R.string.key_tube_enable, R.string.tube_enable, "AM", tubeParameter),
+    DspEffect("ddc", Constants.PREF_DDC, R.string.key_ddc_enable, R.string.ddc_enable, "DDC"),
+    DspEffect("liveprog", Constants.PREF_LIVEPROG, R.string.key_liveprog_enable, R.string.liveprog_enable, "DSP"),
+    DspEffect("convolver", Constants.PREF_CONVOLVER, R.string.key_convolver_enable, R.string.convolver_enable, "CONV"),
 )
 
 /** Compact LightningDSP control card, styled after the reference's circular DSP controls. */

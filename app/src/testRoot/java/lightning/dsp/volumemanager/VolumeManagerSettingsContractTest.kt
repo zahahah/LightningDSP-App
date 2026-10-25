@@ -107,6 +107,20 @@ class VolumeManagerSettingsContractTest {
         assertTrue(roundControl.contains("overflow = TextOverflow.Clip"))
     }
 
+    @Test fun effectButtonAbbreviationsMatchTheCurrentPanelNames() {
+        val card = ui("LightningDspVolumeCard")
+        val expected = mapOf(
+            "compander" to "DRC", "bass" to "BASS", "equalizer" to "MEQ",
+            "graphic_eq" to "AREQ", "reverb" to "REV", "stereo_wide" to "ST",
+            "crossfeed" to "CF", "tube" to "AM", "ddc" to "DDC",
+            "liveprog" to "DSP", "convolver" to "CONV",
+        )
+        for ((id, abbreviation) in expected) {
+            val entry = card.lineSequence().single { it.contains("DspEffect(\"$id\",") }
+            assertTrue("$id must display $abbreviation", entry.contains("\"$abbreviation\""))
+        }
+    }
+
     @Test fun inactiveAppControlsRemainEditableAndCatalogSupportsSearchAndSystemFiltering() {
         val composeUi = ui("LightningVolumeComposeUi")
         val appTrack = composeUi.substringAfter("private fun AppVolumeTrack(")
