@@ -17,6 +17,8 @@ import android.os.Bundle
 import android.os.IBinder
 import android.os.PersistableBundle
 import android.view.HapticFeedbackConstants
+import android.view.Menu
+import android.view.MenuItem
 import android.widget.CheckBox
 import android.widget.LinearLayout
 import androidx.activity.result.ActivityResultLauncher
@@ -146,6 +148,7 @@ class MainActivity : BaseActivity() {
     @SuppressLint("BatteryLife")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        lightning.dsp.flavor.VolumeManagerLifecycle.onForegroundEntry(this)
 
         savedInstanceState?.let {
             // Re-check root availability on every recreation: a previous
@@ -371,6 +374,28 @@ class MainActivity : BaseActivity() {
             intent.data?.let { handleFileIntent(it) }
         }
         showRequestedEffect(intent)
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        val created = super.onCreateOptionsMenu(menu)
+        if (isRoot()) {
+            menu.add(0, R.id.action_lightning_volume_manager, 0, R.string.lightning_volume_manager_title).apply {
+                setIcon(R.drawable.ic_lightning_volume_mixer)
+                setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+            }
+        }
+        return created || isRoot()
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        if (item.itemId == R.id.action_lightning_volume_manager && isRoot()) {
+            startActivity(Intent().setClassName(
+                this,
+                "lightning.dsp.volumemanager.ui.LightningDspVolumeManagerActivity"
+            ))
+            return true
+        }
+        return super.onOptionsItemSelected(item)
     }
 
     private fun showRequestedEffect(request: Intent?) {

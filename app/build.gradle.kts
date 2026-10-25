@@ -1,6 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
     id("kotlin-kapt")
     id("com.google.devtools.ksp") version AndroidConfig.kspVersion
     id("dev.rikka.tools.refine") version AndroidConfig.rikkaRefineVersion
@@ -142,6 +143,7 @@ android {
 
     buildFeatures {
         viewBinding = true
+        compose = true
         // Disable unused features
         // The root flavor consumes LightningDSP's optional ldsp.control Binder API.
         aidl = true
@@ -159,6 +161,20 @@ android {
 }
 
 dependencies {
+    // Compose is scoped to the root Volume Manager UI; other flavors keep their existing screens.
+    "rootImplementation"(platform("androidx.compose:compose-bom:2024.12.01"))
+    "rootImplementation"("androidx.activity:activity-compose:1.10.0")
+    "rootImplementation"("androidx.compose.ui:ui")
+    "rootImplementation"("androidx.compose.foundation:foundation")
+    "rootImplementation"("androidx.compose.material3:material3")
+    "rootImplementation"("androidx.compose.material:material-icons-extended")
+    // Compose is enabled at the Android module level, so keep its compiler runtime on
+    // the non-root compile classpaths without packaging the UI libraries in those APKs.
+    "rootlessCompileOnly"(platform("androidx.compose:compose-bom:2024.12.01"))
+    "rootlessCompileOnly"("androidx.compose.runtime:runtime")
+    "pluginCompileOnly"(platform("androidx.compose:compose-bom:2024.12.01"))
+    "pluginCompileOnly"("androidx.compose.runtime:runtime")
+
     // Kotlin extensions
     implementation("org.jetbrains.kotlin:kotlin-reflect:2.0.20")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")

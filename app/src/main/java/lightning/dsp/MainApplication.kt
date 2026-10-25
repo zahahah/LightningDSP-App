@@ -2,12 +2,10 @@ package lightning.dsp
 
 import android.app.Application
 import android.content.BroadcastReceiver
-import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.SharedPreferences
-import android.content.pm.PackageManager
 import android.os.Build
 import android.os.StrictMode
 import android.util.Log
@@ -26,7 +24,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import lightning.dsp.flavor.CrashlyticsImpl
 import lightning.dsp.flavor.UpdateManager
-import lightning.dsp.interop.VolumeManagerIntegrationProvider
 import lightning.dsp.model.preference.ThemeMode
 import lightning.dsp.model.room.AppBlocklistDatabase
 import lightning.dsp.model.room.AppBlocklistRepository
@@ -104,15 +101,6 @@ open class MainApplication : Application(), SharedPreferences.OnSharedPreference
 
     override fun onCreate() {
         instance = this
-
-        val integrationProvider = ComponentName(this, VolumeManagerIntegrationProvider::class.java)
-        if (packageManager.getComponentEnabledSetting(integrationProvider) != PackageManager.COMPONENT_ENABLED_STATE_DEFAULT) {
-            packageManager.setComponentEnabledSetting(
-                integrationProvider,
-                PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,
-                PackageManager.DONT_KILL_APP
-            )
-        }
 
         Timber.plant(DebugTree())
 

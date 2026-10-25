@@ -20,12 +20,20 @@ class RebrandContractTest {
         assertTrue(source("src/main/res/values/strings.xml").contains("Welcome to LightningDSP!"))
         assertFalse(File(app, "src/root/res/values/strings_brand.xml").exists())
         val manifest = source("src/main/AndroidManifest.xml")
-        assertTrue(manifest.contains("\${applicationId}.volume_manager"))
         assertTrue(manifest.contains("me.timschneeberger.rootlessjamesdsp.SET_POWER_STATE"))
-        val provider = source("src/main/java/lightning/dsp/interop/VolumeManagerIntegrationProvider.kt")
-        assertTrue(provider.contains("AUTHORIZED_PACKAGE = \"moe.chensi.volume\""))
-        assertTrue(provider.contains("METHOD_SET_POST_GAIN = \"set_post_gain\""))
-        assertTrue(provider.contains("PostGainRangePolicy.accepts(value, extended)"))
+    }
+
+    @Test fun integratedVolumeManagerDoesNotExposeTheOldExternalApi() {
+        val manifest = source("src/main/AndroidManifest.xml")
+        assertFalse(manifest.contains("VolumeManagerIntegrationProvider"))
+        assertFalse(manifest.contains("\${applicationId}.volume_manager"))
+        assertFalse(File(app, "src/main/java/lightning/dsp/interop/VolumeManagerIntegrationProvider.kt").exists())
+        assertFalse(source("src/main/res/xml/app_misc_preferences.xml")
+            .contains("key_volume_manager_integration_api"))
+        assertFalse(source("src/main/java/lightning/dsp/MainApplication.kt")
+            .contains("VolumeManagerIntegrationProvider"))
+        assertFalse(source("src/main/java/lightning/dsp/fragment/settings/SettingsMiscFragment.kt")
+            .contains("key_volume_manager_integration_api"))
     }
 
     @Test fun cloudCrashReportingIsNotRequiredOrPackaged() {

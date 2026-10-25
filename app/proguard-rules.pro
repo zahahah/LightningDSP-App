@@ -29,6 +29,13 @@
 -keep,allowoptimization class lightning.dsp.interop.** { *; }
 -keep,allowoptimization class lightning.dsp.fragment.** { *; }
 
+# Private player-volume backend entry points, not the native ldsp.control path.
+# The root main and Shizuku UserService are loaded by name outside normal app calls.
+-keep class lightning.dsp.volumemanager.backend.LightningDspVolumeRoot { *; }
+-keep class lightning.dsp.volumemanager.backend.LightningVolumeUserService { *; }
+-keep class lightning.dsp.volumemanager.backend.IVolumePlaybackService$* { *; }
+-keep class lightning.dsp.volumemanager.backend.IVolumePlaybackOwner$* { *; }
+
 -keepclasseswithmembernames class * {
     native <methods>;
 }

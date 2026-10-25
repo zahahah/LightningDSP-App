@@ -1,0 +1,4 @@
+<resources>
+    <string name="ldsp_dsp_card_title">LightningDSP</string>
+    <string name="ldsp_dsp_card_hint">Global DSP controls. Tap LightningDSP to show effects; hold an effect to adjust it.</string>
+</resources>

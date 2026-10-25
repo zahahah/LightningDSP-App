@@ -30,6 +30,7 @@
         android:fullBackupContent="@xml/backup_rules"
         android:hasFragileUserData="true"
         android:icon="@mipmap/ic_dsp_launcher"
+        android:roundIcon="@mipmap/ic_dsp_launcher"
         android:label="${label}"
         android:supportsRtl="true"
         android:theme="@style/Theme.RootlessLightningDSP"
@@ -360,12 +361,6 @@
             android:authorities="${applicationId}.provider.cache"
             android:exported="false"
             android:grantUriPermissions="true" />
-
-        <provider
-            android:name=".interop.VolumeManagerIntegrationProvider"
-            android:authorities="${applicationId}.volume_manager"
-            android:enabled="true"
-            android:exported="true" />
 
     </application>
 </manifest>
