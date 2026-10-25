@@ -91,6 +91,19 @@ class VolumeManagerSettingsContractTest {
         assertTrue(dspCard.contains("floatingLightTheme -> FloatingLightProgressTrack"))
     }
 
+    @Test fun dspCardUsesPanelEffectNamesWithOnlyTheThreeRequestedAliasesAndCenteredLabels() {
+        val card = ui("LightningDspVolumeCard")
+        val sharedTitles = listOf("compander", "eq", "geq", "crossfeed", "tube", "ddc", "liveprog", "convolver")
+        for (name in sharedTitles) assertTrue(card.contains("R.string.${name}_enable"))
+        for (alias in listOf("bass", "stereo", "reverb")) assertTrue(card.contains("R.string.ldsp_vm_effect_$alias"))
+        assertTrue(card.contains("start = if (floating) 0.dp else 14.dp"))
+        val roundControl = card.substringAfter("private fun DspRoundControl(")
+        assertTrue(roundControl.contains("textAlign = TextAlign.Center"))
+        assertTrue(roundControl.contains("modifier = Modifier.fillMaxWidth()"))
+        assertTrue(roundControl.contains("maxLines = 3"))
+        assertTrue(roundControl.contains("Modifier.width(96.dp)"))
+    }
+
     @Test fun inactiveAppControlsRemainEditableAndCatalogSupportsSearchAndSystemFiltering() {
         val composeUi = ui("LightningVolumeComposeUi")
         val appTrack = composeUi.substringAfter("private fun AppVolumeTrack(")

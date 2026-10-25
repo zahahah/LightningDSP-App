@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -44,6 +45,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
@@ -92,11 +94,11 @@ private val tubeParameter = DspParameter(
 
 private val dspEffects = listOf(
     DspEffect("compander", Constants.PREF_COMPANDER, R.string.key_compander_enable, R.string.compander_enable, "CP"),
-    DspEffect("bass", Constants.PREF_BASS, R.string.key_bass_enable, R.string.bass_enable, "BS", bassParameter),
+    DspEffect("bass", Constants.PREF_BASS, R.string.key_bass_enable, R.string.ldsp_vm_effect_bass, "BS", bassParameter),
     DspEffect("equalizer", Constants.PREF_EQ, R.string.key_eq_enable, R.string.eq_enable, "EQ"),
     DspEffect("graphic_eq", Constants.PREF_GEQ, R.string.key_geq_enable, R.string.geq_enable, "GE"),
-    DspEffect("reverb", Constants.PREF_REVERB, R.string.key_reverb_enable, R.string.reverb_enable, "RV"),
-    DspEffect("stereo_wide", Constants.PREF_STEREOWIDE, R.string.key_stereowide_enable, R.string.stereowide_enable, "SW", stereoParameter),
+    DspEffect("reverb", Constants.PREF_REVERB, R.string.key_reverb_enable, R.string.ldsp_vm_effect_reverb, "RV"),
+    DspEffect("stereo_wide", Constants.PREF_STEREOWIDE, R.string.key_stereowide_enable, R.string.ldsp_vm_effect_stereo, "ST", stereoParameter),
     DspEffect("crossfeed", Constants.PREF_CROSSFEED, R.string.key_crossfeed_enable, R.string.crossfeed_enable, "CF"),
     DspEffect("tube", Constants.PREF_TUBE, R.string.key_tube_enable, R.string.tube_enable, "TU", tubeParameter),
     DspEffect("ddc", Constants.PREF_DDC, R.string.key_ddc_enable, R.string.ddc_enable, "DD"),
@@ -188,7 +190,7 @@ internal fun LightningDspVolumeCard(onOpenEffect: (() -> Unit)?, floating: Boole
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         Column(
-            modifier = Modifier.padding(start = 14.dp, end = if (floating) 0.dp else 14.dp, top = 10.dp, bottom = 10.dp),
+            modifier = Modifier.padding(start = if (floating) 0.dp else 14.dp, end = if (floating) 0.dp else 14.dp, top = 10.dp, bottom = 10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -294,7 +296,7 @@ private fun DspRoundControl(
     val fill = if (checked) DspBlue else DspBlue.copy(alpha = 0.24f)
     val content = if (checked) DspBlueOn else inactiveColor
     Column(
-        modifier = Modifier.width(58.dp),
+        modifier = Modifier.width(96.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
@@ -316,9 +318,12 @@ private fun DspRoundControl(
         }
         Text(
             text = title,
+            modifier = Modifier.fillMaxWidth(),
+            textAlign = TextAlign.Center,
             style = MaterialTheme.typography.labelSmall,
-            fontSize = 9.sp,
-            maxLines = 1,
+            fontSize = 10.sp,
+            minLines = 3,
+            maxLines = 3,
             color = inactiveColor
         )
     }

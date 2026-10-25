@@ -65,4 +65,7 @@
     <string name="ldsp_vm_access_backend">Audio control access</string>
     <string name="ldsp_vm_shizuku_permission">Authorize Shizuku access</string>
     <string name="ldsp_vm_mode_unavailable">Mode change unavailable. Check the volume manager connection and status.</string>
+    <string name="ldsp_vm_effect_bass">Bass</string>
+    <string name="ldsp_vm_effect_reverb">Reverb</string>
+    <string name="ldsp_vm_effect_stereo">Stereo</string>
 </resources>
