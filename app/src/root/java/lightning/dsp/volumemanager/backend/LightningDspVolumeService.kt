@@ -25,10 +25,6 @@ class LightningDspVolumeService : Service() {
             .setContentText("LightningDSP volume panel is enabled")
             .setOngoing(true).build())
         LightningDspVolumeManager.initialize(this)
-        // Once per foreground-service instance, including opted-in boot/resume.
-        // Permission alone is not proof that WindowManager accepts our panel.
-        if (LightningDspVolumeManager.isEnabled && android.provider.Settings.canDrawOverlays(this))
-            lightning.dsp.volumemanager.ui.LightningVolumeOverlay.show(this)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

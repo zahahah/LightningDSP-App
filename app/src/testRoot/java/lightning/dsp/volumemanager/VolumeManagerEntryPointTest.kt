@@ -23,6 +23,17 @@ class VolumeManagerEntryPointTest {
             .contains("VolumeManagerLifecycle.onForegroundEntry"))
     }
 
+    @Test fun resumingTheManagerDoesNotOpenTheFloatingPanelAutomatically() {
+        val service = source("root/java/lightning/dsp/volumemanager/backend/LightningDspVolumeService.kt")
+        val onCreate = service.substringAfter("override fun onCreate()")
+            .substringBefore("override fun onStartCommand")
+        assertFalse(onCreate.contains("LightningVolumeOverlay.show"))
+
+        // The panel remains available from the manager screen when explicitly requested.
+        assertTrue(source("root/java/lightning/dsp/volumemanager/ui/LightningDspVolumeManagerActivity.kt")
+            .contains("onShowOverlay = { LightningVolumeOverlay.show(this) }"))
+    }
+
     @Test fun installerAndLauncherUseTheLightningDSPArtwork() {
         val manifest = source("main/AndroidManifest.xml")
         assertTrue(manifest.contains("android:icon=\"@mipmap/ic_dsp_launcher\""))
