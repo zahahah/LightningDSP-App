@@ -46,6 +46,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
@@ -296,7 +297,7 @@ private fun DspRoundControl(
     val fill = if (checked) DspBlue else DspBlue.copy(alpha = 0.24f)
     val content = if (checked) DspBlueOn else inactiveColor
     Column(
-        modifier = Modifier.width(96.dp),
+        modifier = Modifier.width(58.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
@@ -321,9 +322,10 @@ private fun DspRoundControl(
             modifier = Modifier.fillMaxWidth(),
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.labelSmall,
-            fontSize = 10.sp,
-            minLines = 3,
-            maxLines = 3,
+            fontSize = 9.sp,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Clip,
             color = inactiveColor
         )
     }

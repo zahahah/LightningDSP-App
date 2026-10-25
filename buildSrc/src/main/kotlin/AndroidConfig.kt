@@ -5,8 +5,8 @@ object AndroidConfig {
     const val targetSdk = 34
 
     const val versionName = "1.7-beta-3"
-    // Root flavor adds four; beta-3 advances beyond beta-2/code 69.
-    const val versionCode = 66
+    // Root flavor adds four; revised beta-3 advances beyond the withdrawn code 70.
+    const val versionCode = 67
 
     const val kotlinVersion = "2.1.0"
     const val kspVersion = "2.1.0-1.0.29"

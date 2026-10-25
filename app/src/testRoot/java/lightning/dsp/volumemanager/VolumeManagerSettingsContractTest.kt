@@ -100,8 +100,11 @@ class VolumeManagerSettingsContractTest {
         val roundControl = card.substringAfter("private fun DspRoundControl(")
         assertTrue(roundControl.contains("textAlign = TextAlign.Center"))
         assertTrue(roundControl.contains("modifier = Modifier.fillMaxWidth()"))
-        assertTrue(roundControl.contains("maxLines = 3"))
-        assertTrue(roundControl.contains("Modifier.width(96.dp)"))
+        assertTrue(roundControl.contains("maxLines = 1"))
+        assertTrue(roundControl.contains("Modifier.width(58.dp)"))
+        assertTrue(roundControl.contains("fontSize = 9.sp"))
+        assertTrue(roundControl.contains("softWrap = false"))
+        assertTrue(roundControl.contains("overflow = TextOverflow.Clip"))
     }
 
     @Test fun inactiveAppControlsRemainEditableAndCatalogSupportsSearchAndSystemFiltering() {
