@@ -6,7 +6,7 @@ import kotlin.math.abs
 internal object VolumeTrackGesturePolicy {
     fun shouldYield(
         consumed: Boolean, elapsedMillis: Long, dx: Float, dy: Float,
-        touchSlop: Float, longPressMillis: Long,
-    ): Boolean = consumed || elapsedMillis >= longPressMillis ||
+        touchSlop: Float, longPressMillis: Long, yieldOnLongPress: Boolean = true,
+    ): Boolean = consumed || (yieldOnLongPress && elapsedMillis >= longPressMillis) ||
         (abs(dy) > touchSlop && abs(dy) > abs(dx))
 }

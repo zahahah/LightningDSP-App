@@ -1,6 +1,7 @@
 package lightning.dsp.volumemanager
 
 import java.io.File
+import lightning.dsp.volumemanager.backend.VolumeManagerStartupPolicy
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -10,17 +11,41 @@ class VolumeManagerEntryPointTest {
         .first { File(it, "src/root/AndroidManifest.xml").isFile }
     private fun source(path: String) = File(app, "src/$path").readText()
 
-    @Test fun onlyAnExplicitMainScreenEntryResumesThePersistedManager() {
+    @Test fun foregroundAndAuthorizedBackgroundEntriesResumeOnlyThePersistedManager() {
         assertTrue(source("main/java/lightning/dsp/activity/MainActivity.kt")
             .contains("VolumeManagerLifecycle.onForegroundEntry(this)"))
         val entry = source("root/java/lightning/dsp/flavor/VolumeManagerLifecycle.kt")
         assertTrue(entry.contains("getBoolean(\"enabled\", false)"))
         assertTrue(entry.contains("if (!enabled) return"))
+        assertTrue(entry.contains("fun onBackgroundEntry(context: Context) = resume(context, background = true)"))
+        assertTrue(entry.contains("if (background && !VolumeManagerStartupPolicy.shouldResume"))
+        assertTrue(entry.contains("getBoolean(\"startup_on_boot\", VolumeManagerStartupPolicy.DEFAULT_STARTUP_ON_BOOT)"))
         assertTrue(entry.contains("runCatching"))
         assertTrue(entry.contains("LightningDspVolumeManager.initialize(appContext)"))
         assertTrue(entry.contains("LightningDspVolumeManager.resume()"))
         assertFalse(source("main/java/lightning/dsp/MainApplication.kt")
             .contains("VolumeManagerLifecycle.onForegroundEntry"))
+
+        val receiver = source("root/java/lightning/dsp/volumemanager/backend/LightningDspVolumeStartupReceiver.kt")
+        assertTrue(receiver.contains("intent.action != Intent.ACTION_BOOT_COMPLETED"))
+        assertTrue(receiver.contains("VolumeManagerLifecycle.onBackgroundEntry(context)"))
+        assertFalse(entry.contains("LightningVolumeOverlay.show"))
+        assertFalse(entry.contains("setEnabled("))
+    }
+
+    @Test fun bootDefaultsOnOnlyForAnEnabledManagerAndPreservesExplicitOptOut() {
+        assertTrue(VolumeManagerStartupPolicy.DEFAULT_STARTUP_ON_BOOT)
+        assertTrue(VolumeManagerStartupPolicy.shouldResume(enabled = true))
+        assertTrue(VolumeManagerStartupPolicy.shouldResume(enabled = true, startupOnBoot = true))
+        assertFalse(VolumeManagerStartupPolicy.shouldResume(enabled = true, startupOnBoot = false))
+        assertFalse(VolumeManagerStartupPolicy.shouldResume(enabled = false))
+        assertFalse(VolumeManagerStartupPolicy.shouldResume(enabled = false, startupOnBoot = true))
+        assertFalse(VolumeManagerStartupPolicy.shouldResume(enabled = false, startupOnBoot = false))
+        val manager = source("root/java/lightning/dsp/volumemanager/backend/LightningDspVolumeManager.kt")
+        assertTrue(manager.contains("getBoolean(\"startup_on_boot\", VolumeManagerStartupPolicy.DEFAULT_STARTUP_ON_BOOT)"))
+        val setEnabled = manager.substringAfter("fun setEnabled(enabled: Boolean)")
+            .substringBefore("private fun startService()")
+        assertFalse(setEnabled.contains("\"startup_on_boot\""))
     }
 
     @Test fun resumingTheManagerDoesNotOpenTheFloatingPanelAutomatically() {
@@ -66,6 +91,7 @@ class VolumeManagerEntryPointTest {
             assertFalse(entry.contains("LightningDspVolumeManager"))
             assertFalse(entry.contains("startService"))
             assertFalse(entry.contains("startForegroundService"))
+            assertTrue(entry.contains("fun onBackgroundEntry"))
         }
     }
 }

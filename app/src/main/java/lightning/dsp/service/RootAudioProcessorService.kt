@@ -25,6 +25,7 @@ import kotlinx.coroutines.launch
 import lightning.dsp.BuildConfig
 import lightning.dsp.MainApplication
 import lightning.dsp.R
+import lightning.dsp.flavor.VolumeManagerLifecycle
 import lightning.dsp.interop.LightningDspRemoteEngine
 import lightning.dsp.model.IEffectSession
 import lightning.dsp.model.room.AppBlocklistDatabase
@@ -140,7 +141,10 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Timber.d("onStartCommand")
         if (intent == null) {
-            if (isRoot()) startBackgroundDiscovery()
+            if (isRoot()) {
+                VolumeManagerLifecycle.onBackgroundEntry(this)
+                startBackgroundDiscovery()
+            }
             return START_STICKY
         }
 
@@ -150,6 +154,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
             return START_NOT_STICKY
         }
         if (intent.action == ACTION_START_BACKGROUND && isRoot()) {
+            VolumeManagerLifecycle.onBackgroundEntry(this)
             startBackgroundDiscovery()
             return START_REDELIVER_INTENT
         }

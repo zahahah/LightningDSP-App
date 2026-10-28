@@ -55,4 +55,20 @@ class BackgroundAudioStartupPolicyTest {
         assertFalse(background.contains("clearSessions()"))
     }
 
+    @Test fun authorizedBackgroundStartupResumesTheMixerBeforeDspDiscoveryCanFail() {
+        val app = sequenceOf(File("."), File("app"))
+            .first { File(it, "src/main/AndroidManifest.xml").isFile }
+        val service = File(app, "src/main/java/lightning/dsp/service/RootAudioProcessorService.kt").readText()
+        val sticky = service.substringAfter("if (intent == null)")
+            .substringBefore("if (intent.action == ACTION_STOP)")
+        val requested = service.substringAfter("if (intent.action == ACTION_START_BACKGROUND && isRoot())")
+            .substringBefore("if(LightningDspRemoteEngine.discoveredPluginState()")
+        for (entry in listOf(sticky, requested)) {
+            val mixer = entry.indexOf("VolumeManagerLifecycle.onBackgroundEntry(this)")
+            val discovery = entry.indexOf("startBackgroundDiscovery()")
+            assertTrue("Mixer resume must precede descriptor discovery", mixer >= 0 && discovery > mixer)
+        }
+        assertTrue(sticky.contains("if (isRoot())"))
+    }
+
 }

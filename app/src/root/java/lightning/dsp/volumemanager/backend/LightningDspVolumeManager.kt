@@ -149,7 +149,8 @@ object LightningDspVolumeManager {
         worker.execute { sendSettings(); publish() }
     }
 
-    val startupOnBoot: Boolean get() = ::preferences.isInitialized && preferences.getBoolean("startup_on_boot", false)
+    val startupOnBoot: Boolean get() = ::preferences.isInitialized &&
+        preferences.getBoolean("startup_on_boot", VolumeManagerStartupPolicy.DEFAULT_STARTUP_ON_BOOT)
 
     fun setStartupOnBoot(enabled: Boolean) {
         check(::preferences.isInitialized)
@@ -679,6 +680,14 @@ object LightningDspVolumeManager {
             mutableState.postValue(next)
         }
     }
+}
+
+/** Boot follows the enabled mixer by default, but never overrides an explicit opt-out. */
+internal object VolumeManagerStartupPolicy {
+    const val DEFAULT_STARTUP_ON_BOOT = true
+
+    fun shouldResume(enabled: Boolean, startupOnBoot: Boolean = DEFAULT_STARTUP_ON_BOOT): Boolean =
+        enabled && startupOnBoot
 }
 
 data class AppVolume(

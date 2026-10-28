@@ -20,6 +20,14 @@ class VolumeTrackGesturePolicyTest {
     @Test fun verticalScrollingCannotBecomeATapOrLateVolumeDrag() {
         assertTrue(yields(dx = 2f, dy = 20f))
     }
+    @Test fun floatingDspTrackCanStartAHorizontalDragAfterAStationaryHold() {
+        assertFalse(VolumeTrackGesturePolicy.shouldYield(false, 750, 30f, 2f, 8f, 500,
+            yieldOnLongPress = false))
+        assertTrue(VolumeTrackGesturePolicy.shouldYield(false, 750, 2f, 20f, 8f, 500,
+            yieldOnLongPress = false))
+        assertTrue(VolumeTrackGesturePolicy.shouldYield(true, 750, 30f, 2f, 8f, 500,
+            yieldOnLongPress = false))
+    }
     @Test fun textContrastChangesExactlyAtTheTrackFillBoundary() {
         assertEquals(0f, trackTextClipRight(168f, 16f, 0f), 0.001f)
         assertEquals(4f, trackTextClipRight(168f, 16f, 0.1f), 0.001f)

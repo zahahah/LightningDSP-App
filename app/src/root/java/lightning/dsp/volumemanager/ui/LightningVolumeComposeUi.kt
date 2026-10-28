@@ -949,6 +949,7 @@ internal fun TrackSurface(
     onIconClick: (() -> Unit)? = null,
     muted: Boolean = false,
     onValue: (Float) -> Unit,
+    yieldOnLongPress: Boolean = true,
     modifier: Modifier = Modifier,
     baseTrackColor: Color? = null,
     progressFillColor: Color? = null,
@@ -969,7 +970,7 @@ internal fun TrackSurface(
         BoxWithConstraints(
             modifier = Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(20.dp))
                 .background(trackColor)
-                .trackGesture(latestValue, range, enabled, latestOnValue)
+                .trackGesture(latestValue, range, enabled, latestOnValue, yieldOnLongPress)
                 .semantics {
                     contentDescription = label
                     progressBarRangeInfo = ProgressBarRangeInfo(value.coerceIn(range.start, range.endInclusive), range)
@@ -1064,8 +1065,8 @@ private fun VolumeManagerIconToggle(
 
 private fun Modifier.trackGesture(
     current: State<Float>, range: ClosedFloatingPointRange<Float>, enabled: Boolean,
-    onValue: State<(Float) -> Unit>,
-): Modifier = pointerInput(range, enabled) {
+    onValue: State<(Float) -> Unit>, yieldOnLongPress: Boolean,
+): Modifier = pointerInput(range, enabled, yieldOnLongPress) {
     if (!enabled) return@pointerInput
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
@@ -1081,7 +1082,8 @@ private fun Modifier.trackGesture(
             val dy = next.position.y - startY
             if (!dragged && VolumeTrackGesturePolicy.shouldYield(
                     next.isConsumed, next.uptimeMillis - down.uptimeMillis, dx, dy,
-                    viewConfiguration.touchSlop, viewConfiguration.longPressTimeoutMillis)) {
+                    viewConfiguration.touchSlop, viewConfiguration.longPressTimeoutMillis,
+                    yieldOnLongPress)) {
                 allowTap = false
                 break
             }

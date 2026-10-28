@@ -73,6 +73,11 @@ import kotlin.math.abs
 private val DspBlue = Color(0xFF4997D0)
 private val DspBlueOn = Color(0xFF002B43)
 
+private class PendingDspSliderWrite {
+    var value: DspSliderWrite? = null
+    var job: Job? = null
+}
+
 /** Track-only styling: effect buttons and the native DSP state are independent. */
 internal fun dspTrackColors(monochrome: Boolean, lightTheme: Boolean, floating: Boolean): Pair<Color, Color> = when {
     monochrome && lightTheme -> FloatingLightBaseTrack to FloatingLightProgressTrack
@@ -198,8 +203,7 @@ internal fun LightningDspVolumeCard(onOpenEffect: (() -> Unit)?, floating: Boole
 
     var expanded by rememberSaveable { mutableStateOf(false) }
     var selectedParameter by remember { mutableStateOf<DspParameter?>(null) }
-    var pendingValue by remember { mutableStateOf<Float?>(null) }
-    var pendingWrite by remember { mutableStateOf<Job?>(null) }
+    val pendingWrite = remember { PendingDspSliderWrite() }
     val extraPostGain = outputPreferences.getBoolean(context.getString(R.string.key_output_extra_postgain), false)
     val postGainLimit = PostGainRangePolicy.limit(extraPostGain)
     val parameter = selectedParameter
@@ -209,32 +213,45 @@ internal fun LightningDspVolumeCard(onOpenEffect: (() -> Unit)?, floating: Boole
     val rawValue = valuePreferences.getFloat(valueKey, parameter?.default ?: 0f)
     val initialValue = if (rawValue.isFinite()) rawValue.coerceIn(range.start, range.endInclusive)
         else parameter?.default ?: 0f
-    var sliderValue by remember(preferenceRevision, parameter) { mutableFloatStateOf(initialValue) }
+    // Unrelated preference changes must not reset a drag that has not been committed yet.
+    var sliderValue by remember(parameter, initialValue) { mutableFloatStateOf(initialValue) }
 
-    fun commitValue(value: Float) {
-        val safeValue = if (value.isFinite()) value.coerceIn(range.start, range.endInclusive) else parameter?.default ?: 0f
-        valuePreferences.edit().putFloat(valueKey, safeValue).apply()
+    fun commitValue(write: DspSliderWrite) {
+        PreferenceCache.getPreferences(context, write.namespace).edit().putFloat(write.key, write.value).apply()
         context.sendLocalBroadcast(Intent(Constants.ACTION_PREFERENCES_UPDATED))
     }
 
-    fun queueValue(value: Float) {
-        val safeValue = if (value.isFinite()) value.coerceIn(range.start, range.endInclusive) else parameter?.default ?: 0f
-        sliderValue = safeValue
-        pendingValue = safeValue
-        pendingWrite?.cancel()
-        pendingWrite = scope.launch {
-            delay(140)
-            pendingValue = null
-            commitValue(safeValue)
+    fun flushPendingValue() {
+        pendingWrite.job?.cancel()
+        pendingWrite.job = null
+        pendingWrite.value?.let { write ->
+            pendingWrite.value = null
+            commitValue(write)
         }
     }
 
-    val latestPendingValue = rememberUpdatedState(pendingValue)
-    val latestCommit = rememberUpdatedState<(Float) -> Unit> { commitValue(it) }
+    fun queueValue(value: Float) {
+        val write = DspSliderWrite.bounded(parameter?.namespace ?: Constants.PREF_OUTPUT,
+            valueKey, value, range, parameter?.default ?: 0f)
+        sliderValue = write.value
+        pendingWrite.value = write
+        pendingWrite.job?.cancel()
+        pendingWrite.job = scope.launch {
+            delay(140)
+            if (pendingWrite.value == write) {
+                pendingWrite.value = null
+                pendingWrite.job = null
+                commitValue(write)
+            }
+        }
+    }
+
+    val latestCommit = rememberUpdatedState<(DspSliderWrite) -> Unit> { commitValue(it) }
     DisposableEffect(context) {
         onDispose {
-            pendingWrite?.cancel()
-            latestPendingValue.value?.let(latestCommit.value)
+            pendingWrite.job?.cancel()
+            pendingWrite.value?.let(latestCommit.value)
+            pendingWrite.value = null
         }
     }
 
@@ -272,8 +289,8 @@ internal fun LightningDspVolumeCard(onOpenEffect: (() -> Unit)?, floating: Boole
             Box(
                 modifier = Modifier.size(44.dp).clip(CircleShape).background(buttonFill)
                     .combinedClickable(
-                        onClick = { selectedParameter = null; expanded = !expanded },
-                        onLongClick = { selectedParameter = null; expanded = true },
+                        onClick = { flushPendingValue(); selectedParameter = null; expanded = !expanded },
+                        onLongClick = { flushPendingValue(); selectedParameter = null; expanded = true },
                     )
                     .semantics {
                         contentDescription = "LightningDSP effects"
@@ -299,6 +316,7 @@ internal fun LightningDspVolumeCard(onOpenEffect: (() -> Unit)?, floating: Boole
                     String.format(Locale.getDefault(), "%.1f", sliderValue)
                 else String.format(Locale.getDefault(), "%+.1f dB", sliderValue),
                 onValue = ::queueValue,
+                yieldOnLongPress = false,
                 modifier = Modifier.weight(1f),
                 baseTrackColor = baseTrack,
                 progressFillColor = progressTrack,
@@ -360,6 +378,7 @@ internal fun LightningDspVolumeCard(onOpenEffect: (() -> Unit)?, floating: Boole
                                     stateDescription = if (draggingEffect == effect.id) "Moving" else "Hold and drag to reorder"
                                 },
                             onLongClick = if (floating) ({
+                                flushPendingValue()
                                 val control = effect.parameter
                                 if (control != null) {
                                     selectedParameter = control
