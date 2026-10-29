@@ -56,7 +56,19 @@ class VolumeManagerEntryPointTest {
 
         // The panel remains available from the manager screen when explicitly requested.
         assertTrue(source("root/java/lightning/dsp/volumemanager/ui/LightningDspVolumeManagerActivity.kt")
-            .contains("onShowOverlay = { LightningVolumeOverlay.show(this) }"))
+            .contains("onShowOverlay = ::showOverlayOrRequestPermission"))
+    }
+
+    @Test fun anAlreadyEnabledManagerCanRecoverRevokedOverlayPermissionFromItsFooter() {
+        val activity = source("root/java/lightning/dsp/volumemanager/ui/LightningDspVolumeManagerActivity.kt")
+        assertTrue(activity.contains("onShowOverlay = ::showOverlayOrRequestPermission"))
+        assertTrue(activity.contains("if (!Settings.canDrawOverlays(this))"))
+        assertTrue(activity.contains("Settings.ACTION_MANAGE_OVERLAY_PERMISSION"))
+        val screen = source("root/java/lightning/dsp/volumemanager/ui/LightningVolumeComposeUi.kt")
+        assertTrue(screen.contains("state.enabled && !Settings.canDrawOverlays(context)"))
+        assertTrue(screen.contains("onClick = onShowOverlay"))
+        val resumed = activity.substringAfter("override fun onResume()").substringBefore("private fun setManagerEnabled")
+        assertTrue(resumed.contains("LightningDspVolumeManager.resume()"))
     }
 
     @Test fun volumeButtonsCanOpenThePanelBeforeItHasEverBeenShownManually() {

@@ -18,6 +18,7 @@ import org.json.JSONObject
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.ScheduledFuture
+import timber.log.Timber
 
 /** Persisted opt-in and serialized ownership of the private root playback process. */
 enum class VolumeAccessMode { ROOT, SHIZUKU }
@@ -162,6 +163,7 @@ object LightningDspVolumeManager {
         if (::preferences.isInitialized) return
         this.context = context.applicationContext
         preferences = this.context.getSharedPreferences("lightningdsp_volume_manager", Context.MODE_PRIVATE)
+        writeProfileSettings(VolumeProfiles.initialize(preferences.all))
         cleanupUncertain = preferences.getBoolean("cleanup_uncertain", false)
         ContextCompat.registerReceiver(this.context, object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
@@ -245,6 +247,7 @@ object LightningDspVolumeManager {
         return worker.submit {
             try {
                 writePreferences()
+                writeProfileSettings(VolumeProfiles.initialize(preferences.all))
             } finally {
                 // A disk failure can still update SharedPreferences in memory. Reconcile the
                 // effective state even when a partial restore is reported as failed.
@@ -254,6 +257,36 @@ object LightningDspVolumeManager {
                 setEnabled(isEnabled)
             }
         }
+    }
+
+    fun createProfile(name: String): java.util.concurrent.Future<String> {
+        check(::preferences.isInitialized)
+        return worker.submit(java.util.concurrent.Callable {
+            val (id, values) = VolumeProfiles.create(preferences.all, name)
+            writeProfileSettings(values)
+            sendSettings(); publish()
+            id
+        })
+    }
+
+    fun selectProfile(id: String): java.util.concurrent.Future<*> {
+        check(::preferences.isInitialized)
+        return worker.submit {
+            writeProfileSettings(VolumeProfiles.select(preferences.all, id))
+            sendSettings(); publish()
+        }
+    }
+
+    private fun writeProfileSettings(values: Map<String, Any>) {
+        val edit = preferences.edit()
+        preferences.all.keys.filter { VolumeProfiles.isSetting(it) || VolumeProfiles.isRule(it) }
+            .forEach(edit::remove)
+        values.forEach { (key, value) -> when (value) {
+            is String -> edit.putString(key, value)
+            is Float -> edit.putFloat(key, value)
+            is Boolean -> edit.putBoolean(key, value)
+        } }
+        edit.apply()
     }
 
     fun setAppVolume(packageName: String, volume: Float) {
@@ -405,6 +438,14 @@ object LightningDspVolumeManager {
                     is Boolean -> edit.putBoolean("$name:${it.packageName}", value)
                 }
             }
+            if (name in setOf("volume", "muted", "pan")) {
+                val selected = preferences.getString(VolumeProfiles.SELECTED, VolumeProfiles.DEFAULT_ID)!!
+                val key = VolumeProfiles.profileKey(selected, "$name:$packageName")
+                when (value) {
+                    is Float -> edit.putFloat(key, value)
+                    is Boolean -> edit.putBoolean(key, value)
+                }
+            }
             edit.apply()
             sendSettings()
             publish()
@@ -554,12 +595,18 @@ object LightningDspVolumeManager {
                     }
                 }, 5, 5, TimeUnit.SECONDS)
             } catch (exception: Exception) {
+                Timber.w(exception, "Volume Manager privileged playback attach failed")
                 if (exception is VolumeShizukuStartException && exception.cleanupUncertain) {
                     cleanupUncertain = true
                     preferences.edit().putBoolean("cleanup_uncertain", true).apply()
                 }
                 closeProcess()
-                error = "Cannot obtain ${accessMode.name.lowercase()} playback access: ${exception.message ?: exception.javaClass.simpleName}"
+                error = if (accessMode == VolumeAccessMode.ROOT && exception is java.io.IOException &&
+                    exception.message?.contains("Cannot run program \"su\"") == true) {
+                    "Root shell is unavailable to LightningDSP. Check app authorization and root visibility in KernelSU/Magisk, then reopen Volume Manager."
+                } else {
+                    "Cannot obtain ${accessMode.name.lowercase()} playback access: ${exception.message ?: exception.javaClass.simpleName}"
+                }
                 publish()
             }
         }
@@ -674,7 +721,8 @@ object LightningDspVolumeManager {
         val mediaVolume = runCatching { audio.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() /
             audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1) }.getOrDefault(1f)
         val next = VolumeManagerState(isEnabled, connected, error ?: overlayError, apps, mediaVolume,
-            perAppEnabled, overlayReady, systemVolumeError, systemVolumeOperationId)
+            perAppEnabled, overlayReady, systemVolumeError, systemVolumeOperationId,
+            VolumeProfiles.list(preferences.all), preferences.getString(VolumeProfiles.SELECTED, VolumeProfiles.DEFAULT_ID)!!)
         if (force || next != lastPublished) {
             lastPublished = next
             mutableState.postValue(next)
@@ -713,5 +761,7 @@ data class VolumeManagerState(
     val perAppEnabled: Boolean = true,
     val overlayReady: Boolean = false,
     val systemVolumeError: String? = null,
-    val systemVolumeOperationId: Long = 0L
+    val systemVolumeOperationId: Long = 0L,
+    val profiles: List<VolumeProfile> = listOf(VolumeProfile(VolumeProfiles.DEFAULT_ID, "Profile 1")),
+    val selectedProfileId: String = VolumeProfiles.DEFAULT_ID
 )

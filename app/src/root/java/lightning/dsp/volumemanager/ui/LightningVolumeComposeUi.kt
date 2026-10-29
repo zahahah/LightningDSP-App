@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -31,6 +32,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -48,6 +50,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.MoreVert
@@ -77,6 +80,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -86,6 +90,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -124,7 +129,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import lightning.dsp.R
+import lightning.dsp.interop.PreferenceCache
+import lightning.dsp.utils.Constants
+import lightning.dsp.utils.extensions.ContextExtensions.sendLocalBroadcast
 import lightning.dsp.volumemanager.backend.AppVolume
 import lightning.dsp.volumemanager.backend.LightningDspVolumeManager
 import lightning.dsp.volumemanager.backend.VolumeManagerState
@@ -273,7 +282,10 @@ internal fun LightningVolumeManagerScreen(
                 )
             },
             bottomBar = {
-                if (!compact) VolumeManagerFooter(state.enabled, onManagerEnabledChange, onShowOverlay)
+                if (!compact) Column {
+                    if (state.perAppEnabled) VolumeProfilePicker(state)
+                    VolumeManagerFooter(onShowOverlay)
+                }
             },
             containerColor = MaterialTheme.colorScheme.surface
         ) { insets ->
@@ -290,12 +302,17 @@ internal fun LightningVolumeManagerScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 if (!compact) {
-                    if (!state.enabled) {
-                        item(key = "manager_controls") {
-                            ManagerStatus(state = state, onEnabledChange = onManagerEnabledChange)
+                    item(key = "manager_controls") {
+                        ManagerStatus(state = state, onEnabledChange = onManagerEnabledChange)
+                    }
+                    if (state.enabled && !Settings.canDrawOverlays(context)) {
+                        item(key = "overlay_permission") {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(stringResource(R.string.ldsp_vm_overlay_permission),
+                                    modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                                TextButton(onClick = onShowOverlay) { Text("Allow") }
+                            }
                         }
-                    } else if (!state.connected || state.error != null || state.systemVolumeError != null) {
-                        item(key = "manager_diagnostics") { ManagerStatusMessage(state) }
                     }
                     item(key = "per_app_switch") {
                         SettingRow("Per-app volume control", "Apply individual gain to active players.",
@@ -366,7 +383,7 @@ internal fun LightningVolumeManagerScreen(
                         }
                     }
                 } else {
-                    val groups = if (showAll || editing) listOf(
+                    val groups = if (!compact) listOf(
                         Triple("Active", activeApps, activeBounds),
                         Triple("Inactive", inactiveApps, inactiveBounds),
                     ) else listOf(Triple("Active", activeApps, activeBounds))
@@ -395,7 +412,7 @@ internal fun LightningVolumeManagerScreen(
                             }
                         }
                     }
-                    if (activeApps.isEmpty() && !showAll && !editing) {
+                    if (activeApps.isEmpty() && compact && !editing) {
                         item(key = "no_active_apps") {
                             Text("No active players. Use the top-right control to show every app.",
                                 modifier = Modifier.padding(vertical = 24.dp),
@@ -416,6 +433,56 @@ internal fun LightningVolumeManagerScreen(
             }
         }
     }
+}
+
+@Composable
+private fun VolumeProfilePicker(state: VolumeManagerState) {
+    val scope = rememberCoroutineScope()
+    var menuOpen by remember { mutableStateOf(false) }
+    var creating by remember { mutableStateOf(false) }
+    var newName by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    Row(Modifier.fillMaxWidth().padding(end = 16.dp), horizontalArrangement = Arrangement.End) {
+        Box {
+            TextButton(onClick = { menuOpen = true }) {
+                Icon(Icons.Default.Tune, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text(state.profiles.firstOrNull { it.id == state.selectedProfileId }?.name ?: "Profile 1")
+            }
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                state.profiles.forEach { profile ->
+                    DropdownMenuItem(
+                        text = { Text(profile.name) },
+                        leadingIcon = if (profile.id == state.selectedProfileId) ({ Icon(Icons.Default.Check, null) }) else null,
+                        onClick = {
+                            menuOpen = false
+                            scope.launch {
+                                runCatching { withContext(Dispatchers.IO) { LightningDspVolumeManager.selectProfile(profile.id).get() } }
+                                    .onFailure { error = it.cause?.message ?: it.message ?: "Could not select profile" }
+                            }
+                        }
+                    )
+                }
+                DropdownMenuItem(text = { Text("New profile") }, leadingIcon = { Icon(Icons.Default.Add, null) },
+                    onClick = { menuOpen = false; newName = ""; creating = true })
+            }
+        }
+    }
+    if (creating) AlertDialog(
+        onDismissRequest = { creating = false },
+        title = { Text("Create volume profile") },
+        text = { OutlinedTextField(value = newName, onValueChange = { newName = it }, label = { Text("Profile name") }, singleLine = true) },
+        confirmButton = { TextButton(onClick = {
+            scope.launch {
+                runCatching { withContext(Dispatchers.IO) { LightningDspVolumeManager.createProfile(newName).get() } }
+                    .onSuccess { creating = false }
+                    .onFailure { creating = false; error = it.cause?.message ?: it.message ?: "Could not create profile" }
+            }
+        }) { Text("Create") } },
+        dismissButton = { TextButton(onClick = { creating = false }) { Text("Cancel") } },
+    )
+    error?.let { message -> AlertDialog(onDismissRequest = { error = null }, title = { Text("Profile error") },
+        text = { Text(message) }, confirmButton = { TextButton(onClick = { error = null }) { Text("OK") } }) }
 }
 
 /** Compact centered mixer used by the always-on-top window, matching the reference panel hierarchy. */
@@ -532,6 +599,11 @@ private fun ManagerStatus(state: VolumeManagerState, onEnabledChange: (Boolean) 
         Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             SettingRow("Enable volume manager", "Show the floating panel and per-app controls.", state.enabled, onEnabledChange)
             ManagerStatusMessage(state)
+            if (state.enabled && !state.connected && state.error != null) {
+                Text("If root access was denied, authorize LightningDSP in KernelSU/Magisk, then retry.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TextButton(onClick = LightningDspVolumeManager::resume) { Text("Retry connection") }
+            }
         }
     }
 }
@@ -549,9 +621,19 @@ private fun ManagerStatusMessage(state: VolumeManagerState) {
 /** Reuse the home screen's actual Material BottomAppBar and FloatingToggleButton. */
 @SuppressLint("InflateParams") // AndroidView supplies the root size; XML child anchor params remain intact.
 @Composable
-private fun VolumeManagerFooter(enabled: Boolean, onEnabledChange: (Boolean) -> Unit, onShowOverlay: () -> Unit) {
-    val currentEnabled by rememberUpdatedState(enabled)
-    val currentChange by rememberUpdatedState(onEnabledChange)
+private fun VolumeManagerFooter(onShowOverlay: () -> Unit) {
+    val context = LocalContext.current
+    val appPreferences = remember(context) { PreferenceCache.getPreferences(context, Constants.PREF_APP) }
+    val powerKey = context.getString(R.string.key_powered_on)
+    var dspPowered by remember(appPreferences) { mutableStateOf(appPreferences.getBoolean(powerKey, true)) }
+    DisposableEffect(appPreferences, powerKey) {
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == null || key == powerKey) dspPowered = appPreferences.getBoolean(powerKey, true)
+        }
+        appPreferences.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { appPreferences.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+    val currentPowered by rememberUpdatedState(dspPowered)
     val currentShowOverlay by rememberUpdatedState(onShowOverlay)
     Box(Modifier.fillMaxWidth().navigationBarsPadding()) {
         AndroidView(
@@ -566,12 +648,14 @@ private fun VolumeManagerFooter(enabled: Boolean, onEnabledChange: (Boolean) -> 
                             } else false
                         }
                     findViewById<FloatingToggleButton>(R.id.volume_manager_power_toggle).apply {
-                        // Permission may be pending or denied: never optimistically show enabled.
                         toggleOnClick = false
                         setOnToggleClickListener(object : FloatingToggleButton.OnToggleClickListener {
                             override fun onClick() {
                                 performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-                                currentChange(!currentEnabled)
+                                val next = !currentPowered
+                                appPreferences.edit().putBoolean(powerKey, next).apply()
+                                dspPowered = next
+                                context.sendLocalBroadcast(Intent(Constants.ACTION_PREFERENCES_UPDATED))
                             }
                         })
                     }
@@ -579,9 +663,8 @@ private fun VolumeManagerFooter(enabled: Boolean, onEnabledChange: (Boolean) -> 
             },
             update = { view ->
                 view.findViewById<FloatingToggleButton>(R.id.volume_manager_power_toggle).apply {
-                    if (isToggled != enabled) isToggled = enabled
-                    contentDescription = context.getString(if (enabled)
-                        R.string.ldsp_vm_disable_manager else R.string.ldsp_vm_enable_manager)
+                    if (isToggled != dspPowered) isToggled = dspPowered
+                    contentDescription = if (dspPowered) "Disable LightningDSP effects" else "Enable LightningDSP effects"
                 }
             },
         )

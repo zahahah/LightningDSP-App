@@ -94,14 +94,13 @@ class LightningDspVolumeManagerActivity : BaseActivity() {
         )
         enableAfterOverlayPermission = savedInstanceState?.getBoolean("volume_enable_after_overlay") ?: false
         LightningDspVolumeManager.initialize(applicationContext)
-        LightningDspVolumeManager.resume()
         LightningDspVolumeManager.state.observe(this) { volumeState = it }
         setContent {
             LightningVolumeManagerScreen(
                 state = volumeState,
                 compact = false,
                 onSettings = ::showSettings,
-                onShowOverlay = { LightningVolumeOverlay.show(this) },
+                onShowOverlay = ::showOverlayOrRequestPermission,
                 onClose = ::closeMixer,
                 onManagerEnabledChange = ::setManagerEnabled
             )
@@ -123,6 +122,8 @@ class LightningDspVolumeManagerActivity : BaseActivity() {
                 Toast.makeText(this, R.string.ldsp_vm_overlay_permission, Toast.LENGTH_LONG).show()
             }
         }
+        // An explicit return from root/overlay settings is a safe retry point.
+        LightningDspVolumeManager.resume()
         LightningDspVolumeManager.refresh()
     }
 
@@ -136,6 +137,16 @@ class LightningDspVolumeManagerActivity : BaseActivity() {
         }
         LightningDspVolumeManager.setEnabled(enabled)
         if (enabled) LightningVolumeOverlay.show(this) else LightningVolumeOverlay.hide()
+    }
+
+    private fun showOverlayOrRequestPermission() {
+        if (!Settings.canDrawOverlays(this)) {
+            Toast.makeText(this, R.string.ldsp_vm_overlay_permission, Toast.LENGTH_LONG).show()
+            openPermissionSettings(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:$packageName")))
+            return
+        }
+        LightningVolumeOverlay.show(this)
     }
 
     private fun showSettings() {

@@ -86,6 +86,9 @@ internal fun dspTrackColors(monochrome: Boolean, lightTheme: Boolean, floating: 
     else -> DspBlue.copy(alpha = 0.22f) to DspBlue
 }
 
+/** A stationary hold selects a parameter; horizontal movement keeps the reorder gesture. */
+internal fun shouldSelectEffectOnHold(travel: Float, touchSlop: Float): Boolean = travel < touchSlop
+
 private data class DspParameter(
     val namespace: String,
     val key: Int,
@@ -181,6 +184,7 @@ internal fun LightningDspVolumeCard(onOpenEffect: (() -> Unit)?, floating: Boole
     }
     var draggingEffect by remember { mutableStateOf<String?>(null) }
     var dragDistance by remember { mutableFloatStateOf(0f) }
+    var holdTravel by remember { mutableFloatStateOf(0f) }
     val effectsScroll = rememberScrollState()
     val cellPitch = with(LocalDensity.current) { 62.dp.toPx() }
     fun moveEffect(id: String, direction: Int): Boolean {
@@ -356,11 +360,24 @@ internal fun LightningDspVolumeCard(onOpenEffect: (() -> Unit)?, floating: Boole
                             modifier = if (floating) Modifier else Modifier
                                 .pointerInput(effect.id) {
                                     detectDragGesturesAfterLongPress(
-                                        onDragStart = { draggingEffect = effect.id; dragDistance = 0f },
-                                        onDragEnd = { draggingEffect = null; dragDistance = 0f },
+                                        onDragStart = {
+                                            draggingEffect = effect.id
+                                            dragDistance = 0f
+                                            holdTravel = 0f
+                                        },
+                                        onDragEnd = {
+                                            if (effect.parameter != null && shouldSelectEffectOnHold(
+                                                    holdTravel, viewConfiguration.touchSlop)) {
+                                                flushPendingValue()
+                                                selectedParameter = effect.parameter
+                                            }
+                                            draggingEffect = null
+                                            dragDistance = 0f
+                                        },
                                         onDragCancel = { draggingEffect = null; dragDistance = 0f },
                                         onDrag = { change, amount ->
                                             change.consume()
+                                            holdTravel += abs(amount.x) + abs(amount.y)
                                             dragDistance += amount.x
                                             if (abs(dragDistance) >= cellPitch) {
                                                 val direction = if (dragDistance > 0) 1 else -1
@@ -375,7 +392,9 @@ internal fun LightningDspVolumeCard(onOpenEffect: (() -> Unit)?, floating: Boole
                                         CustomAccessibilityAction("Move effect left") { moveEffect(effect.id, -1) },
                                         CustomAccessibilityAction("Move effect right") { moveEffect(effect.id, 1) },
                                     )
-                                    stateDescription = if (draggingEffect == effect.id) "Moving" else "Hold and drag to reorder"
+                                    stateDescription = if (draggingEffect == effect.id) "Moving"
+                                        else if (effect.parameter != null) "Hold to adjust; drag to reorder"
+                                        else "Hold and drag to reorder"
                                 },
                             onLongClick = if (floating) ({
                                 flushPendingValue()

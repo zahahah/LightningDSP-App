@@ -4,11 +4,22 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import lightning.dsp.volumemanager.ui.dspTrackColors
 import lightning.dsp.volumemanager.ui.dspTrackTextColor
+import lightning.dsp.volumemanager.ui.shouldSelectEffectOnHold
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.File
 
 class DspCardPresentationTest {
+    @Test fun stationaryHoldSelectsEffectIntensityWithoutStealingAReorderDrag() {
+        assertTrue(shouldSelectEffectOnHold(0f, 8f))
+        assertTrue(shouldSelectEffectOnHold(7f, 8f))
+        assertFalse(shouldSelectEffectOnHold(8f, 8f))
+        assertFalse(shouldSelectEffectOnHold(62f, 8f))
+        val app = sequenceOf(File("."), File("app")).first { File(it, "src/root/AndroidManifest.xml").isFile }
+        val card = File(app, "src/root/java/lightning/dsp/volumemanager/ui/LightningDspVolumeCard.kt").readText()
+        assertTrue(card.contains("if (effect.parameter != null && shouldSelectEffectOnHold"))
+        assertTrue(card.contains("selectedParameter = effect.parameter"))
+    }
     @Test fun bothTrackRegionsKeepReadableTextInBothThemes() {
         // Actual blue fill and floating neutral/base colors, plus light/dark themed surfaces.
         listOf(0xFF4997D0, 0xFF347FB6, 0xFFA6B6C4, 0xFF4B535B, 0xFF727C85,

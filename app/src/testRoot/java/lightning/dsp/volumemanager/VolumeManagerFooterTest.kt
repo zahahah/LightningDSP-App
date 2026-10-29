@@ -18,17 +18,17 @@ class VolumeManagerFooterTest {
         assertEquals(1, bars.length)
         assertEquals("cradle", bars.item(0).attributes.getNamedItem("app:fabAnchorMode").nodeValue)
         assertEquals("center", bars.item(0).attributes.getNamedItem("app:fabAlignmentMode").nodeValue)
-        assertTrue(ui.contains("if (!compact) VolumeManagerFooter(state.enabled, onManagerEnabledChange, onShowOverlay)"))
+        assertTrue(ui.contains("VolumeManagerFooter(onShowOverlay)"))
     }
 
-    @Test fun footerUsesAuthoritativeManagerStateAndNeverChangesDspPower() {
+    @Test fun footerControlsDspPowerWithoutChangingManagerEnable() {
         val footer = ui.substringAfter("private fun VolumeManagerFooter(").substringBefore("private fun SettingRow(")
-        assertTrue(footer.contains("rememberUpdatedState(enabled)"))
-        assertTrue(footer.contains("rememberUpdatedState(onEnabledChange)"))
+        assertTrue(footer.contains("R.string.key_powered_on"))
+        assertTrue(footer.contains("putBoolean(powerKey, next)"))
+        assertTrue(footer.contains("ACTION_PREFERENCES_UPDATED"))
         assertTrue(footer.contains("toggleOnClick = false"))
-        assertTrue(footer.contains("currentChange(!currentEnabled)"))
-        assertTrue(footer.contains("isToggled = enabled"))
-        assertFalse(footer.contains("key_powered_on"))
+        assertTrue(footer.contains("isToggled = dspPowered"))
+        assertFalse(footer.contains("setEnabled("))
         assertFalse(footer.contains("setPerAppEnabled"))
         assertTrue(footer.contains("navigationBarsPadding()"))
     }
@@ -48,9 +48,19 @@ class VolumeManagerFooterTest {
         assertTrue(layout.contains("app:menu=\"@menu/volume_manager_footer\""))
     }
 
-    @Test fun topExplanationIsDisabledOnlyButErrorsStayVisibleWhenEnabled() {
-        assertTrue(ui.contains("if (!state.enabled) {\n                        item(key = \"manager_controls\")"))
-        assertTrue(ui.contains("else if (!state.connected || state.error != null || state.systemVolumeError != null)"))
-        assertTrue(ui.contains("item(key = \"manager_diagnostics\") { ManagerStatusMessage(state) }"))
+    @Test fun managerEnableRemainsVisibleAbovePerAppControls() {
+        assertTrue(ui.contains("item(key = \"manager_controls\")"))
+        assertTrue(ui.contains("ManagerStatus(state = state, onEnabledChange = onManagerEnabledChange)"))
+        assertTrue(ui.indexOf("item(key = \"manager_controls\")") < ui.indexOf("item(key = \"per_app_switch\")"))
+    }
+
+    @Test fun bothAppGroupsRemainAvailableWithoutEditingAndProfilesAreScopedToPerAppControl() {
+        assertTrue(ui.contains("val groups = if (!compact) listOf("))
+        assertTrue(ui.contains("Triple(\"Inactive\", inactiveApps, inactiveBounds)"))
+        assertTrue(ui.contains("if (state.perAppEnabled) VolumeProfilePicker(state)"))
+        val picker = ui.substringAfter("private fun VolumeProfilePicker(").substringBefore("private fun ManagerStatus(")
+        assertTrue(picker.contains("state.selectedProfileId"))
+        assertTrue(picker.contains("LightningDspVolumeManager.createProfile(newName)"))
+        assertTrue(picker.contains("LightningDspVolumeManager.selectProfile(profile.id)"))
     }
 }
