@@ -15,6 +15,8 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -35,12 +37,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.key
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ExpandLess
@@ -115,6 +119,7 @@ import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -126,6 +131,13 @@ import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -282,10 +294,7 @@ internal fun LightningVolumeManagerScreen(
                 )
             },
             bottomBar = {
-                if (!compact) Column {
-                    if (state.perAppEnabled) VolumeProfilePicker(state)
-                    VolumeManagerFooter(onShowOverlay)
-                }
+                if (!compact) VolumeManagerFooter(state, onShowOverlay)
             },
             containerColor = MaterialTheme.colorScheme.surface
         ) { insets ->
@@ -314,10 +323,9 @@ internal fun LightningVolumeManagerScreen(
                             }
                         }
                     }
-                    item(key = "per_app_switch") {
-                        SettingRow("Per-app volume control", "Apply individual gain to active players.",
-                            checked = state.perAppEnabled, onCheckedChange = LightningDspVolumeManager::setPerAppEnabled)
-                    }
+                }
+                if (!compact) item(key = "manager_dsp_card_spacing") {
+                    Spacer(Modifier.height(8.dp))
                 }
                 item(key = "dsp_card") {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -353,7 +361,11 @@ internal fun LightningVolumeManagerScreen(
                                 searchExpanded = false
                             })
                         } else {
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                            Row(
+                                Modifier.fillMaxWidth().height(56.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.End
+                            ) {
                                 IconButton(onClick = { searchExpanded = true }) {
                                     Icon(Icons.Default.Search, contentDescription = "Search apps")
                                 }
@@ -435,54 +447,85 @@ internal fun LightningVolumeManagerScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun VolumeProfilePicker(state: VolumeManagerState) {
+private fun VolumeProfilePicker(state: VolumeManagerState, expanded: Boolean, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
-    var menuOpen by remember { mutableStateOf(false) }
     var creating by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf("") }
+    var renaming by remember { mutableStateOf<lightning.dsp.volumemanager.backend.VolumeProfile?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
-    Row(Modifier.fillMaxWidth().padding(end = 16.dp), horizontalArrangement = Arrangement.End) {
-        Box {
-            TextButton(onClick = { menuOpen = true }) {
-                Icon(Icons.Default.Tune, contentDescription = null)
-                Spacer(Modifier.width(6.dp))
-                Text(state.profiles.firstOrNull { it.id == state.selectedProfileId }?.name ?: "Profile 1")
-            }
-            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                state.profiles.forEach { profile ->
-                    DropdownMenuItem(
-                        text = { Text(profile.name) },
-                        leadingIcon = if (profile.id == state.selectedProfileId) ({ Icon(Icons.Default.Check, null) }) else null,
+    if (expanded) Popup(
+        popupPositionProvider = VolumeProfilePopupPositionProvider,
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true)
+    ) {
+        Surface(shape = MaterialTheme.shapes.medium,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shadowElevation = 8.dp) {
+        Column(Modifier.widthIn(min = 176.dp, max = 220.dp)
+            .heightIn(max = LocalConfiguration.current.screenHeightDp.dp * 0.6f)
+            .verticalScroll(rememberScrollState()).padding(vertical = 4.dp)) {
+        state.profiles.forEach { profile ->
+            Row(
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                    .combinedClickable(
                         onClick = {
-                            menuOpen = false
+                            onDismiss()
                             scope.launch {
                                 runCatching { withContext(Dispatchers.IO) { LightningDspVolumeManager.selectProfile(profile.id).get() } }
                                     .onFailure { error = it.cause?.message ?: it.message ?: "Could not select profile" }
                             }
-                        }
-                    )
-                }
-                DropdownMenuItem(text = { Text("New profile") }, leadingIcon = { Icon(Icons.Default.Add, null) },
-                    onClick = { menuOpen = false; newName = ""; creating = true })
+                        },
+                        onLongClickLabel = "Rename ${profile.name}",
+                        onLongClick = { onDismiss(); newName = profile.name; renaming = profile }
+                    ).padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (profile.id == state.selectedProfileId) Icon(Icons.Default.Check, null)
+                else Spacer(Modifier.size(24.dp))
+                Spacer(Modifier.width(12.dp))
+                Text(profile.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
+        DropdownMenuItem(text = { Text("New profile") }, leadingIcon = { Icon(Icons.Default.Add, null) },
+            onClick = { onDismiss(); newName = ""; creating = true })
+        }
+        }
     }
-    if (creating) AlertDialog(
-        onDismissRequest = { creating = false },
-        title = { Text("Create volume profile") },
+    if (creating || renaming != null) AlertDialog(
+        onDismissRequest = { creating = false; renaming = null },
+        title = { Text(if (renaming != null) "Rename volume profile" else "Create volume profile") },
         text = { OutlinedTextField(value = newName, onValueChange = { newName = it }, label = { Text("Profile name") }, singleLine = true) },
         confirmButton = { TextButton(onClick = {
+            val profile = renaming
             scope.launch {
-                runCatching { withContext(Dispatchers.IO) { LightningDspVolumeManager.createProfile(newName).get() } }
-                    .onSuccess { creating = false }
-                    .onFailure { creating = false; error = it.cause?.message ?: it.message ?: "Could not create profile" }
+                runCatching { withContext(Dispatchers.IO) {
+                    if (profile == null) LightningDspVolumeManager.createProfile(newName).get()
+                    else LightningDspVolumeManager.renameProfile(profile.id, newName).get()
+                } }
+                    .onSuccess { creating = false; renaming = null }
+                    .onFailure {
+                        creating = false; renaming = null
+                        error = it.cause?.message ?: it.message ?: "Could not save profile"
+                    }
             }
-        }) { Text("Create") } },
-        dismissButton = { TextButton(onClick = { creating = false }) { Text("Cancel") } },
+        }) { Text(if (renaming != null) "Save" else "Create") } },
+        dismissButton = { TextButton(onClick = { creating = false; renaming = null }) { Text("Cancel") } },
     )
     error?.let { message -> AlertDialog(onDismissRequest = { error = null }, title = { Text("Profile error") },
         text = { Text(message) }, confirmButton = { TextButton(onClick = { error = null }) { Text("OK") } }) }
+}
+
+/** Keep the menu flush with the top of its footer button, even near the screen's bottom inset. */
+internal object VolumeProfilePopupPositionProvider : PopupPositionProvider {
+    override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize,
+                                   layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
+        val x = (anchorBounds.right - popupContentSize.width)
+            .coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0))
+        val y = (anchorBounds.top - popupContentSize.height).coerceAtLeast(0)
+        return IntOffset(x, y)
+    }
 }
 
 /** Compact centered mixer used by the always-on-top window, matching the reference panel hierarchy. */
@@ -596,14 +639,18 @@ private fun AppSearchField(query: String, onQueryChange: (String) -> Unit, onClo
 @Composable
 private fun ManagerStatus(state: VolumeManagerState, onEnabledChange: (Boolean) -> Unit) {
     Surface(shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             SettingRow("Enable volume manager", "Show the floating panel and per-app controls.", state.enabled, onEnabledChange)
-            ManagerStatusMessage(state)
+            if (state.enabled && (!state.connected || state.error != null || state.systemVolumeError != null)) {
+                ManagerStatusMessage(state)
+            }
             if (state.enabled && !state.connected && state.error != null) {
                 Text("If root access was denied, authorize LightningDSP in KernelSU/Magisk, then retry.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 TextButton(onClick = LightningDspVolumeManager::resume) { Text("Retry connection") }
             }
+            SettingRow("Per-app volume control", "Apply individual gain to active players.",
+                checked = state.perAppEnabled, onCheckedChange = LightningDspVolumeManager::setPerAppEnabled)
         }
     }
 }
@@ -621,8 +668,9 @@ private fun ManagerStatusMessage(state: VolumeManagerState) {
 /** Reuse the home screen's actual Material BottomAppBar and FloatingToggleButton. */
 @SuppressLint("InflateParams") // AndroidView supplies the root size; XML child anchor params remain intact.
 @Composable
-private fun VolumeManagerFooter(onShowOverlay: () -> Unit) {
+private fun VolumeManagerFooter(state: VolumeManagerState, onShowOverlay: () -> Unit) {
     val context = LocalContext.current
+    var profileMenuOpen by remember { mutableStateOf(false) }
     val appPreferences = remember(context) { PreferenceCache.getPreferences(context, Constants.PREF_APP) }
     val powerKey = context.getString(R.string.key_powered_on)
     var dspPowered by remember(appPreferences) { mutableStateOf(appPreferences.getBoolean(powerKey, true)) }
@@ -634,18 +682,14 @@ private fun VolumeManagerFooter(onShowOverlay: () -> Unit) {
         onDispose { appPreferences.unregisterOnSharedPreferenceChangeListener(listener) }
     }
     val currentPowered by rememberUpdatedState(dspPowered)
-    val currentShowOverlay by rememberUpdatedState(onShowOverlay)
     Box(Modifier.fillMaxWidth().navigationBarsPadding()) {
         AndroidView(
-            modifier = Modifier.fillMaxWidth().height(96.dp),
+            modifier = Modifier.fillMaxWidth().height(72.dp),
             factory = { context ->
                 LayoutInflater.from(context).inflate(R.layout.volume_manager_footer, null).apply {
                     findViewById<com.google.android.material.bottomappbar.BottomAppBar>(R.id.volume_manager_bottom_bar)
-                        .setOnMenuItemClickListener { item ->
-                            if (item.itemId == R.id.volume_manager_show_overlay) {
-                                currentShowOverlay()
-                                true
-                            } else false
+                        .apply {
+                            elevation = 0f
                         }
                     findViewById<FloatingToggleButton>(R.id.volume_manager_power_toggle).apply {
                         toggleOnClick = false
@@ -668,6 +712,18 @@ private fun VolumeManagerFooter(onShowOverlay: () -> Unit) {
                 }
             },
         )
+        IconButton(onClick = onShowOverlay,
+            modifier = Modifier.align(Alignment.CenterStart).padding(start = 12.dp)) {
+            Icon(painterResource(R.drawable.ic_volume_graphic_eq), contentDescription = "Open floating panel")
+        }
+        if (state.perAppEnabled) {
+            Box(Modifier.align(Alignment.CenterEnd).padding(end = 12.dp)) {
+                IconButton(onClick = { profileMenuOpen = true }) {
+                    Icon(painterResource(R.drawable.ic_volume_profiles), contentDescription = "Volume profiles")
+                }
+                VolumeProfilePicker(state, profileMenuOpen) { profileMenuOpen = false }
+            }
+        }
     }
 }
 
@@ -676,7 +732,8 @@ private fun SettingRow(title: String, subtitle: String, checked: Boolean, onChec
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f).padding(end = 12.dp)) {
             Text(title, style = MaterialTheme.typography.titleSmall)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (!checked) Text(subtitle, style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
@@ -727,7 +784,7 @@ private fun SystemVolumeControls(
         dndFilter = notifications.currentInterruptionFilter
     }
     @Suppress("UNUSED_VARIABLE") val refreshState = streamConfig + refreshTick
-    var secondaryExpanded by rememberSaveable { mutableStateOf(false) }
+    var secondaryExpanded by rememberSaveable { mutableStateOf(MediaGroupExpansionPolicy.initiallyExpanded(floatingPanel)) }
     val grouping = preferences.getBoolean("group_system_streams", true)
     val streams = listOf("Media" to AudioManager.STREAM_MUSIC, "Call" to AudioManager.STREAM_VOICE_CALL,
         "Ring" to AudioManager.STREAM_RING, "Alarm" to AudioManager.STREAM_ALARM,
@@ -1033,6 +1090,7 @@ internal fun TrackSurface(
     muted: Boolean = false,
     onValue: (Float) -> Unit,
     yieldOnLongPress: Boolean = true,
+    onTrackWidthChanged: ((Float) -> Unit)? = null,
     modifier: Modifier = Modifier,
     baseTrackColor: Color? = null,
     progressFillColor: Color? = null,
@@ -1051,7 +1109,9 @@ internal fun TrackSurface(
         horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         leading()
         BoxWithConstraints(
-            modifier = Modifier.weight(1f).height(48.dp).clip(RoundedCornerShape(20.dp))
+            modifier = Modifier.weight(1f).height(48.dp)
+                .onSizeChanged { onTrackWidthChanged?.invoke(it.width.toFloat()) }
+                .clip(RoundedCornerShape(20.dp))
                 .background(trackColor)
                 .trackGesture(latestValue, range, enabled, latestOnValue, yieldOnLongPress)
                 .semantics {

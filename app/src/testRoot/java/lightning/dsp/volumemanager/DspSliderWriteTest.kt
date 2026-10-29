@@ -16,6 +16,15 @@ class DspSliderWriteTest {
         assertEquals(-1f, tube.value)
     }
 
+    @Test fun draggingHeldEffectUsesSliderWidthAndClampsToItsParameterRange() {
+        assertEquals(12f, DspSliderWrite.dragged("bass", "max_gain", 9f, 25f, 100f,
+            3f..15f, 5f).value)
+        assertEquals(6f, DspSliderWrite.dragged("bass", "max_gain", 9f, -25f, 100f,
+            3f..15f, 5f).value)
+        assertEquals(15f, DspSliderWrite.dragged("bass", "max_gain", 14f, 25f, 100f,
+            3f..15f, 5f).value)
+    }
+
     @Test fun nonFiniteAndOutOfRangeValuesCannotReachEffectPreferences() {
         assertEquals(5f, DspSliderWrite.bounded("bass", "max_gain", Float.NaN, 3f..15f, 5f).value)
         assertEquals(15f, DspSliderWrite.bounded("bass", "max_gain", 99f, 3f..15f, 5f).value)

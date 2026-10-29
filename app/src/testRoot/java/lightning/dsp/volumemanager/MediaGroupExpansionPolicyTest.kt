@@ -6,6 +6,11 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class MediaGroupExpansionPolicyTest {
+    @Test fun managerStartsExpandedWhileFloatingPanelStartsCollapsed() {
+        assertTrue(Policy.initiallyExpanded(false))
+        assertFalse(Policy.initiallyExpanded(true))
+    }
+
     @Test fun defaultAndFullManagerKeepTheOriginalExpansionChevron() {
         assertFalse(Policy.useIconTap(true, false, true, false))
         assertFalse(Policy.useIconTap(false, true, true, false))
@@ -32,6 +37,7 @@ class MediaGroupExpansionPolicyTest {
         val activity = source("volumemanager/ui/LightningDspVolumeManagerActivity")
         val codec = source("volumemanager/backup/VolumeManagerBackupSettings")
         assertTrue(ui.contains("preferences.getBoolean(MediaGroupExpansionPolicy.PREFERENCE_KEY, false)"))
+        assertTrue(ui.contains("mutableStateOf(MediaGroupExpansionPolicy.initiallyExpanded(floatingPanel))"))
         assertTrue(activity.contains("putBoolean(MediaGroupExpansionPolicy.PREFERENCE_KEY, checked)"))
         assertTrue(codec.contains("\"media_icon_hold_expand\""))
         assertTrue(ui.contains("onIconClick = if (stream == AudioManager.STREAM_MUSIC && iconTapExpansion)"))
@@ -41,7 +47,7 @@ class MediaGroupExpansionPolicyTest {
         assertEquals(1, Regex("Modifier.clickable").findAll(ui).count())
         assertTrue(ui.contains("onClick = onIconClick, role = Role.Button"))
         assertFalse(ui.contains("onIconLongClick"))
-        assertFalse(ui.contains("onLongClickLabel"))
+        assertFalse(ui.substringAfter("private fun SystemVolumeControls(").contains("onLongClickLabel"))
         assertTrue(ui.contains("if (stream == AudioManager.STREAM_MUSIC && showExpansionChevron) ExpansionButton()"))
     }
 }

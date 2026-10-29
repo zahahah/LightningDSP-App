@@ -28,6 +28,15 @@ class PostGainPreference(context: Context, attrs: AttributeSet?) : MaterialSeekb
         super.setValue(PostGainRangePolicy.clamp(seekBarValue, extended()))
     }
 
+    override fun refreshFromPreference() {
+        updateBounds()
+        mSeekBarValue = PostGainRangePolicy.clamp(
+            sharedPreferences?.getFloat(key, 0f) ?: 0f,
+            extended(),
+        )
+        notifyChanged()
+    }
+
     fun prepareRangeChange(enabled: Boolean) {
         val preferences = sharedPreferences ?: return
         val stored = preferences.getFloat(key, 0f)

@@ -58,6 +58,17 @@ internal object VolumeProfiles {
         current["profile_name:$newId"] = normalized
         return newId to select(current, newId)
     }
+    fun rename(values: Map<String, *>, profile: String, name: String): Map<String, Any> {
+        val current = initialize(values).toMutableMap()
+        require(list(current).any { it.id == profile }) { "Unknown volume profile" }
+        val normalized = name.trim()
+        require(validate("profile_name:$profile", normalized)) { "Use a profile name with 1–48 characters" }
+        require(list(current).none { it.id != profile && it.name.equals(normalized, ignoreCase = true) }) {
+            "A profile with this name already exists"
+        }
+        current["profile_name:$profile"] = normalized
+        return current
+    }
     fun select(values: Map<String, *>, profile: String): Map<String, Any> {
         val current = initialize(values).toMutableMap()
         require(list(current).any { it.id == profile }) { "Unknown volume profile" }

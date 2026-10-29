@@ -19,6 +19,12 @@ class DspCardPresentationTest {
         val card = File(app, "src/root/java/lightning/dsp/volumemanager/ui/LightningDspVolumeCard.kt").readText()
         assertTrue(card.contains("if (effect.parameter != null && shouldSelectEffectOnHold"))
         assertTrue(card.contains("selectedParameter = effect.parameter"))
+        assertTrue(card.contains("onLongPressDrag = if (floating) effect.parameter?.let"))
+        assertTrue(card.contains("DspSliderWrite.dragged("))
+        assertTrue(card.contains("onTrackWidthChanged = { sliderTrackWidthPx = it }"))
+        assertTrue(card.contains("if (held && change.pressed && deltaX != 0f)"))
+        assertTrue(card.contains("onLongPressDragEnd = if (floating && effect.parameter != null) ({ flushPendingValue() }) else null"))
+        assertTrue(card.contains("if (held) latestHoldDragEnd.value?.invoke()"))
     }
     @Test fun bothTrackRegionsKeepReadableTextInBothThemes() {
         // Actual blue fill and floating neutral/base colors, plus light/dark themed surfaces.
@@ -78,6 +84,15 @@ class DspCardPresentationTest {
         assertTrue(card.contains("end = if (floating) 0.dp else 14.dp"))
     }
 
+    @Test fun floatingIconHoldOpensHomeAfter250msWithoutOpeningAnEffect() {
+        val app = sequenceOf(File("."), File("app")).first { File(it, "src/root/AndroidManifest.xml").isFile }
+        val card = File(app, "src/root/java/lightning/dsp/volumemanager/ui/LightningDspVolumeCard.kt").readText()
+        assertTrue(card.contains("withTimeoutOrNull(250L)"))
+        assertTrue(card.contains("latestOpenHome.value()"))
+        assertTrue(card.contains("Intent(context, MainActivity::class.java)"))
+        assertTrue(card.contains("onLongClick(label = \"Open LightningDSP\")"))
+    }
+
     @Test fun reorderingIsPresentationOnlyAndFloatingLongPressStaysAnEffectAction() {
         val app = sequenceOf(File("."), File("app")).first { File(it, "src/root/AndroidManifest.xml").isFile }
         val card = File(app, "src/root/java/lightning/dsp/volumemanager/ui/LightningDspVolumeCard.kt").readText()
@@ -85,7 +100,7 @@ class DspCardPresentationTest {
         assertTrue(card.contains("VolumeDisplayOrder.move(effectOrder, id, target)"))
         assertTrue(card.contains("modifier = if (floating) Modifier else Modifier"))
         assertTrue(card.contains("onLongClick = if (floating)"))
-        assertTrue(card.contains("selectedParameter = control"))
+        assertTrue(card.contains("selectParameter(control)"))
         assertTrue(card.contains("openEffect(effect)"))
         assertTrue(card.contains("key(effectId)"))
         assertTrue(card.contains("change.consume()"))

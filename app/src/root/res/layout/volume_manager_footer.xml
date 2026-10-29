@@ -3,6 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="@android:color/transparent"
     android:clipChildren="false"
     android:clipToPadding="false">
 
@@ -10,8 +11,9 @@
         android:id="@+id/volume_manager_bottom_bar"
         android:layout_width="match_parent"
         android:layout_height="?attr/actionBarSize"
+        android:stateListAnimator="@null"
         android:layout_gravity="bottom"
-        app:menu="@menu/volume_manager_footer"
+        app:backgroundTint="@android:color/transparent"
         app:fabAlignmentMode="center"
         app:fabAnchorMode="cradle" />
 

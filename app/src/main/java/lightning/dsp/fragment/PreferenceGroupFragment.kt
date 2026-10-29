@@ -10,6 +10,7 @@ import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.annotation.XmlRes
 import androidx.preference.Preference
+import androidx.preference.PreferenceGroup
 import androidx.preference.Preference.SummaryProvider
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.PreferenceScreen
@@ -44,6 +45,7 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
 
     private val listener =
         SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            refreshSeekbarPreferences(preferenceScreen, key)
             if (key == getString(R.string.key_output_extra_postgain)) {
                 findPreference<PostGainPreference>(getString(R.string.key_output_postgain))?.refreshRange()
             }
@@ -207,6 +209,23 @@ class PreferenceGroupFragment : PreferenceFragmentCompat(), KoinComponent {
             isNestedScrollingEnabled = false
 
             this@PreferenceGroupFragment.recyclerView = this
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshSeekbarPreferences(preferenceScreen)
+    }
+
+    private fun refreshSeekbarPreferences(group: PreferenceGroup, key: String? = null) {
+        for (index in 0 until group.preferenceCount) {
+            val preference = group.getPreference(index)
+            when (preference) {
+                is MaterialSeekbarPreference -> if (key == null || preference.key == key) {
+                    preference.refreshFromPreference()
+                }
+                is PreferenceGroup -> refreshSeekbarPreferences(preference, key)
+            }
         }
     }
 

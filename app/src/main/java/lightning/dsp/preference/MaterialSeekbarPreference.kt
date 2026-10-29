@@ -363,7 +363,11 @@ open class MaterialSeekbarPreference : Preference {
         notifyChanged()
     }
 
-    private fun setValueInternal(_seekBarValue: Float, notifyChanged: Boolean) {
+    private fun setValueInternal(
+        _seekBarValue: Float,
+        notifyChanged: Boolean,
+        persist: Boolean = true,
+    ) {
         var seekBarValue = _seekBarValue
         if (seekBarValue < mMin) {
             seekBarValue = mMin
@@ -381,7 +385,7 @@ open class MaterialSeekbarPreference : Preference {
         if (seekBarValue != mSeekBarValue) {
             mSeekBarValue = seekBarValue
             updateLabelValue(mSeekBarValue)
-            persistFloat(seekBarValue)
+            if (persist) persistFloat(seekBarValue)
             if (notifyChanged) {
                 notifyChanged()
             }
@@ -404,6 +408,11 @@ open class MaterialSeekbarPreference : Preference {
      */
     open fun setValue(seekBarValue: Float) {
         setValueInternal(seekBarValue, true)
+    }
+
+    /** Refresh the displayed value after another UI surface updates this preference. */
+    open fun refreshFromPreference() {
+        setValueInternal(getPersistedFloat(mSeekBarValue), notifyChanged = true, persist = false)
     }
 
     /**

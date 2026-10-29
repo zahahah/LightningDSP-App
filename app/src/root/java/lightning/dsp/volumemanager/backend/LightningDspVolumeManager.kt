@@ -277,6 +277,14 @@ object LightningDspVolumeManager {
         }
     }
 
+    fun renameProfile(id: String, name: String): java.util.concurrent.Future<*> {
+        check(::preferences.isInitialized)
+        return worker.submit {
+            writeProfileSettings(VolumeProfiles.rename(preferences.all, id, name))
+            publish()
+        }
+    }
+
     private fun writeProfileSettings(values: Map<String, Any>) {
         val edit = preferences.edit()
         preferences.all.keys.filter { VolumeProfiles.isSetting(it) || VolumeProfiles.isRule(it) }

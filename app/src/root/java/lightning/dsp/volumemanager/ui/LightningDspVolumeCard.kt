@@ -5,6 +5,9 @@ import android.content.SharedPreferences
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.key
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -51,6 +55,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -60,6 +66,7 @@ import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import lightning.dsp.R
 import lightning.dsp.activity.MainActivity
 import lightning.dsp.interop.PostGainRangePolicy
@@ -218,7 +225,10 @@ internal fun LightningDspVolumeCard(onOpenEffect: (() -> Unit)?, floating: Boole
     val initialValue = if (rawValue.isFinite()) rawValue.coerceIn(range.start, range.endInclusive)
         else parameter?.default ?: 0f
     // Unrelated preference changes must not reset a drag that has not been committed yet.
-    var sliderValue by remember(parameter, initialValue) { mutableFloatStateOf(initialValue) }
+    val sliderValueState = remember { mutableFloatStateOf(initialValue) }
+    var sliderValue by sliderValueState
+    LaunchedEffect(parameter, initialValue) { sliderValueState.floatValue = initialValue }
+    var sliderTrackWidthPx by remember { mutableFloatStateOf(1f) }
 
     fun commitValue(write: DspSliderWrite) {
         PreferenceCache.getPreferences(context, write.namespace).edit().putFloat(write.key, write.value).apply()
@@ -234,10 +244,18 @@ internal fun LightningDspVolumeCard(onOpenEffect: (() -> Unit)?, floating: Boole
         }
     }
 
-    fun queueValue(value: Float) {
-        val write = DspSliderWrite.bounded(parameter?.namespace ?: Constants.PREF_OUTPUT,
-            valueKey, value, range, parameter?.default ?: 0f)
-        sliderValue = write.value
+    fun selectParameter(target: DspParameter) {
+        flushPendingValue()
+        selectedParameter = target
+        val preferences = effectPreferences.getValue(target.namespace)
+        val key = context.getString(target.key)
+        val stored = preferences.getFloat(key, target.default)
+        sliderValueState.floatValue = if (stored.isFinite()) stored.coerceIn(target.minimum, target.maximum)
+            else target.default
+    }
+
+    fun queueWrite(write: DspSliderWrite) {
+        sliderValueState.floatValue = write.value
         pendingWrite.value = write
         pendingWrite.job?.cancel()
         pendingWrite.job = scope.launch {
@@ -248,6 +266,13 @@ internal fun LightningDspVolumeCard(onOpenEffect: (() -> Unit)?, floating: Boole
                 commitValue(write)
             }
         }
+    }
+
+    fun queueValue(value: Float, target: DspParameter?) {
+        val targetRange = target?.let { it.minimum..it.maximum } ?: (-postGainLimit..postGainLimit)
+        val targetKey = context.getString(target?.key ?: R.string.key_output_postgain)
+        queueWrite(DspSliderWrite.bounded(target?.namespace ?: Constants.PREF_OUTPUT,
+            targetKey, value, targetRange, target?.default ?: 0f))
     }
 
     val latestCommit = rememberUpdatedState<(DspSliderWrite) -> Unit> { commitValue(it) }
@@ -270,6 +295,13 @@ internal fun LightningDspVolumeCard(onOpenEffect: (() -> Unit)?, floating: Boole
         )
     }
 
+    fun openHome() {
+        onOpenEffect?.invoke()
+        context.startActivity(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
+    }
+    val latestOpenHome = rememberUpdatedState<() -> Unit> { openHome() }
+
     val powered = appPreferences.getBoolean(context.getString(R.string.key_powered_on), true)
     val buttonFill = if (powered) DspBlue else MaterialTheme.colorScheme.outlineVariant
     val buttonContent = if (powered) DspBlueOn else MaterialTheme.colorScheme.onSurfaceVariant
@@ -290,16 +322,37 @@ internal fun LightningDspVolumeCard(onOpenEffect: (() -> Unit)?, floating: Boole
         // A 44dp DSP button needs 10dp inset to share that center without shrinking its hit area.
         Row(modifier = Modifier.padding(start = if (floating) 10.dp else 0.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            val iconAction = if (floating) Modifier.pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown()
+                    val released = withTimeoutOrNull(250L) {
+                        waitForUpOrCancellation() != null
+                    }
+                    when (released) {
+                        true -> { flushPendingValue(); selectedParameter = null; expanded = !expanded }
+                        null -> { flushPendingValue(); latestOpenHome.value(); waitForUpOrCancellation() }
+                        false -> Unit
+                    }
+                }
+            } else Modifier.combinedClickable(
+                onClick = { flushPendingValue(); selectedParameter = null; expanded = !expanded },
+                onLongClick = { flushPendingValue(); selectedParameter = null; expanded = true },
+            )
             Box(
                 modifier = Modifier.size(44.dp).clip(CircleShape).background(buttonFill)
-                    .combinedClickable(
-                        onClick = { flushPendingValue(); selectedParameter = null; expanded = !expanded },
-                        onLongClick = { flushPendingValue(); selectedParameter = null; expanded = true },
-                    )
+                    .then(iconAction)
                     .semantics {
                         contentDescription = "LightningDSP effects"
                         role = Role.Button
                         stateDescription = if (expanded) "Expanded" else "Collapsed"
+                        if (floating) {
+                            onClick(label = "Toggle LightningDSP effects") {
+                                flushPendingValue(); selectedParameter = null; expanded = !expanded; true
+                            }
+                            onLongClick(label = "Open LightningDSP") {
+                                flushPendingValue(); latestOpenHome.value(); true
+                            }
+                        }
                     },
                 contentAlignment = Alignment.Center
             ) {
@@ -319,8 +372,12 @@ internal fun LightningDspVolumeCard(onOpenEffect: (() -> Unit)?, floating: Boole
                 valueLabel = if (parameter?.key == R.string.key_stereowide_mode)
                     String.format(Locale.getDefault(), "%.1f", sliderValue)
                 else String.format(Locale.getDefault(), "%+.1f dB", sliderValue),
-                onValue = ::queueValue,
+                // Capture this composition's selected effect explicitly. A callable reference
+                // with a default nullable target can otherwise route a stale interaction to
+                // the post-gain fallback when the floating card changes its displayed control.
+                onValue = { value -> queueValue(value, parameter) },
                 yieldOnLongPress = false,
+                onTrackWidthChanged = { sliderTrackWidthPx = it },
                 modifier = Modifier.weight(1f),
                 baseTrackColor = baseTrack,
                 progressFillColor = progressTrack,
@@ -392,19 +449,31 @@ internal fun LightningDspVolumeCard(onOpenEffect: (() -> Unit)?, floating: Boole
                                         CustomAccessibilityAction("Move effect left") { moveEffect(effect.id, -1) },
                                         CustomAccessibilityAction("Move effect right") { moveEffect(effect.id, 1) },
                                     )
-                                    stateDescription = if (draggingEffect == effect.id) "Moving"
-                                        else if (effect.parameter != null) "Hold to adjust; drag to reorder"
-                                        else "Hold and drag to reorder"
+                                    stateDescription = when {
+                                        draggingEffect == effect.id -> "Moving"
+                                        floating && effect.parameter != null -> "Hold and slide to adjust"
+                                        effect.parameter != null -> "Hold to adjust; drag to reorder"
+                                        else -> "Hold and drag to reorder"
+                                    }
                                 },
                             onLongClick = if (floating) ({
-                                flushPendingValue()
                                 val control = effect.parameter
-                                if (control != null) {
-                                    selectedParameter = control
-                                } else {
-                                    openEffect(effect)
+                                if (control != null) selectParameter(control) else openEffect(effect)
+                            }) else null,
+                            onLongPressDrag = if (floating) effect.parameter?.let { control ->
+                                { deltaX: Float ->
+                                    queueWrite(DspSliderWrite.dragged(
+                                        control.namespace,
+                                        context.getString(control.key),
+                                        sliderValueState.floatValue,
+                                        deltaX,
+                                        sliderTrackWidthPx,
+                                        control.minimum..control.maximum,
+                                        control.default,
+                                    ))
                                 }
-                            }) else null
+                            } else null,
+                            onLongPressDragEnd = if (floating && effect.parameter != null) ({ flushPendingValue() }) else null
                         )
                     }
                 }
@@ -423,10 +492,55 @@ private fun DspRoundControl(
     power: Boolean = false,
     onClick: () -> Unit,
     onLongClick: (() -> Unit)? = null,
+    onLongPressDrag: ((Float) -> Unit)? = null,
+    onLongPressDragEnd: (() -> Unit)? = null,
 ) {
     val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant
     val fill = if (checked) DspBlue else DspBlue.copy(alpha = 0.24f)
     val content = if (checked) DspBlueOn else inactiveColor
+    val latestClick = rememberUpdatedState(onClick)
+    val latestLongClick = rememberUpdatedState(onLongClick)
+    val latestHoldDrag = rememberUpdatedState(onLongPressDrag)
+    val latestHoldDragEnd = rememberUpdatedState(onLongPressDragEnd)
+    val interactionModifier = if (onLongPressDrag != null) Modifier.pointerInput(Unit) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            var last = down
+            var held = false
+            var moved = false
+            val deadline = down.uptimeMillis + viewConfiguration.longPressTimeoutMillis
+            while (last.pressed) {
+                val remaining = (deadline - last.uptimeMillis).coerceAtLeast(1L)
+                val event = if (held || moved) awaitPointerEvent()
+                    else withTimeoutOrNull(remaining) { awaitPointerEvent() }
+                if (event == null) {
+                    if (!held && !moved) {
+                        held = true
+                        latestLongClick.value?.invoke()
+                    }
+                    continue
+                }
+                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                val totalX = change.position.x - down.position.x
+                val totalY = change.position.y - down.position.y
+                if (!held && (abs(totalX) > viewConfiguration.touchSlop || abs(totalY) > viewConfiguration.touchSlop)) {
+                    moved = true
+                }
+                if (!held && !moved && change.uptimeMillis >= deadline) {
+                    held = true
+                    latestLongClick.value?.invoke()
+                }
+                val deltaX = change.position.x - last.position.x
+                if (held && change.pressed && deltaX != 0f) {
+                    change.consume()
+                    latestHoldDrag.value?.invoke(deltaX)
+                }
+                last = change
+            }
+            if (held) latestHoldDragEnd.value?.invoke()
+            else if (!moved && !last.pressed) latestClick.value()
+        }
+    } else Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)
     Column(
         modifier = Modifier.width(58.dp).then(modifier),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -434,11 +548,17 @@ private fun DspRoundControl(
     ) {
         Box(
             modifier = Modifier.size(42.dp).clip(CircleShape).background(fill)
-                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                .then(interactionModifier)
                 .semantics {
                     contentDescription = title
                     role = Role.Switch
                     stateDescription = if (checked) "On" else "Off"
+                    if (onLongPressDrag != null) {
+                        onClick(label = "Toggle $title") { latestClick.value(); true }
+                        customActions = listOf(CustomAccessibilityAction("Select $title intensity") {
+                            latestLongClick.value?.invoke(); true
+                        })
+                    }
                 },
             contentAlignment = Alignment.Center
         ) {

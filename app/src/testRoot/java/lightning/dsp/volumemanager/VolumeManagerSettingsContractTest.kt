@@ -156,7 +156,7 @@ class VolumeManagerSettingsContractTest {
         assertTrue(composeUi.contains("key == \"hide_system_apps\" -> hideSystemApps"))
         assertTrue(composeUi.contains("(!hideSystemApps || !it.systemApp)"))
         assertTrue(systemControlsItem >= 0 && systemControlsItem < searchItem)
-        assertTrue(composeUi.contains("Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End)"))
+        assertTrue(composeUi.contains("Modifier.fillMaxWidth().height(56.dp),\n                                verticalAlignment = Alignment.CenterVertically"))
         assertFalse(composeUi.contains("AppCatalogFilters"))
         assertFalse(floatingPanel.contains("Icons.Default.Search"))
         assertFalse(floatingPanel.contains("AppSearchField"))
