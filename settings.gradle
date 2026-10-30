@@ -11,10 +11,14 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         maven { url "https://jitpack.io" }
+        maven {
+            url "https://api.xposed.info/"
+            content { includeGroup("de.robv.android.xposed") }
+        }
     }
 }
 
-rootProject.name = "RootlessJamesDSP"
+rootProject.name = "RootlessLightningDSP"
 include ':app'
 include ':codeview'
 include ':hidden-api-stubs'

@@ -1,8 +1,8 @@
-Gebruik JamesDSP als een systeem-brede audio-verwerkings engine zonder root-toegang.
+Gebruik LightningDSP als een systeem-brede audio-verwerkings engine zonder root-toegang.
 
 Deze app heeft verschillende beperkingen die mogelijk deal-breakend kunnen zijn voor sommige personen; lees dit hele document door voordat u de app gebruikt. Shizuku (Android 11+) of ADB toegang via een computer is vereist voor de initiële installatie.
 
-JamesDSP ondersteunt de volgende audio-effecten:
+LightningDSP ondersteunt de volgende audio-effecten:
 * Limiter regeling
 * Output versterking regeling
 * Automatische dynamische range compressor

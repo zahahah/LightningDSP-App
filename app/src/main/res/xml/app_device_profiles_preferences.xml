@@ -3,7 +3,7 @@
     <PreferenceCategory
         app:title="@string/profiles_section_header"
         app:iconSpaceReserved="false">
-        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSwitchPreference
+        <lightning.dsp.preference.MaterialSwitchPreference
             android:key="@string/key_device_profiles_enable"
             android:defaultValue="@bool/default_device_profiles_enable"
             android:title="@string/profiles_enable"

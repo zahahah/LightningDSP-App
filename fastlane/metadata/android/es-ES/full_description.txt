@@ -2,7 +2,7 @@ Utilice James DSP como un motor de procesamiento de audio para todo el sistema s
 
 Esta aplicación tiene varias limitaciones que pueden resultar incómodas para algunas personas; por favor, lea todo este documento antes de usar la aplicación. El acceso a Shizuku (Android 11+) o ADB a través de una PC es necesario para la configuración inicial.
 
-JamesDSP soporta los siguientes efectos de audio:
+LightningDSP soporta los siguientes efectos de audio:
 * Control de límites
 * Control de la salida
 * Compresor del rango dinámico automático

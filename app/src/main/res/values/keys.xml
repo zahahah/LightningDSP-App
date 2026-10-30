@@ -36,7 +36,6 @@
     <string name="key_session_app_problem_ignore" translatable="false">session_app_problem_ignore</string>
     <string name="key_exclude_app_from_recents" translatable="false">exclude_app_from_recents</string>
     <string name="key_autostart_prompt_at_boot" translatable="false">autostart_prompt_at_boot</string>
-    <string name="key_volume_manager_integration_api" translatable="false">volume_manager_integration_api</string>
     <string name="key_powersave_suspend" translatable="false">powersave_suspend</string>
     <string name="key_audioformat_encoding" translatable="false">audioformat_encoding</string>
     <string name="key_audioformat_buffersize" translatable="false">audioformat_buffersize</string>
@@ -132,4 +131,5 @@
     <string name="key_limiter_threshold" translatable="false">limiter_threshold</string>
     <string name="key_limiter_release" translatable="false">limiter_release</string>
     <string name="key_output_postgain" translatable="false">output_postgain</string>
+    <string name="key_output_extra_postgain" translatable="false">output_extra_postgain</string>
 </resources>

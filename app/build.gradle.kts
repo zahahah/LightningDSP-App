@@ -1,11 +1,8 @@
-import com.google.firebase.crashlytics.buildtools.gradle.CrashlyticsExtension
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+    id("org.jetbrains.kotlin.plugin.compose")
     id("kotlin-kapt")
-    id("com.google.gms.google-services")
-    id("com.google.firebase.crashlytics")
     id("com.google.devtools.ksp") version AndroidConfig.kspVersion
     id("dev.rikka.tools.refine") version AndroidConfig.rikkaRefineVersion
     id("org.jetbrains.kotlin.plugin.serialization") version "2.1.0"
@@ -15,14 +12,14 @@ android {
 
     val SUPPORTED_ABIS = setOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
     compileSdk = AndroidConfig.compileSdk
-    project.setProperty("archivesBaseName", "RootlessJamesDSP-v${AndroidConfig.versionName}")
+    project.setProperty("archivesBaseName", "RootlessLightningDSP-v${AndroidConfig.versionName}")
 
     defaultConfig {
         targetSdk = AndroidConfig.targetSdk
         versionCode = AndroidConfig.versionCode
         versionName = AndroidConfig.versionName
 
-        manifestPlaceholders["label"] = "RootlessJamesDSP"
+        manifestPlaceholders["label"] = "RootlessLightningDSP"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -48,22 +45,18 @@ android {
         getByName("debug") {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-${getCommitCount()}"
-            manifestPlaceholders["crashlyticsCollectionEnabled"] = "false"
         }
         getByName("release") {
-            manifestPlaceholders += mapOf("crashlyticsCollectionEnabled" to "true")
-            configure<CrashlyticsExtension> {
-                nativeSymbolUploadEnabled = true
-                mappingFileUploadEnabled = false
-            }
-
             //proguardFiles("proguard-android-optimize.txt", "proguard-rules.pro")
             isMinifyEnabled = false
             isShrinkResources = false
-            signingConfig = signingConfigs.getByName("debug")
+            // Release artifacts must be signed separately with the authorized owner key.
+            signingConfig = null
         }
         create("preview") {
             initWith(getByName("release"))
+            // Installable CI previews use development identity, never the owner release key.
+            signingConfig = signingConfigs.getByName("debug")
             buildConfigField("boolean", "PREVIEW", "true")
 
             val debugType = getByName("debug")
@@ -78,7 +71,6 @@ android {
         create("fdroid") {
             dimension = "dependencies"
             buildConfigField("boolean", "FOSS_ONLY", "true")
-            android.defaultConfig.externalNativeBuild.cmake.arguments += "-DNO_CRASHLYTICS=1"
         }
         create("full") {
             dimension = "dependencies"
@@ -88,7 +80,7 @@ android {
         create("rootless") {
             dimension = "version"
 
-            manifestPlaceholders["label"] = "RootlessJamesDSP"
+            manifestPlaceholders["label"] = "RootlessLightningDSP"
             applicationId = "me.timschneeberger.rootlessjamesdsp"
             AndroidConfig.minSdk = 29
             minSdk = AndroidConfig.minSdk
@@ -98,10 +90,10 @@ android {
         create("root") {
             dimension = "version"
 
-            manifestPlaceholders["label"] = "JamesDSP"
-            project.setProperty("archivesBaseName", "JamesDSP-v${AndroidConfig.versionName}-${AndroidConfig.versionCode + 4}")
-            applicationId = "james.dsp"
-            // Bump the root integration build so the module can update the bundled v1.6.15 app in place.
+            manifestPlaceholders["label"] = "LightningDSP"
+            project.setProperty("archivesBaseName", "LightningDSP-v${AndroidConfig.versionName}-${AndroidConfig.versionCode + 4}")
+            applicationId = "com.lightning.dsp"
+            // Root package identity changed; this version applies only to the new package.
             versionCode = AndroidConfig.versionCode + 4
             versionName = AndroidConfig.versionName
             AndroidConfig.minSdk = 26
@@ -151,8 +143,9 @@ android {
 
     buildFeatures {
         viewBinding = true
+        compose = true
         // Disable unused features
-        // The root flavor consumes LightningDSP's optional jdsp.control Binder API.
+        // The root flavor consumes LightningDSP's optional ldsp.control Binder API.
         aidl = true
         renderScript = false
         shaders = false
@@ -164,21 +157,25 @@ android {
             version = "3.22.1"
         }
     }
-    namespace = "me.timschneeberger.rootlessjamesdsp"
-}
-
-// Hooks to upload native symbols to crashlytics automatically
-afterEvaluate {
-    getTasksByName("bundleRootlessFullRelease", false).firstOrNull()?.finalizedBy("uploadCrashlyticsSymbolFileRootlessFullRelease")
-    getTasksByName("bundleRootFullRelease", false).firstOrNull()?.finalizedBy("uploadCrashlyticsSymbolFileRootFullRelease")
-    getTasksByName("assembleRootlessFullRelease", false).firstOrNull()?.finalizedBy("uploadCrashlyticsSymbolFileRootlessFullRelease")
-    getTasksByName("assembleRootFullRelease", false).firstOrNull()?.finalizedBy("uploadCrashlyticsSymbolFileRootFullRelease")
-
-    getTasksByName("assembleRootlessFullPreview", false).firstOrNull()?.finalizedBy("uploadCrashlyticsSymbolFileRootlessFullRelease")
-    getTasksByName("assembleRootFullPreview", false).firstOrNull()?.finalizedBy("uploadCrashlyticsSymbolFileRootFullRelease")
+    namespace = "lightning.dsp"
 }
 
 dependencies {
+    add("rootCompileOnly", "de.robv.android.xposed:api:82")
+    // Compose is scoped to the root Volume Manager UI; other flavors keep their existing screens.
+    "rootImplementation"(platform("androidx.compose:compose-bom:2024.12.01"))
+    "rootImplementation"("androidx.activity:activity-compose:1.10.0")
+    "rootImplementation"("androidx.compose.ui:ui")
+    "rootImplementation"("androidx.compose.foundation:foundation")
+    "rootImplementation"("androidx.compose.material3:material3")
+    "rootImplementation"("androidx.compose.material:material-icons-extended")
+    // Compose is enabled at the Android module level, so keep its compiler runtime on
+    // the non-root compile classpaths without packaging the UI libraries in those APKs.
+    "rootlessCompileOnly"(platform("androidx.compose:compose-bom:2024.12.01"))
+    "rootlessCompileOnly"("androidx.compose.runtime:runtime")
+    "pluginCompileOnly"(platform("androidx.compose:compose-bom:2024.12.01"))
+    "pluginCompileOnly"("androidx.compose.runtime:runtime")
+
     // Kotlin extensions
     implementation("org.jetbrains.kotlin:kotlin-reflect:2.0.20")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
@@ -205,12 +202,6 @@ dependencies {
     implementation("io.insert-koin:koin-android:3.3.3")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")
-
-    // Firebase
-    "fullImplementation"(platform("com.google.firebase:firebase-bom:33.7.0"))
-    "fullImplementation"("com.google.firebase:firebase-analytics-ktx")
-    "fullImplementation"("com.google.firebase:firebase-crashlytics-ktx")
-    "fullImplementation"("com.google.firebase:firebase-crashlytics-ndk")
 
     // Web API client
     implementation("com.google.code.gson:gson:2.11.0")

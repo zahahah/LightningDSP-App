@@ -1,0 +1,7 @@
+<resources>
+    <string name="ldsp_vm_settings_behavior">Comportamento do gerenciador</string>
+    <string name="ldsp_vm_settings_app_list">Lista de apps</string>
+    <string name="ldsp_vm_settings_dsp_card">Card LightningDSP</string>
+    <string name="ldsp_vm_settings_floating_controls">Controles do painel flutuante</string>
+    <string name="ldsp_vm_monochrome_dsp_bar">Ativar barra LightningDSP monocromática</string>
+</resources>

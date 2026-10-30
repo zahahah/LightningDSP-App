@@ -1,0 +1,5 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="ldsp_vm_enable_manager" tools:ignore="MissingTranslation">Enable Volume Manager</string>
+    <string name="ldsp_vm_disable_manager" tools:ignore="MissingTranslation">Disable Volume Manager</string>
+    <string name="ldsp_vm_open_floating_footer" tools:ignore="MissingTranslation">Open floating mixer</string>
+</resources>

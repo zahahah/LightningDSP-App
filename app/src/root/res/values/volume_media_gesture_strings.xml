@@ -1,0 +1,4 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="ldsp_vm_media_icon_tap_expand" tools:ignore="MissingTranslation">Tap Media icon to expand or collapse floating volumes</string>
+    <string name="ldsp_vm_toggle_volumes" tools:ignore="MissingTranslation">Expand or collapse other volumes</string>
+</resources>

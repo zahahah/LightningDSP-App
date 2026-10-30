@@ -35,7 +35,7 @@ jobs:
       - name: Upload preview APK
         uses: actions/upload-artifact@v4
         with:
-          name: jamesdsp-${{ matrix.flavor }}-preview
+          name: lightningdsp-${{ matrix.flavor }}-preview
           path: app/build/outputs/apk/${{ matrix.flavor == 'Root' && 'root' || 'rootless' }}Full/preview/*.apk
           if-no-files-found: error
           retention-days: 14

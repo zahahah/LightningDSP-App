@@ -1,0 +1,4 @@
+<resources>
+    <string name="ldsp_vm_media_icon_tap_expand">Tocar no ícone de mídia para expandir ou recolher volumes flutuantes</string>
+    <string name="ldsp_vm_toggle_volumes">Expandir ou recolher outros volumes</string>
+</resources>

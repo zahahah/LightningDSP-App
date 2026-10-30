@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
-    <me.timschneeberger.rootlessjamesdsp.preference.SwitchPreferenceGroup
+    <lightning.dsp.preference.SwitchPreferenceGroup
         android:key="@string/key_convolver_enable"
         android:disableDependentsState="false"
         android:title="@string/convolver_enable"
         android:icon="@drawable/ic_baseline_waveform_24dp"
         app:iconSpaceReserved="false">
-        <me.timschneeberger.rootlessjamesdsp.preference.FileLibraryPreference
+        <lightning.dsp.preference.FileLibraryPreference
             android:title="@string/convolver_impulse"
             android:key="@string/key_convolver_file"
             android:defaultValue=""
@@ -32,5 +32,5 @@
             android:inputType="textMultiLine"
             app:useSimpleSummaryProvider="true"
             app:iconSpaceReserved="false"/>
-    </me.timschneeberger.rootlessjamesdsp.preference.SwitchPreferenceGroup>
+    </lightning.dsp.preference.SwitchPreferenceGroup>
 </PreferenceScreen>

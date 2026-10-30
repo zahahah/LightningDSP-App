@@ -26,6 +26,6 @@
             android:layout_height="wrap_content"
             android:gravity="center"
             android:textAppearance="?attr/textAppearanceHeadline5"
-            tools:text="JamesDSP" />
+            tools:text="LightningDSP" />
     </LinearLayout>
 </LinearLayout>

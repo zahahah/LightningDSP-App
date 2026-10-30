@@ -1,1 +1,1 @@
-Mecanismo de processamento de áudio JamesDSP para dispositivos Android sem root.
+Mecanismo de processamento de áudio LightningDSP para dispositivos Android sem root.

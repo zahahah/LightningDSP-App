@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
-    <me.timschneeberger.rootlessjamesdsp.preference.SwitchPreferenceGroup
+    <lightning.dsp.preference.SwitchPreferenceGroup
         android:disableDependentsState="false"
         android:key="@string/key_eq_enable"
         android:title="@string/eq_enable"
@@ -25,11 +25,11 @@
             android:key="@string/key_eq_interpolation"
             app:useSimpleSummaryProvider="true"
             app:iconSpaceReserved="false"/>
-        <me.timschneeberger.rootlessjamesdsp.preference.EqualizerPreference
+        <lightning.dsp.preference.EqualizerPreference
             android:key="@string/key_eq_bands"
             android:defaultValue="25.0;40.0;63.0;100.0;160.0;250.0;400.0;630.0;1000.0;1600.0;2500.0;4000.0;6300.0;10000.0;16000.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0;0.0"
             android:entries="@array/equalizer_preset_modes"
             android:entryValues="@array/equalizer_preset_values"
             app:iconSpaceReserved="false"/>
-    </me.timschneeberger.rootlessjamesdsp.preference.SwitchPreferenceGroup>
+    </lightning.dsp.preference.SwitchPreferenceGroup>
 </PreferenceScreen>

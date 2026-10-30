@@ -82,7 +82,7 @@
                 android:layout_height="40dp"
                 android:layout_below="@id/file_name_text">
 
-                <me.timschneeberger.rootlessjamesdsp.editor.widget.SymbolInputView
+                <lightning.dsp.editor.widget.SymbolInputView
                     android:id="@+id/symbolInput"
                     android:layout_width="wrap_content"
                     android:layout_height="40dp"

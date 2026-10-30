@@ -1,0 +1,8 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <color name="ldsp_vm_control_blue">#347FB6</color>
+    <style name="ThemeOverlay.LightningDSP.VolumeSettings" parent="">
+        <item name="colorPrimary">@color/ldsp_vm_control_blue</item>
+        <item name="colorOnPrimary">@android:color/white</item>
+    </style>
+    <string name="ldsp_vm_floating_theme_section" tools:ignore="MissingTranslation">Floating Panel Theme:</string>
+</resources>

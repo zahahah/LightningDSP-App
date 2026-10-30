@@ -5,9 +5,55 @@
     <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" tools:targetApi="upside_down_cake" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" tools:targetApi="upside_down_cake" />
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
 
     <application
         tools:node="merge">
+        <meta-data android:name="xposedmodule" android:value="true" />
+        <meta-data android:name="xposeddescription" android:value="LightningDSP optional Disable Audio Focus" />
+        <meta-data android:name="xposedminversion" android:value="83" />
+        <meta-data android:name="xposedscope" android:value="android" />
+        <activity
+            android:name="lightning.dsp.volumemanager.ui.LightningDspVolumeManagerActivity"
+            android:exported="false" />
+        <!-- Override the existing historical component, not a second DSP service. -->
+        <service
+            android:name="me.timschneeberger.rootlessjamesdsp.service.RootAudioProcessorService"
+            android:foregroundServiceType="mediaPlayback|specialUse"
+            tools:replace="android:foregroundServiceType"
+            tools:targetApi="upside_down_cake">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Root audio effect lifecycle and opted-in audio processing" />
+        </service>
+        <service
+            android:name="lightning.dsp.volumemanager.backend.LightningDspVolumeService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            tools:targetApi="upside_down_cake">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Opt-in per-app audio volume management" />
+        </service>
+        <service
+            android:name="lightning.dsp.volumemanager.ui.LightningVolumeAccessibilityService"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/lightning_volume_accessibility" />
+        </service>
+        <receiver
+            android:name="lightning.dsp.volumemanager.backend.LightningDspVolumeStartupReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
         <service
             android:name="me.timschneeberger.rootlessjamesdsp.flavor.updates.SessionInstallerService"
             android:exported="false" />

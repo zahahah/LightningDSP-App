@@ -3,9 +3,11 @@ on:
   pull_request:
     branches:
       - master
+      - ldsp-rebrand
   push:
     branches:
       - master
+      - ldsp-rebrand
     tags:
       - v*
 
@@ -46,6 +48,12 @@ jobs:
         with:
           java-version: 17
           distribution: adopt
+
+      - name: Test root integration and preserve plugin compilation
+        if: matrix.flavor == 'Root'
+        uses: gradle/gradle-command-action@v2
+        with:
+          arguments: :app:testRootFullReleaseUnitTest :app:compilePluginFullReleaseKotlin
 
       - name: Build release app
         if: startsWith(github.ref, 'refs/tags/')
@@ -91,38 +99,38 @@ jobs:
         run: |
           set -e
           ls -l app/build/outputs/apk/${{ steps.flavor.outputs.lowercase }}Full/${{ env.BUILD_TYPE }}
-          rename -v 's/-unsigned-signed//g' app/build/outputs/apk/${{ steps.flavor.outputs.lowercase }}Full/${{ env.BUILD_TYPE }}/*.apk
+          rename -v 's/-unsigned-signed/-signed/g' app/build/outputs/apk/${{ steps.flavor.outputs.lowercase }}Full/${{ env.BUILD_TYPE }}/*.apk
           rm -f app/build/outputs/apk/${{ steps.flavor.outputs.lowercase }}Full/${{ env.BUILD_TYPE }}/*unsigned*.apk || true
           ls -l app/build/outputs/apk/${{ steps.flavor.outputs.lowercase }}Full/${{ env.BUILD_TYPE }}
 
       - name: Upload build artifact (universal)
         uses: actions/upload-artifact@v4
         with:
-          name: "${{ matrix.flavor }}JamesDSP-universal-preview_apk"
+          name: "${{ matrix.flavor }}LightningDSP-universal-preview_apk"
           path: app/build/outputs/apk/${{ steps.flavor.outputs.lowercase }}Full/${{ env.BUILD_TYPE }}/*universal-${{ env.BUILD_TYPE }}-signed.apk
 
       - name: Upload build artifact (x86)
         uses: actions/upload-artifact@v4
         with:
-          name: "${{ matrix.flavor }}JamesDSP-x86-preview_apk"
+          name: "${{ matrix.flavor }}LightningDSP-x86-preview_apk"
           path: app/build/outputs/apk/${{ steps.flavor.outputs.lowercase }}Full/${{ env.BUILD_TYPE }}/*x86-${{ env.BUILD_TYPE }}-signed.apk
           
       - name: Upload build artifact (x86_64)
         uses: actions/upload-artifact@v4
         with:
-          name: "${{ matrix.flavor }}JamesDSP-x86_64-preview_apk"
+          name: "${{ matrix.flavor }}LightningDSP-x86_64-preview_apk"
           path: app/build/outputs/apk/${{ steps.flavor.outputs.lowercase }}Full/${{ env.BUILD_TYPE }}/*x86_64-${{ env.BUILD_TYPE }}-signed.apk
           
       - name: Upload build artifact (armeabi-v7a)
         uses: actions/upload-artifact@v4
         with:
-          name: "${{ matrix.flavor }}JamesDSP-armeabi-v7a-preview_apk"
+          name: "${{ matrix.flavor }}LightningDSP-armeabi-v7a-preview_apk"
           path: app/build/outputs/apk/${{ steps.flavor.outputs.lowercase }}Full/${{ env.BUILD_TYPE }}/*armeabi-v7a-${{ env.BUILD_TYPE }}-signed.apk
                
       - name: Upload build artifact (arm64-v8a)
         uses: actions/upload-artifact@v4
         with:
-          name: "${{ matrix.flavor }}JamesDSP-arm64-v8a-preview_apk"
+          name: "${{ matrix.flavor }}LightningDSP-arm64-v8a-preview_apk"
           path: app/build/outputs/apk/${{ steps.flavor.outputs.lowercase }}Full/${{ env.BUILD_TYPE }}/*arm64-v8a-${{ env.BUILD_TYPE }}-signed.apk
        
       - name: Deploy root flavor APKs to the server
@@ -137,7 +145,8 @@ jobs:
             sftpArgs: '-o ConnectTimeout=5'
        
       - name: Changelog
-        if: startsWith(github.ref, 'refs/tags/')
+        # Only the upstream release job consumes this generated changelog.
+        if: startsWith(github.ref, 'refs/tags/') && github.repository == 'timschneeb/RootlessJamesDSP'
         uses: ardalanamini/auto-changelog@v3
         id: changelog
         with:
@@ -158,7 +167,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ env.VERSION_TAG }}
-          name: RootlessJamesDSP ${{ env.VERSION_TAG }}
+          name: RootlessLightningDSP ${{ env.VERSION_TAG }}
           body: "${{ steps.changelog.outputs.changelog }} &#x20; ${{ steps.changelog_post.outputs.contents }}"
           #files: |
           #   app/build/outputs/apk/rootlessFull/${{ env.BUILD_TYPE }}/*-signed.apk

@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
-    <me.timschneeberger.rootlessjamesdsp.preference.SwitchPreferenceGroup
+    <lightning.dsp.preference.SwitchPreferenceGroup
         android:key="@string/key_stereowide_enable"
         android:disableDependentsState="false"
         android:title="@string/stereowide_enable"
         android:icon="@drawable/ic_baseline_cone_24dp"
         app:iconSpaceReserved="false">
-        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
+        <lightning.dsp.preference.MaterialSeekbarPreference
             android:title="@string/stereowide_level"
             android:key="@string/key_stereowide_mode"
             android:defaultValue="60"
@@ -17,5 +17,5 @@
             app:updatesContinuously="true"
             app:showSeekBarValue="true"
             app:iconSpaceReserved="false"/>
-    </me.timschneeberger.rootlessjamesdsp.preference.SwitchPreferenceGroup>
+    </lightning.dsp.preference.SwitchPreferenceGroup>
 </PreferenceScreen>

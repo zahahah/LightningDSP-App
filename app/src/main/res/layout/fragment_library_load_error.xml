@@ -31,7 +31,7 @@
                 android:textAppearance="?attr/textAppearanceHeadline5" />
 
 
-            <me.timschneeberger.rootlessjamesdsp.view.Card
+            <lightning.dsp.view.Card
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 app:cardBackground="?attr/colorErrorContainer"
@@ -46,7 +46,7 @@
                 android:layout_gravity="center"
                 android:text="@string/load_fail_retry" />
 
-            <me.timschneeberger.rootlessjamesdsp.view.Card
+            <lightning.dsp.view.Card
                 android:id="@+id/architectureNotice"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -54,7 +54,7 @@
                 app:bodyText="@string/load_fail_arch_card"
                 app:cardMargin="8dp"/>
 
-            <me.timschneeberger.rootlessjamesdsp.view.Card
+            <lightning.dsp.view.Card
                 android:id="@+id/rootlessNotice"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"

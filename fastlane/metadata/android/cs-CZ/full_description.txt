@@ -1,8 +1,8 @@
-Používejte JamesDSP jako celosystémový nástroj pro zpracování zvuku bez jakéhokoli root přístupu.
+Používejte LightningDSP jako celosystémový nástroj pro zpracování zvuku bez jakéhokoli root přístupu.
 
 Tato aplikace má několik omezení, která mohou být pro některé lidi zásadní a rozhodující; přečtěte si prosím celý tento dokument před použitím aplikace. Pro počáteční nastavení je vyžadován přístup Shizuku (Android 11+) nebo ADB přes počítač.
 
-JamesDSP podporuje následující zvukové efekty:
+LightningDSP podporuje následující zvukové efekty:
 * Ovládání omezovače
 * Kontrola zesílení výstupu
 * Automatický kompresor dynamického rozsahu

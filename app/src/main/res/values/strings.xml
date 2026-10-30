@@ -1,5 +1,5 @@
 <resources>
-    <string name="jamesdsp" translatable="false">JamesDSP</string>
+    <string name="lightningdsp" translatable="false">LightningDSP</string>
 
     <!-- Main menu bar -->
     <string name="action_settings">Settings</string>
@@ -25,24 +25,24 @@
     <string name="notification_idle">Audio processing idle</string>
     <string name="notification_processing_title">Audio processing active</string>
     <string name="notification_processing_disabled_title">Audio processing disabled</string>
-    <string name="notification_processing_legacy">Tap to open JamesDSP manager</string>
+    <string name="notification_processing_legacy">Tap to open LightningDSP manager</string>
 
     <!-- Permission request notifications -->
-    <string name="notification_request_permission_title">User action is required to launch JamesDSP</string>
-    <string name="notification_request_permission">Tap to grant capture permission and enable JamesDSP\'s audio processing</string>
+    <string name="notification_request_permission_title">User action is required to launch LightningDSP</string>
+    <string name="notification_request_permission">Tap to grant capture permission and enable LightningDSP\'s audio processing</string>
 
     <!-- Session control loss notifications -->
-    <string name="session_control_loss_toast">JamesDSP stopped due to audio session control loss. Please disable other audio effect apps.</string>
-    <string name="session_control_loss_notification_title">Audio processing stopped. Another app is interfering with JamesDSP.</string>
-    <string name="session_control_loss_notification">Please disable all other apps that provide global audio effects before re-enabling JamesDSP.</string>
+    <string name="session_control_loss_toast">LightningDSP stopped due to audio session control loss. Please disable other audio effect apps.</string>
+    <string name="session_control_loss_notification_title">Audio processing stopped. Another app is interfering with LightningDSP.</string>
+    <string name="session_control_loss_notification">Please disable all other apps that provide global audio effects before re-enabling LightningDSP.</string>
 
     <!-- App compatibility issue notifications -->
-    <string name="session_app_compat_toast">JamesDSP stopped due to incompatible media app. Please check the notification to resolve this problem.</string>
-    <string name="session_app_compat_notification_title">Audio processing stopped. Another app is interfering with JamesDSP.</string>
+    <string name="session_app_compat_toast">LightningDSP stopped due to incompatible media app. Please check the notification to resolve this problem.</string>
+    <string name="session_app_compat_notification_title">Audio processing stopped. Another app is interfering with LightningDSP.</string>
     <string name="session_app_compat_notification">Tap this notification to resolve the problem.</string>
 
     <!-- Capture permission revoked notifications -->
-    <string name="capture_permission_revoked_toast">JamesDSP has been stopped because the audio capture permission was revoked.</string>
+    <string name="capture_permission_revoked_toast">LightningDSP has been stopped because the audio capture permission was revoked.</string>
 
     <!-- General purpose -->
     <string name="install">Install</string>
@@ -190,7 +190,7 @@
     <string name="onboarding_back">Back</string>
     <string name="onboarding_next">Next</string>
     <string name="onboarding_finish">Finish</string>
-    <string name="onboarding_greeting">Welcome to RootlessJamesDSP!</string>
+    <string name="onboarding_greeting">Welcome to LightningDSP!</string>
     <string name="onboarding_caption">This assistant will help you to set-up this app.</string>
     <string name="onboarding_warning">Currently, this application is unfinished and unstable. Please note that it may not work on some devices as expected since it uses Android APIs not designed for use by third parties.</string>
     <string name="onboarding_fix_permissions_title">User action required</string>
@@ -254,14 +254,14 @@
     <string name="onboarding_perm_microphone_title">Audio recording permission</string>
     <string name="onboarding_perm_microphone_caption">Required to record internal audio. The hardware microphone is not activated.</string>
     <string name="onboarding_perm_notification_title">Notification permission</string>
-    <string name="onboarding_perm_notification_caption">Required to receive important status updates and information about JamesDSP\'s processing state.</string>
+    <string name="onboarding_perm_notification_caption">Required to receive important status updates and information about LightningDSP\'s processing state.</string>
     <string name="onboarding_perm_cast_title">Cast/recording permission</string>
     <string name="onboarding_perm_cast_caption">You need to explicitly grant this app permission to record audio content every time it launches.</string>
     <string name="onboarding_perm_missing_title">Runtime permissions not granted</string>
     <string name="onboarding_perm_missing">Please grant all requested runtime permissions to continue.\nIf you repeatedly denied the permissions, you need to grant them manually in the system settings.</string>
     <string name="onboarding_perm_diag">Allow sending diagnostic reports</string>
     <string name="onboarding_perm_diag_caption">This app submits crash reports and other diagnostic data, including information about other active applications, to allow me to detect and solve compatibility issues and bugs easier.</string>
-    <string name="onboarding_finish_header">JamesDSP is set-up!</string>
+    <string name="onboarding_finish_header">LightningDSP is set-up!</string>
     <string name="onboarding_finish_caption">If you encounter any issues, please visit the troubleshooting options.</string>
 
     <string name="limit_session_control_conflict_title">Disable other audio effect apps</string>
@@ -269,7 +269,7 @@
     <string name="limit_unsupported_apps_title">Unsupported media apps</string>
     <string name="limit_unsupported_apps">Apps blocking internal audio capture remain unprocessed (e.g., Spotify, Google Chrome).</string>
     <string name="limit_hw_accel_title">HW-accelerated audio playback issues</string>
-    <string name="limit_hw_accel">HW-accelerated audio playback (fast tracks) may sometimes cause duplicated audio or kill JamesDSP in some circumstances. Please add the affected music player to the excluded apps list to prevent JamesDSP from re-routing it.</string>
+    <string name="limit_hw_accel">HW-accelerated audio playback (fast tracks) may sometimes cause duplicated audio or kill LightningDSP in some circumstances. Please add the affected music player to the excluded apps list to prevent LightningDSP from re-routing it.</string>
     <string name="limit_detect_delay_title">Audio session detection delay</string>
     <string name="limit_detect_delay"><![CDATA[After an app has opened a new media session to playback audio, you may hear duplicated or cut-off audio for a very short period (about <250ms).]]></string>
     <string name="limit_latency_title">Increased latency</string>
@@ -306,7 +306,7 @@
     <string name="audio_format_enhanced_processing_off">Media session scanning disabled</string>
     <string name="audio_format_enhanced_processing_info_title">About media session scanning</string>
     <string name="audio_format_enhanced_processing_info">Tap to view documentation</string>
-    <string name="audio_format_enhanced_processing_info_content">When media session scanning is enabled, JamesDSP actively discovers playback sessions. You can also exclude specific apps from processing using the 3-dot menu in the bottom-right corner and selecting \'Excluded apps\'.\n\nWhen Global mode is disabled, JamesDSP relies on media apps to send a system broadcast when they start playback. Each app gets its own JamesDSP effect engine, which allows for more fine-grained control. When Global mode is enabled, all apps share one processing engine attached to session 0.\n\nSome media apps do not send session broadcasts correctly. Media session scanning helps JamesDSP find those sessions and improves compatibility when Global mode is disabled.</string>
+    <string name="audio_format_enhanced_processing_info_content">When media session scanning is enabled, LightningDSP actively discovers playback sessions. You can also exclude specific apps from processing using the 3-dot menu in the bottom-right corner and selecting \'Excluded apps\'.\n\nWhen Global mode is disabled, LightningDSP relies on media apps to send a system broadcast when they start playback. Each app gets its own LightningDSP effect engine, which allows for more fine-grained control. When Global mode is enabled, all apps share one processing engine attached to session 0.\n\nSome media apps do not send session broadcasts correctly. Media session scanning helps LightningDSP find those sessions and improves compatibility when Global mode is disabled.</string>
     <string name="audio_format_media_apps_need_restart">You need to restart all active media apps after changing this setting to resume audio processing.</string>
     <string name="audio_format_summary">Preferred audio encoding, buffer size</string>
     <string name="audio_format_summary_root">Global mode, media session scanning</string>
@@ -368,11 +368,6 @@
     <string name="misc_permission_header">Optional permissions</string>
     <string name="assets">Assets</string>
     <string name="network_services">Network services</string>
-    <string name="integration_services">Integration</string>
-    <string name="volume_manager_integration_api">Expose the VolumeManager integration API</string>
-    <string name="volume_manager_integration_api_on">Expose the protected provider for VolumeManager to control post gain and effects</string>
-    <string name="volume_manager_integration_api_off">The integration provider is disabled and unavailable to VolumeManager</string>
-    <string name="volume_manager_integration_api_error">Could not update the VolumeManager integration setting</string>
     <string name="network_autoeq_api_url">AutoEQ API backend URL</string>
     <string name="network_invalid_url">Invalid URL format</string>
     <string name="network_autoeq_conntest_running">Testing connection to server…</string>
@@ -387,11 +382,14 @@
     <string name="privacy_share_crash_reports_off">Don\'t send crash reports to the developer</string>
     <string name="credits">Credits</string>
     <string name="translators">Translators</string>
-    <string name="credits_app">App &amp; rootless implementation developed by</string>
-    <string name="credits_dsp">JamesDSP core algorithm library developed by</string>
+    <string name="credits_app_implementation">App implementation</string>
+    <string name="credits_core_library_implementation">Core library implementation</string>
+    <string name="credits_lightning_zahah">Lightning Zahah (@zahahah)</string>
+    <string name="credits_thepbone">ThePBone (@thepbone)</string>
+    <string name="credits_james_fung">James Fung (@james34602)</string>
     <string name="credits_project_page">Visit project website on GitHub</string>
     <string name="credits_project_page_summary">Report issues, keep yourself updated, and read the source code</string>
-    <string name="credits_project_play_page">Visit RootlessJamesDSP on Google Play</string>
+    <string name="credits_project_play_page">Visit LightningDSP on Google Play</string>
     <string name="credits_project_play_page_summary">Search for new updates</string>
     <string name="credits_project_check_update">Check for new updates…</string>
     <string name="credits_project_check_update_summary">Download and install updates if available</string>
@@ -468,7 +466,7 @@
     <string name="filelibrary_preset_load_failed">File \'%1$s\' is not compatible with this app</string>
     <string name="filelibrary_no_presets">No presets saved. Tap \'Add\' to create a new one.</string>
 
-    <!-- JamesDSP engine messages -->
+    <!-- LightningDSP engine messages -->
     <string name="message_vdc_corrupt">Selected VDC file is corrupt. Please choose another one.</string>
     <string name="message_irs_corrupt">Selected impulse response is corrupt. Please choose another one.</string>
     <string name="message_convolver_advimp_invalid">Convolver: Advanced waveform editing contains invalid values.</string>
@@ -529,8 +527,8 @@
     <string name="editor_find_previous_match">Find previous match</string>
     <string name="editor_search_keyword">Search</string>
     <string name="editor_source_position">%1$d:%2$d</string>
-    <string name="editor_engine_down_title">JamesDSP is not active</string>
-    <string name="editor_engine_down">Cannot run script because JamesDSP is disabled. Please turn on JamesDSP to execute scripts.</string>
+    <string name="editor_engine_down_title">LightningDSP is not active</string>
+    <string name="editor_engine_down">Cannot run script because LightningDSP is disabled. Please turn on LightningDSP to execute scripts.</string>
     <string name="editor_save_prompt_title">Save changes?</string>
     <string name="editor_save_prompt">The current script has unsaved changes. Do you want to save your changes or discard them?</string>
     <string name="editor_script_launched">Script launched</string>
@@ -552,20 +550,20 @@
     <string name="app_compat_retry">Retry</string>
     <string name="app_compat_exclude">Exclude</string>
     <string name="app_compat_title">Audio processing has been suspended to prevent duplicated audio</string>
-    <string name="app_compat_explanation">The following app is unsupported because it causes RootlessJamesDSP to lose control over its audio routing:</string>
-    <string name="app_compat_instruction">Please check the app\'s settings if you can disable HW-acceleration or other settings that could interfere with RootlessJamesDSP and tap \'Retry\'.</string>
+    <string name="app_compat_explanation">The following app is unsupported because it causes LightningDSP to lose control over its audio routing:</string>
+    <string name="app_compat_instruction">Please check the app\'s settings if you can disable HW-acceleration or other settings that could interfere with LightningDSP and tap \'Retry\'.</string>
     <string name="app_compat_instruction_exclude">Alternatively, select \'Exclude\' to bypass this issue by excluding the incompatible app from audio processing.</string>
     <string name="app_compat_unknown_pkg_name">Unknown package name</string>
 
     <!-- Root: Library load failure -->
-    <string name="load_fail_header">JamesDSP audio effect unavailable</string>
+    <string name="load_fail_header">LightningDSP audio effect unavailable</string>
     <string name="load_fail_card_title">The audio effect is not registered yet</string>
-    <string name="load_fail_card">The module may be mounted, but the audio factory has not registered JamesDSP. On temp-root devices, the overlay can appear after the audio HAL starts. The module waits 10 seconds, then tries one guarded HAL recovery on verified devices. Retry checks again and can request one additional recovery if needed. Audio may briefly stop.</string>
+    <string name="load_fail_card">The module may be mounted, but the audio factory has not registered LightningDSP. On temp-root devices, the overlay can appear after the audio HAL starts. The module waits 10 seconds, then tries one guarded HAL recovery on verified devices. Retry checks again and can request one additional recovery if needed. Audio may briefly stop.</string>
     <string name="load_fail_retry">Retry</string>
     <string name="load_fail_root_required">Root access is required to retry audio recovery.</string>
     <string name="load_fail_recovery_failed">Audio recovery was not completed. Check the module recovery status before trying again.</string>
     <string name="load_fail_rootless_card_title">Looking for a rootless alternative?</string>
-    <string name="load_fail_rootless_card">This flavor of JamesDSP was designed to be used with a rooted/modified device. A non-root alternative with some limitations is also available. Tap here for details.</string>
+    <string name="load_fail_rootless_card">This flavor of LightningDSP was designed to be used with a rooted/modified device. A non-root alternative with some limitations is also available. Tap here for details.</string>
     <string name="load_fail_arch_card_title">Module already installed?</string>
     <string name="load_fail_arch_card">A visible library does not prove the effect was loaded. If retry does not help, inspect the module logs and the audio effect factory before reinstalling.</string>
 
@@ -590,7 +588,7 @@
 
     <!-- Revert confirmation -->
     <string name="revert_confirmation_title">Are you sure?</string>
-    <string name="revert_confirmation">Do you want to reset your current JamesDSP preset to the default values?</string>
+    <string name="revert_confirmation">Do you want to reset your current LightningDSP preset to the default values?</string>
 
     <!-- File intent handler -->
     <string name="intent_import_preset">Import preset</string>
@@ -658,9 +656,9 @@
     <string name="device_profile_manage_paste_select">Select profiles to overwrite</string>
 
     <!-- Root version check -->
-    <string name="version_mismatch_root">JamesDSP magisk package requires an update</string>
-    <string name="version_mismatch_root_description">The JamesDSP magisk package installed on your device is outdated and not supported by this app anymore.\n\nPlease retrieve the latest JamesDSP magisk package ZIP and install it via Magisk.\nNote that the magisk package may replace this app with the official JamesDSP app.\n\nDo you want to visit the download website for the Magisk packages now?</string>
-    <string name="version_mismatch_root_toast">Failed to start. The installed JamesDSP magisk package is too old and not supported by this app anymore.</string>
+    <string name="version_mismatch_root">LightningDSP magisk package requires an update</string>
+    <string name="version_mismatch_root_description">The LightningDSP magisk package installed on your device is outdated and not supported by this app anymore.\n\nPlease retrieve the latest LightningDSP magisk package ZIP and install it via Magisk.\nNote that the magisk package may replace this app with the official LightningDSP app.\n\nDo you want to visit the download website for the Magisk packages now?</string>
+    <string name="version_mismatch_root_toast">Failed to start. The installed LightningDSP magisk package is too old and not supported by this app anymore.</string>
 
     <!-- Android 15 screenshare restriction warning -->
     <string name="android_15_screenshare_warning_title">Android 15 compatibility notice</string>
@@ -672,5 +670,8 @@ Tap on \'Tutorial\' below for detailed instructions.</string>
     <string name="android_15_screenshare_keyguard_warning">Android 15 introduces a restriction that stops screen sharing when the device is locked. To workaround this issue, the \'PROJECT_MEDIA\' permission must be granted using Shizuku or ADB.
 
 Please press \'Continue\' below to re-do the setup wizard.</string>
-    <string name="native_control_root_required">jdsp.control needs root access. Allow JamesDSP in KernelSU or Magisk to use native controls.</string>
+    <string name="native_control_root_required">ldsp.control needs root access. Allow LightningDSP in KernelSU or Magisk to use native controls.</string>
+    <string name="output_extra_postgain" translatable="false">Extra Post Gain</string>
+    <string name="output_extra_postgain_warning" translatable="false">Use it cautiously</string>
+    <string name="lightning_volume_manager_title">LightningDSP Volume Manager</string>
 </resources>

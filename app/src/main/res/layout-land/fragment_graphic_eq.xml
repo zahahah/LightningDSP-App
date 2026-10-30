@@ -185,7 +185,7 @@
                             android:layout_marginTop="16dp"
                             android:orientation="vertical">
 
-                            <me.timschneeberger.rootlessjamesdsp.view.NumberInputBox
+                            <lightning.dsp.view.NumberInputBox
                                 android:id="@+id/freqInput"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
@@ -199,7 +199,7 @@
                                 android:min="0"
                                 android:max="24000" />
 
-                            <me.timschneeberger.rootlessjamesdsp.view.NumberInputBox
+                            <lightning.dsp.view.NumberInputBox
                                 android:id="@+id/gainInput"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
@@ -246,7 +246,7 @@
                     android:text="@string/geq_preview"
                     android:textAppearance="?attr/textAppearanceTitleMedium" />
 
-                <me.timschneeberger.rootlessjamesdsp.view.GraphicEqualizerSurface
+                <lightning.dsp.view.GraphicEqualizerSurface
                     android:id="@+id/equalizer_surface"
                     android:layout_width="wrap_content"
                     android:layout_height="match_parent"/>

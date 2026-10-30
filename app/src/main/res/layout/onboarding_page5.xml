@@ -45,7 +45,7 @@
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
-            <me.timschneeberger.rootlessjamesdsp.view.Card
+            <lightning.dsp.view.Card
                 android:id="@+id/privacy_card"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -58,7 +58,7 @@
                 app:cardMargin="8dp" />
 
 
-            <me.timschneeberger.rootlessjamesdsp.view.Card
+            <lightning.dsp.view.Card
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 app:titleText="@string/onboarding_perm_microphone_title"
@@ -69,7 +69,7 @@
                 app:cardMargin="8dp" />
 
 
-            <me.timschneeberger.rootlessjamesdsp.view.Card
+            <lightning.dsp.view.Card
                 android:id="@+id/onboarding_notification_permission"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -80,7 +80,7 @@
                 app:iconTint="?attr/colorOnSurface"
                 app:cardMargin="8dp" />
 
-            <me.timschneeberger.rootlessjamesdsp.view.Card
+            <lightning.dsp.view.Card
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 app:titleText="@string/onboarding_perm_cast_title"

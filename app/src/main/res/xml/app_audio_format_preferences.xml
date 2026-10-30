@@ -10,7 +10,7 @@
             app:useSimpleSummaryProvider="true"
             app:defaultValue="@string/default_audioformat_encoding"
             app:iconSpaceReserved="false" />
-        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSeekbarPreference
+        <lightning.dsp.preference.MaterialSeekbarPreference
             android:key="@string/key_audioformat_buffersize"
             android:title="@string/audio_format_buffer_size"
             app:seekBarIncrement="128"
@@ -29,7 +29,7 @@
     <PreferenceCategory
         app:title="@string/audio_format_processing_header"
         app:iconSpaceReserved="false">
-        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSwitchPreference
+        <lightning.dsp.preference.MaterialSwitchPreference
             android:key="@string/key_audioformat_processing"
             android:defaultValue="@bool/default_audioformat_processing"
             android:title="@string/audio_format_processing_legacy"
@@ -38,13 +38,21 @@
             android:disableDependentsState="true"
             app:iconSpaceReserved="false" />
 
-        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSwitchPreference
+        <lightning.dsp.preference.MaterialSwitchPreference
             android:key="@string/key_audioformat_enhanced_processing"
             android:defaultValue="@bool/default_audioformat_enhanced_processing"
             android:title="@string/audio_format_enhanced_processing"
             android:summaryOff="@string/audio_format_enhanced_processing_off"
             android:summaryOn="@string/audio_format_enhanced_processing_on"
             android:dependency="@string/key_audioformat_processing"
+            app:iconSpaceReserved="false" />
+
+        <lightning.dsp.preference.MaterialSwitchPreference
+            android:key="@string/key_output_extra_postgain"
+            android:title="@string/output_extra_postgain"
+            android:summary="@string/output_extra_postgain_warning"
+            android:defaultValue="false"
+            android:persistent="false"
             app:iconSpaceReserved="false" />
 
         <Preference
@@ -59,7 +67,7 @@
         android:title="@string/audio_format_optimization_header"
         app:iconSpaceReserved="false">
 
-        <me.timschneeberger.rootlessjamesdsp.preference.MaterialSwitchPreference
+        <lightning.dsp.preference.MaterialSwitchPreference
             android:key="@string/key_audioformat_optimization_benchmark"
             android:defaultValue="@bool/default_audioformat_optimization_benchmark"
             android:title="@string/audio_format_optimization_benchmark"

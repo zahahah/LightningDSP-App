@@ -19,7 +19,7 @@
         android:paddingBottom="16dp"
         android:showDividers="middle">
 
-        <me.timschneeberger.rootlessjamesdsp.view.Card
+        <lightning.dsp.view.Card
             android:id="@+id/translation_notice"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -33,7 +33,7 @@
             app:iconSrc="@drawable/ic_twotone_translate_24dp"
             app:iconTint="?attr/colorOnSecondaryContainer" />
 
-        <me.timschneeberger.rootlessjamesdsp.view.Card
+        <lightning.dsp.view.Card
             android:id="@+id/update_notice"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
