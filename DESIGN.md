@@ -18,7 +18,8 @@ the floating panel accidentally.
 ## Information architecture
 Main DSP -> top-right mixer -> full mixer. Back arrow returns to main.
 Backgrounding the app returns to main on re-entry; temporary permission screens remain usable.
-Full mixer: status, per-app toggle, DSP card, built-in streams, search, Active/Inactive groups.
+Full mixer: status, per-app toggle, DSP card, built-in streams, search,
+Active/Recent/Inactive groups.
 ## Design principles
 Preserve compact spacing. Separate display order from audio processing order.
 Keep overlay interactions stable; no editing in the floating panel.
@@ -27,7 +28,13 @@ Existing 48dp rounded volume tracks, 42dp round effects, 58dp cells and 9sp clip
 Text colors follow actual track backgrounds, not ambient theme guesses.
 ## Components
 Full mixer Edit/Done action enables row editing. Hold and drag vertically within one group.
-Active and Inactive share one saved app order. The floating panel uses the same order.
+Active, Recent and Inactive share one saved app order. The floating panel shows only
+Active. Recent contains up to five apps whose playback ended most recently, excludes
+currently active and hidden apps, and is volatile rather than a backed-up setting.
+Playback activity must not depend on the saved volume or a writable player handle;
+a playing app remains Active with its slider at zero. Use the playback lifecycle
+state STARTED, not Android isActive(), which can exclude client-muted players.
+Paused, stopped and released players leave Active; zero volume alone does not.
 In edit mode, More options offers Pin/Unpin. Only pinned rows show a non-clickable 18dp
 pin indicator to the left of the track; no extra toolbar or always-visible pin button.
 Pinned rows lead each displayed group. Pinned rows can move among peers in their own Active or Inactive group. When inactive
@@ -52,7 +59,7 @@ waits at least ten seconds and sequences app startup after existing guarded HAL 
 Service dispatch is not evidence of effect processing. No Activity is launched automatically.
 
 ## Interaction states
-Persist app order by stable IDs, shared between Active/Inactive and the overlay. Legacy
+Persist app order by stable IDs, shared between Active/Recent/Inactive and the overlay. Legacy
 Inactive ranks take priority when adopting old separate orders, retaining Active-only IDs.
 Filtered, hidden and absent entries must remain in the saved order. Inactive pin edits
 may change pinned ranks to preserve active-pin priority, but never discard entries.
@@ -127,3 +134,15 @@ Visual/device behavior remains pending until authorized runtime inspection.
 - Keep the manager's floating-panel shortcut in the bottom bar's right action slot, preserving the central power button and its permission-aware manager-only state. The floating panel itself has no footer.
 - Settings use compact titled sections, a wider bounded window, scrollable content and at most 80% of the current app content height, centered with at least 10% clear above and below.
 - No device is attached; actual light/dark screenshots, dialog geometry with Android font/display scaling, FAB cradle and right action spacing remain pending visual verification.
+
+## Playback cleanup across Android restarts
+
+A soft reboot does not change the kernel boot ID and is not itself proof of cleanup.
+Before root side effects, sync a nonce-bound journal through the app-owned receipt FD:
+record the root owner, framework process and each affected client process identity.
+Recovery must hold the existing exclusive owner socket and prove those old identities
+are gone, not merely that Audio HAL restarted or no old helper is visible. Unknown
+process state, incomplete evidence and failed persistence keep activation blocked.
+A legacy empty receipt has no retrospective process evidence; it still requires a
+positive cleanup receipt or a verified full kernel reboot. Never erase the guard to
+hide the warning, and never export this runtime journal in portable backups.

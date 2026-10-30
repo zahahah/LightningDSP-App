@@ -16,16 +16,59 @@ object LightningDspVolumeRoot {
     @JvmStatic
     fun main(args: Array<String>) {
         check(android.os.Process.myUid() == 0) { "Root is required" }
+        val proc = VolumeRecoveryProc()
+        if (args.size == 2 && args[0] == "--verify-cleanup") {
+            val nonce = args[1]
+            require(VolumeCleanupReceipt.validNonce(nonce))
+            val bytes = java.io.ByteArrayOutputStream()
+            val buffer = ByteArray(4096)
+            while (bytes.size() <= VolumeRecoveryJournal.LIMIT) {
+                val count = System.`in`.read(buffer)
+                if (count < 0) break
+                bytes.write(buffer, 0, count)
+            }
+            val evidence = if (bytes.size() <= VolumeRecoveryJournal.LIMIT)
+                VolumeRecoveryJournal.parse(bytes.toString("UTF-8"), nonce) else null
+            if (evidence != null && VolumeRecoveryJournal.verify(evidence, proc.boot(), proc::observe) {
+                    android.net.LocalServerSocket("com.lightning.dsp.volume-manager.owner")
+                }) System.out.println(VolumeRecoveryJournal.proof(nonce))
+            return
+        }
         val nonce = args.single()
         require(VolumeCleanupReceipt.validNonce(nonce))
         val receipt = java.io.FileOutputStream(java.io.FileDescriptor.err)
-        run(System.`in`, System.out) { clean ->
+        val journal = VolumeRecoveryJournal.Writer(receipt) { receipt.fd.sync() }
+        var server: VolumeProcessIdentity? = null
+        run(System.`in`, System.out,
+            prepareRecovery = { audio ->
+                val before = proc.systemServer()
+                // Prime AudioManager's cached service Binder while checking the framework epoch.
+                audio.activePlaybackConfigurations
+                check(before == proc.systemServer()) { "Framework changed while binding audio" }
+                journal.append(VolumeRecoveryJournal.header(nonce, proc.boot() ?: error("Boot identity unavailable"),
+                    proc.identity(android.os.Process.myPid()), before))
+                server = before
+            },
+            beforePanelMutation = {
+                check(server != null && server == proc.identity(server!!.pid)) { "Framework changed before panel mutation" }
+            },
+            beforePlayerMutation = { configuration, uid ->
+                check(server != null && server == proc.identity(server!!.pid)) { "Framework changed before player mutation" }
+                val pid = PlaybackPlatformAccess.invokeNoArg(configuration, "getClientPid") as Int
+                val identity = proc.identity(pid)
+                check(identity.uid == uid) { "Player process identity changed" }
+                journal.beforeClient(nonce, identity)
+            }) { clean ->
             VolumeCleanupReceipt.write(receipt, nonce, clean) { receipt.fd.sync() }
         }
     }
 
     /** Explicit owned streams: never redirects global stdout in the Shizuku JVM. */
-    internal fun run(source: java.io.InputStream, output: java.io.PrintStream, recordCleanup: (Boolean) -> Unit) {
+    internal fun run(source: java.io.InputStream, output: java.io.PrintStream,
+                     prepareRecovery: ((AudioManager) -> Unit)? = null,
+                     beforePanelMutation: (() -> Unit)? = null,
+                     beforePlayerMutation: ((Any, Int) -> Unit)? = null,
+                     recordCleanup: (Boolean) -> Unit) {
         val uid = android.os.Process.myUid()
         check(VolumeBridgeIdentity.privileged(uid)) { "Privileged playback identity required" }
         val wakeups = LinkedBlockingQueue<Unit>(1)
@@ -90,6 +133,7 @@ object LightningDspVolumeRoot {
             }
             val context = PrivilegedVolumeContext.obtain()
             audio = context.getSystemService(AudioManager::class.java)
+            prepareRecovery?.invoke(audio)
             callback = object : AudioManager.AudioPlaybackCallback() {
                 override fun onPlaybackConfigChanged(configs: MutableList<android.media.AudioPlaybackConfiguration>?) {
                     refreshRequested.set(true)
@@ -208,6 +252,7 @@ object LightningDspVolumeRoot {
                     if (panelController == null && !panelControllerAttempted) {
                         panelControllerAttempted = true
                         try {
+                            beforePanelMutation?.invoke()
                             panelController = LightningDspRootVolumeController.install(audio, shouldBypassPanel = { panelBypass.get() }) {
                                 output.println("{\"show_panel\":true}")
                                 output.flush()
@@ -232,6 +277,10 @@ object LightningDspVolumeRoot {
                 for (configuration in audio.activePlaybackConfigurations) {
                     try {
                         val uid = PlaybackPlatformAccess.invokeNoArg(configuration, "getClientUid") as Int
+                        // Activity is independent of whether this player exposes a writable
+                        // IPlayer handle or audibility. STARTED remains visible at volume zero.
+                        val active = PlaybackActivityPolicy.isPlaying(configuration)
+                        activityByUid[uid] = activityByUid[uid] == true || active
                         val id = PlaybackPlatformAccess.invokeNoArg(configuration, "getPlayerInterfaceId") as Int
                         val player = PlaybackPlatformAccess.invokeNoArg(configuration, "getIPlayer") ?: continue
                         present += id
@@ -248,6 +297,8 @@ object LightningDspVolumeRoot {
                                 val pan = rule?.optDouble("pan", 0.0)?.toFloat() ?: 0f
                                 require(volume.isFinite() && volume in 0f..1f)
                                 require(pan.isFinite() && pan in -1f..1f)
+                                // Persist affected client identity before any multiplier IPC.
+                                beforePlayerMutation?.invoke(configuration, uid)
                                 // Track before IPC: a failed reply does not prove no side effect.
                                 if (rule != null) changedPlayers[id] = player
                                 player.javaClass.getMethod("setVolume", Float::class.javaPrimitiveType)
@@ -265,8 +316,6 @@ object LightningDspVolumeRoot {
                                 applyError = "Player control unavailable: ${error.cause?.javaClass?.simpleName ?: error.javaClass.simpleName}"
                             }
                         }
-                        val active = PlaybackPlatformAccess.invokeNoArg(configuration, "isActive") as Boolean
-                        activityByUid[uid] = activityByUid[uid] == true || active
                     } catch (error: Exception) {
                         enumerationComplete = false
                         applyError = "Player discovery unavailable: ${error.cause?.javaClass?.simpleName ?: error.javaClass.simpleName}"

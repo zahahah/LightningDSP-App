@@ -200,6 +200,7 @@ internal fun LightningVolumeManagerScreen(
     var editing by rememberSaveable { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val activeBounds = remember { VolumeReorderBounds() }
+    val recentBounds = remember { VolumeReorderBounds() }
     val inactiveBounds = remember { VolumeReorderBounds() }
     var viewport by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     var showAll by rememberSaveable { mutableStateOf(false) }
@@ -242,7 +243,9 @@ internal fun LightningVolumeManagerScreen(
     val hiddenApps = catalogApps.filter { it.packageName in hiddenAppIds }
     val visibleApps = catalogApps.filterNot { it.packageName in hiddenAppIds }
     val activeApps = visibleApps.filter { it.active }
-    val inactiveApps = visibleApps.filterNot { it.active }
+    val recentIds = state.recentPackages.toSet()
+    val recentApps = visibleApps.filter { !it.active && it.packageName in recentIds }
+    val inactiveApps = visibleApps.filterNot { it.active || it.packageName in recentIds }
     fun saveMove(apps: List<AppVolume>, from: String, to: String) {
         val current = AppVolumeOrderPreferences.read(panelPrefs).include(allAppIds)
         val moved = current.move(apps.map { it.packageName }, activeIds, from, to)
@@ -397,6 +400,7 @@ internal fun LightningVolumeManagerScreen(
                 } else {
                     val groups = if (!compact) listOf(
                         Triple("Active", activeApps, activeBounds),
+                        Triple("Recent", recentApps, recentBounds),
                         Triple("Inactive", inactiveApps, inactiveBounds),
                     ) else listOf(Triple("Active", activeApps, activeBounds))
                     groups.forEach { (title, apps, bounds) ->

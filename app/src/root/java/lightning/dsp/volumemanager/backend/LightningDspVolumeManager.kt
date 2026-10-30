@@ -38,6 +38,7 @@ object LightningDspVolumeManager {
     private var restartPending = false
     private var cleanupUncertain = false
     private var cleanupRecoveryWatch: ScheduledFuture<*>? = null
+    private var cleanupInspector: Process? = null
     private val cleanupLedger by lazy {
         VolumeCleanupLedger(
             dirtyNonce = {
@@ -51,7 +52,8 @@ object LightningDspVolumeManager {
                     .putString("cleanup_receipt_nonce", nonce)
                     .putString("cleanup_boot_id", bootId).commit()
             },
-            readReceipt = { nonce -> readCleanupReceipt(nonce) }
+            readReceipt = { nonce -> readCleanupReceipt(nonce) },
+            verifyPreviousOwner = { nonce, journal -> verifyPreviousPlaybackOwner(nonce, journal) }
         )
     }
     private var applications: List<ApplicationInfo> = emptyList()
@@ -62,6 +64,8 @@ object LightningDspVolumeManager {
     private var connected = false
     private var error: String? = null
     @Volatile private var systemVolumeError: String? = null
+    private val recentPlayback = RecentPlaybackHistory()
+    private var recentPackages: List<String> = emptyList()
     private var systemVolumeOperationId = 0L
     private var generation = 0
     private var lastResponseAt = 0L
@@ -576,6 +580,11 @@ object LightningDspVolumeManager {
                                     activeUids = if (players == null) emptySet() else (0 until players.length())
                                         .map { players.getJSONObject(it) }.filter { it.optBoolean("active") }
                                         .map { it.getInt("uid") }.toSet()
+                                    if (players != null) {
+                                        recentPackages = recentPlayback.update(
+                                            applications.filter { it.uid in activeUids }.map { it.packageName },
+                                            applications.map { it.packageName }.toSet())
+                                    }
                                     publish()
                                 }
                             }
@@ -657,16 +666,26 @@ object LightningDspVolumeManager {
         val file = cleanupReceiptFile(nonce)
         if (!file.isFile) return@runCatching null
         java.io.RandomAccessFile(file, "r").use { input ->
-            // Root stderr may include framework/su diagnostics. Read bounded tail only.
-            val count = input.length().coerceAtMost(4096).toInt()
-            input.seek(input.length() - count)
-            val bytes = ByteArray(count)
+            // A journal must be read from its header; a bounded tail is not complete evidence.
+            if (input.length() > VolumeRecoveryJournal.LIMIT) return@runCatching null
+            val bytes = ByteArray(input.length().toInt())
             input.readFully(bytes)
-            val text = bytes.toString(Charsets.UTF_8)
-            // A tail starting in the middle of a diagnostic line is not a record boundary.
-            if (input.length() > count) text.substringAfter('\n', "") else text
+            bytes.toString(Charsets.UTF_8)
         }
     }.getOrNull()
+
+    private fun verifyPreviousPlaybackOwner(nonce: String, journal: String): Boolean = runCatching {
+        if (accessMode != VolumeAccessMode.ROOT || !VolumeCleanupReceipt.validNonce(nonce)) return@runCatching false
+        // A blocked su/teardown must not accumulate inspectors or authorization prompts.
+        if (cleanupInspector?.isAlive == true) return@runCatching false
+        cleanupInspector = null
+        val apk = "'" + context.applicationInfo.sourceDir.replace("'", "'\\''") + "'"
+        // The timeout is restricted to this read-only verifier, never an Android service.
+        val command = "CLASSPATH=$apk /system/bin/timeout 5 /system/bin/app_process /system/bin lightning.dsp.volumemanager.backend.LightningDspVolumeRoot --verify-cleanup $nonce"
+        val inspector = ProcessBuilder("su", "-c", command).redirectErrorStream(true).start()
+        cleanupInspector = inspector
+        VolumeCleanupInspector.inspect(inspector, journal, VolumeRecoveryJournal.proof(nonce))
+    }.getOrDefault(false)
 
     private fun recoverCleanup(): Boolean {
         if (!cleanupUncertain) return true
@@ -733,7 +752,8 @@ object LightningDspVolumeManager {
             audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1) }.getOrDefault(1f)
         val next = VolumeManagerState(isEnabled, connected, error ?: overlayError, apps, mediaVolume,
             perAppEnabled, overlayReady, systemVolumeError, systemVolumeOperationId,
-            VolumeProfiles.list(preferences.all), preferences.getString(VolumeProfiles.SELECTED, VolumeProfiles.DEFAULT_ID)!!)
+            VolumeProfiles.list(preferences.all), preferences.getString(VolumeProfiles.SELECTED, VolumeProfiles.DEFAULT_ID)!!,
+            recentPackages)
         if (force || next != lastPublished) {
             lastPublished = next
             mutableState.postValue(next)
@@ -774,5 +794,6 @@ data class VolumeManagerState(
     val systemVolumeError: String? = null,
     val systemVolumeOperationId: Long = 0L,
     val profiles: List<VolumeProfile> = listOf(VolumeProfile(VolumeProfiles.DEFAULT_ID, "Profile 1")),
-    val selectedProfileId: String = VolumeProfiles.DEFAULT_ID
+    val selectedProfileId: String = VolumeProfiles.DEFAULT_ID,
+    val recentPackages: List<String> = emptyList()
 )

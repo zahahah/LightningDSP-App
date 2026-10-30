@@ -3,6 +3,13 @@ package lightning.dsp.volumemanager.ui
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Process
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import lightning.dsp.flavor.RootShellImpl
+import lightning.dsp.volumemanager.backend.OverlayPermissionGrant
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
@@ -33,6 +40,8 @@ import lightning.dsp.volumemanager.focus.DisableAudioFocusOption
 class LightningDspVolumeManagerActivity : BaseActivity() {
     private var volumeState by mutableStateOf(lightning.dsp.volumemanager.backend.VolumeManagerState())
     private var enableAfterOverlayPermission = false
+    private var overlayGrantPending = false
+    private var overlayRequestGeneration = 0
     internal class NavigationState : ViewModel() {
         val policy = VolumeManagerNavigationPolicy()
         private var cancelPermissionRequest: (() -> Unit)? = null
@@ -115,7 +124,7 @@ class LightningDspVolumeManagerActivity : BaseActivity() {
             return
         }
         navigation.externalFlow = false
-        if (enableAfterOverlayPermission) {
+        if (enableAfterOverlayPermission && !overlayGrantPending) {
             enableAfterOverlayPermission = false
             if (Settings.canDrawOverlays(this)) {
                 setManagerEnabled(true)
@@ -128,12 +137,51 @@ class LightningDspVolumeManagerActivity : BaseActivity() {
         LightningDspVolumeManager.refresh()
     }
 
+    private fun requestOverlayAccess(onGranted: () -> Unit) {
+        if (Settings.canDrawOverlays(this)) {
+            onGranted()
+            return
+        }
+        if (overlayGrantPending) return
+        overlayGrantPending = true
+        val generation = ++overlayRequestGeneration
+        val app = applicationContext
+        lifecycleScope.launch {
+            try {
+                val granted = withContext(Dispatchers.IO) {
+                    runCatching {
+                        OverlayPermissionGrant.grant(packageName, Process.myUid() / 100000,
+                            { Settings.canDrawOverlays(app) },
+                            { RootShellImpl.hasRootShell() },
+                            { RootShellImpl.cmd(it) })
+                    }.getOrDefault(false)
+                }
+                if (generation != overlayRequestGeneration) return@launch
+                if (granted && Settings.canDrawOverlays(app)) {
+                    onGranted()
+                } else {
+                    Toast.makeText(this@LightningDspVolumeManagerActivity,
+                        R.string.ldsp_vm_overlay_permission, Toast.LENGTH_LONG).show()
+                    openPermissionSettings(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:$packageName")))
+                }
+            } finally {
+                overlayGrantPending = false
+            }
+        }
+    }
+
     private fun setManagerEnabled(enabled: Boolean) {
+        if (!enabled) {
+            overlayRequestGeneration++
+            enableAfterOverlayPermission = false
+        }
         if (enabled && !Settings.canDrawOverlays(this)) {
             enableAfterOverlayPermission = true
-            Toast.makeText(this, R.string.ldsp_vm_overlay_permission, Toast.LENGTH_LONG).show()
-            openPermissionSettings(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:$packageName")))
+            requestOverlayAccess {
+                enableAfterOverlayPermission = false
+                setManagerEnabled(true)
+            }
             return
         }
         LightningDspVolumeManager.setEnabled(enabled)
@@ -141,13 +189,7 @@ class LightningDspVolumeManagerActivity : BaseActivity() {
     }
 
     private fun showOverlayOrRequestPermission() {
-        if (!Settings.canDrawOverlays(this)) {
-            Toast.makeText(this, R.string.ldsp_vm_overlay_permission, Toast.LENGTH_LONG).show()
-            openPermissionSettings(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:$packageName")))
-            return
-        }
-        LightningVolumeOverlay.show(this)
+        requestOverlayAccess { LightningVolumeOverlay.show(this) }
     }
 
     private fun showSettings() {
@@ -272,7 +314,7 @@ class LightningDspVolumeManagerActivity : BaseActivity() {
         controls.addView(MaterialButton(settingsContext).apply {
             setText(R.string.ldsp_vm_grant_overlay)
             setOnClickListener {
-                openPermissionSettings(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+                requestOverlayAccess { LightningDspVolumeManager.refresh() }
             }
         })
         controls.addView(TextView(settingsContext).apply {

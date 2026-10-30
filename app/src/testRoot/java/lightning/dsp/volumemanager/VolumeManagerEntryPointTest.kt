@@ -62,7 +62,11 @@ class VolumeManagerEntryPointTest {
     @Test fun anAlreadyEnabledManagerCanRecoverRevokedOverlayPermissionFromItsFooter() {
         val activity = source("root/java/lightning/dsp/volumemanager/ui/LightningDspVolumeManagerActivity.kt")
         assertTrue(activity.contains("onShowOverlay = ::showOverlayOrRequestPermission"))
-        assertTrue(activity.contains("if (!Settings.canDrawOverlays(this))"))
+        assertTrue(activity.contains("private fun requestOverlayAccess"))
+        assertTrue(activity.contains("OverlayPermissionGrant.grant"))
+        assertTrue(activity.contains("withContext(Dispatchers.IO)"))
+        assertTrue(activity.contains("granted && Settings.canDrawOverlays(app)"))
+        assertTrue(activity.contains("generation != overlayRequestGeneration"))
         assertTrue(activity.contains("Settings.ACTION_MANAGE_OVERLAY_PERMISSION"))
         val screen = source("root/java/lightning/dsp/volumemanager/ui/LightningVolumeComposeUi.kt")
         assertTrue(screen.contains("state.enabled && !Settings.canDrawOverlays(context)"))

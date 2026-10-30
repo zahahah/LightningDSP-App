@@ -29,7 +29,8 @@ internal class VolumeCleanupLedger(
     private val dirtyBootId: () -> String?,
     private val currentBootId: () -> String?,
     private val persist: (String?, String?) -> Boolean,
-    private val readReceipt: (String) -> String?
+    private val readReceipt: (String) -> String?,
+    private val verifyPreviousOwner: (String, String) -> Boolean = { _, _ -> false }
 ) {
     fun authorize(nonce: String): Boolean = VolumeCleanupReceipt.validNonce(nonce) &&
         persist(nonce, currentBootId()?.takeIf { it.isNotBlank() })
@@ -42,7 +43,10 @@ internal class VolumeCleanupLedger(
         // A kernel reboot destroys the old process and AudioFlinger playback state.
         if (!previousBoot.isNullOrBlank() && !currentBoot.isNullOrBlank() && previousBoot != currentBoot)
             return persist(null, null)
-        if (VolumeCleanupReceipt.confirms(readReceipt(nonce), nonce)) return persist(null, null)
+        val receipt = readReceipt(nonce)
+        if (VolumeCleanupReceipt.confirms(receipt, nonce)) return persist(null, null)
+        if (receipt != null && VolumeRecoveryJournal.parse(receipt, nonce) != null &&
+            verifyPreviousOwner(nonce, receipt) && readReceipt(nonce) == receipt) return persist(null, null)
         // Old app versions did not persist boot identity. Baseline them conservatively:
         // never release in this boot, but permit recovery after a subsequent reboot.
         if (previousBoot.isNullOrBlank() && !currentBoot.isNullOrBlank()) persist(nonce, currentBoot)
