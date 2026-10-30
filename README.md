@@ -39,6 +39,29 @@ provider remains compatible: only `moe.chensi.volume` may call it after the user
 enables **Expose the VolumeManager integration API**. Its gain getter/setter use
 the currently selected range and cannot enable the extended range themselves.
 
+## Optional Disable Audio Focus
+
+The root app includes an opt-in **Disable App Audio Focus (Requires Xposed)**
+switch in Volume Manager settings. To use it, install a compatible Vector/Xposed
+framework, allow the LightningDSP app as a module with **System Framework** (`android`)
+scope, and restart the framework as required by that manager. Grant LightningDSP
+root access. The switch remains unavailable until the app verifies a PID-bound
+acknowledgement from its hook in the current `system_server` process. No system
+file is changed: the switch writes a volatile Android property, which the hook
+checks on each focus request.
+The change applies to new focus requests; an app that already paused after a
+focus loss may need playback restarted.
+
+The hook leaves voice-communication focus requests unchanged. The switch is off by
+default. Hook detection and a verified property write do not prove that every
+media app will continue playing.
+Turn it off to restore normal handling for subsequent requests. An opted-in setting
+is restored when the app starts after a reboot. The setting is intentionally not
+included in Volume Manager backups, so restoring a backup cannot silently enable
+this framework-level behavior. The hook is adapted from
+[auag0/DisableAudioFocus](https://github.com/auag0/DisableAudioFocus); its MIT notice
+is packaged in the root APK.
+
 ## Full backups
 
 Manual and scheduled full backups include LightningDSP Volume Manager's per-app

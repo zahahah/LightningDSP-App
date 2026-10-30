@@ -161,6 +161,7 @@ android {
 }
 
 dependencies {
+    add("rootCompileOnly", "de.robv.android.xposed:api:82")
     // Compose is scoped to the root Volume Manager UI; other flavors keep their existing screens.
     "rootImplementation"(platform("androidx.compose:compose-bom:2024.12.01"))
     "rootImplementation"("androidx.activity:activity-compose:1.10.0")

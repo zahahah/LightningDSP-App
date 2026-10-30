@@ -3,6 +3,7 @@ package lightning.dsp.flavor
 import android.content.Context
 import lightning.dsp.volumemanager.backend.LightningDspVolumeManager
 import lightning.dsp.volumemanager.backend.VolumeManagerStartupPolicy
+import lightning.dsp.volumemanager.focus.DisableAudioFocusOption
 import timber.log.Timber
 
 /** Resume an enabled mixer on app entry or the authorized boot/late-load service path. */
@@ -13,6 +14,10 @@ object VolumeManagerLifecycle {
 
     private fun resume(context: Context, background: Boolean) {
         val appContext = context.applicationContext
+        // The Xposed hook reads a volatile property; restore an opt-in after boot.
+        if (DisableAudioFocusOption.requested(appContext)) {
+            Thread({ DisableAudioFocusOption.restore(appContext) }, "LDSP-audio-focus-restore").start()
+        }
         val preferences = appContext
             .getSharedPreferences("lightningdsp_volume_manager", Context.MODE_PRIVATE)
         val enabled = preferences.getBoolean("enabled", false)

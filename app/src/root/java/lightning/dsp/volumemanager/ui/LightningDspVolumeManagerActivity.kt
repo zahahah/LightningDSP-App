@@ -27,6 +27,7 @@ import lightning.dsp.R
 import lightning.dsp.activity.BaseActivity
 import lightning.dsp.activity.MainActivity
 import lightning.dsp.volumemanager.backend.LightningDspVolumeManager
+import lightning.dsp.volumemanager.focus.DisableAudioFocusOption
 
 /** Root-only, native LightningDSP entry point for the integrated per-app mixer. */
 class LightningDspVolumeManagerActivity : BaseActivity() {
@@ -178,6 +179,51 @@ class LightningDspVolumeManagerActivity : BaseActivity() {
             isChecked = LightningDspVolumeManager.startupOnBoot
             setOnCheckedChangeListener { _, checked -> LightningDspVolumeManager.setStartupOnBoot(checked) }
         })
+        var revertingAudioFocusSwitch = false
+        val audioFocusStatus = TextView(settingsContext).apply {
+            setText(R.string.ldsp_vm_audio_focus_checking)
+            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodySmall)
+        }
+        val audioFocusSwitch = MaterialSwitch(settingsContext).apply {
+            setText(R.string.ldsp_vm_disable_audio_focus)
+            isEnabled = false
+            setOnCheckedChangeListener { _, checked ->
+                if (revertingAudioFocusSwitch) return@setOnCheckedChangeListener
+                isEnabled = false
+                Thread({
+                    val success = DisableAudioFocusOption.set(applicationContext, checked)
+                    val stillAvailable = success || DisableAudioFocusOption.available()
+                    runOnUiThread {
+                        if (!success) {
+                            revertingAudioFocusSwitch = true
+                            isChecked = !checked
+                            revertingAudioFocusSwitch = false
+                            Toast.makeText(this@LightningDspVolumeManagerActivity,
+                                R.string.ldsp_vm_audio_focus_root_failed, Toast.LENGTH_LONG).show()
+                        }
+                        isEnabled = stillAvailable
+                        audioFocusStatus.setText(if (isEnabled) R.string.ldsp_vm_audio_focus_ready
+                            else R.string.ldsp_vm_audio_focus_unavailable)
+                        audioFocusStatus.visibility = if (success && checked) View.GONE else View.VISIBLE
+                    }
+                }, "LDSP-audio-focus-toggle").start()
+            }
+        }
+        controls.addView(audioFocusSwitch)
+        controls.addView(audioFocusStatus)
+        Thread({
+            val available = DisableAudioFocusOption.available()
+            val active = available && DisableAudioFocusOption.active()
+            runOnUiThread {
+                revertingAudioFocusSwitch = true
+                audioFocusSwitch.isChecked = active
+                revertingAudioFocusSwitch = false
+                audioFocusSwitch.isEnabled = available
+                audioFocusStatus.setText(if (available) R.string.ldsp_vm_audio_focus_ready
+                    else R.string.ldsp_vm_audio_focus_unavailable)
+                audioFocusStatus.visibility = if (active) View.GONE else View.VISIBLE
+            }
+        }, "LDSP-audio-focus-check").start()
         addSection(R.string.ldsp_vm_settings_app_list)
         controls.addView(MaterialSwitch(settingsContext).apply {
             setText(R.string.ldsp_vm_hide_system_apps)
