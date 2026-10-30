@@ -70,6 +70,7 @@ class VolumeManagerBackupSettingsTest {
     @Test fun filteringAndEncodingExcludeCleanupLedgerAndUnknownRuntimeKeys() {
         val values = mapOf(
             "cleanup_uncertain" to true, "cleanup_receipt_nonce" to "secret",
+            "cleanup_boot_id" to "boot-secret",
             "runtime_pid" to 123, "unknown" to true, "enabled" to true,
         )
         assertEquals(mapOf("enabled" to true), Codec.filterManager(values))
@@ -77,6 +78,7 @@ class VolumeManagerBackupSettingsTest {
         val encoded = Codec.encode(VolumeManagerBackupSettings(values, values)).toString(Charsets.ISO_8859_1)
         assertFalse(encoded.contains("secret"))
         assertFalse(encoded.contains("cleanup"))
+        assertFalse(encoded.contains("boot-secret"))
         assertEquals(VolumeManagerBackupSettings(manager = mapOf("enabled" to true)), Codec.decode(encoded.toByteArray(Charsets.ISO_8859_1)))
         assertEquals(VolumeManagerBackupSettings(), Codec.decode(payload(
             "manager.cleanup_uncertain" to "true", "manager.cleanup_receipt_nonce" to "secret",

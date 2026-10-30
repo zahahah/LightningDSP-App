@@ -44,9 +44,12 @@ object LightningDspVolumeManager {
                 if (preferences.getBoolean("cleanup_uncertain", false)) preferences.getString("cleanup_receipt_nonce", "") ?: ""
                 else null
             },
-            persist = { nonce ->
+            dirtyBootId = { preferences.getString("cleanup_boot_id", null) },
+            currentBootId = { runCatching { java.io.File("/proc/sys/kernel/random/boot_id").readText().trim() }.getOrNull() },
+            persist = { nonce, bootId ->
                 preferences.edit().putBoolean("cleanup_uncertain", nonce != null)
-                    .putString("cleanup_receipt_nonce", nonce).commit()
+                    .putString("cleanup_receipt_nonce", nonce)
+                    .putString("cleanup_boot_id", bootId).commit()
             },
             readReceipt = { nonce -> readCleanupReceipt(nonce) }
         )
