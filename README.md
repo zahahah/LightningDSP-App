@@ -34,7 +34,7 @@ restart Audio HAL/audioserver or automatically execute recovery scripts.
 gain is +/-15 dB normally, +/-30 dB only after opt-in. Disabling clamps the saved
 value safely. Rootless hides the option and retains +/-15 dB.
 
-LightningDSP Volume Manager is integrated into the root app and is disabled by default on fresh installations. It offers per-app volume, mute and balance, active and recent apps, persistent order and pins, built-in streams, a floating panel, and an optional LightningDSP card. The root app does not require a separate VolumeManager installation.
+LightningDSP Volume Manager is integrated into the root app and is disabled by default on fresh installations. It offers per-app volume, mute and balance, active and recent apps, persistent order and pins, built-in streams, a floating panel, and an optional LightningDSP card. The root app does not require a separate VolumeManager installation. In the floating panel, tap the LightningDSP card icon to open its effects. Press and hold an effect name to select it, then use the slider to lower or raise its intensity.
 
 I maintain LightningDSP as an audio pocket knife: DSP processing and practical audio controls in one app. The pre-rebrand JamesDSP 6.6 module and matching root app 1.6.17 remain in [JamesDSPManager-Classic](https://github.com/zahahah/JamesDSPManager-Classic) and [RootJamesDSP-Classic](https://github.com/zahahah/RootJamesDSP-Classic). The current companion module is [LightningDSP](https://github.com/zahahah/LightningDSP). Original contributors and license obligations remain credited.
 
