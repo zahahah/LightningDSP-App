@@ -228,26 +228,25 @@ class LightningDspVolumeManagerActivity : BaseActivity() {
         }
         val audioFocusSwitch = MaterialSwitch(settingsContext).apply {
             setText(R.string.ldsp_vm_disable_audio_focus)
+            isEnabled = false
             setOnCheckedChangeListener { _, checked ->
                 if (revertingAudioFocusSwitch) return@setOnCheckedChangeListener
                 isEnabled = false
                 Thread({
                     val success = DisableAudioFocusOption.set(applicationContext, checked)
-                    val available = DisableAudioFocusOption.available()
-                    val requested = DisableAudioFocusOption.requested(applicationContext)
-                    val active = available && requested && DisableAudioFocusOption.active()
+                    val stillAvailable = success || DisableAudioFocusOption.available()
                     runOnUiThread {
                         if (!success) {
                             revertingAudioFocusSwitch = true
-                            isChecked = requested
+                            isChecked = !checked
                             revertingAudioFocusSwitch = false
                             Toast.makeText(this@LightningDspVolumeManagerActivity,
                                 R.string.ldsp_vm_audio_focus_root_failed, Toast.LENGTH_LONG).show()
                         }
-                        isEnabled = true
-                        audioFocusStatus.setText(if (available) R.string.ldsp_vm_audio_focus_ready
+                        isEnabled = stillAvailable
+                        audioFocusStatus.setText(if (isEnabled) R.string.ldsp_vm_audio_focus_ready
                             else R.string.ldsp_vm_audio_focus_unavailable)
-                        audioFocusStatus.visibility = if (active) View.GONE else View.VISIBLE
+                        audioFocusStatus.visibility = if (success && checked) View.GONE else View.VISIBLE
                     }
                 }, "LDSP-audio-focus-toggle").start()
             }
@@ -256,13 +255,12 @@ class LightningDspVolumeManagerActivity : BaseActivity() {
         controls.addView(audioFocusStatus)
         Thread({
             val available = DisableAudioFocusOption.available()
-            val requested = DisableAudioFocusOption.requested(applicationContext)
-            val active = available && requested && DisableAudioFocusOption.active()
+            val active = available && DisableAudioFocusOption.active()
             runOnUiThread {
                 revertingAudioFocusSwitch = true
-                audioFocusSwitch.isChecked = requested
+                audioFocusSwitch.isChecked = active
                 revertingAudioFocusSwitch = false
-                audioFocusSwitch.isEnabled = true
+                audioFocusSwitch.isEnabled = available
                 audioFocusStatus.setText(if (available) R.string.ldsp_vm_audio_focus_ready
                     else R.string.ldsp_vm_audio_focus_unavailable)
                 audioFocusStatus.visibility = if (active) View.GONE else View.VISIBLE

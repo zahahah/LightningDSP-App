@@ -29,9 +29,9 @@ object DisableAudioFocusOption {
         return result.isSuccess && result.out.lastOrNull()?.trim() == "1"
     }
 
-    /** Must run off the UI thread. Persist after the root property is verified. */
+    /** Must run off the UI thread. Persist only after the volatile property is verified. */
     fun set(context: Context, enabled: Boolean): Boolean {
-        if (!RootShellImpl.hasRootShell()) return false
+        if (!available()) return false
         val value = if (enabled) "1" else "0"
         val result = Shell.cmd("setprop $PROPERTY $value", "getprop $PROPERTY").exec()
         if (!result.isSuccess || result.out.lastOrNull()?.trim() != value) return false

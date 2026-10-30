@@ -2,7 +2,7 @@
     <string name="ldsp_vm_disable_audio_focus" tools:ignore="MissingTranslation">Disable App Audio Focus (Requires Xposed)</string>
     <string name="ldsp_vm_audio_focus_checking" tools:ignore="MissingTranslation">Checking Vector/Xposed hook…</string>
     <string name="ldsp_vm_audio_focus_ready" tools:ignore="MissingTranslation">Hook detected in System Framework. Voice communication remains unchanged.</string>
-    <string name="ldsp_vm_audio_focus_unavailable" tools:ignore="MissingTranslation">Preference is saved, but has no effect until Vector/Xposed loads the hook in System Framework.</string>
+    <string name="ldsp_vm_audio_focus_unavailable" tools:ignore="MissingTranslation">Unavailable: enable LightningDSP in Vector/Xposed with System Framework scope, then restart the framework.</string>
     <string name="ldsp_vm_audio_focus_root_failed" tools:ignore="MissingTranslation">Could not verify the root audio focus setting.</string>
     <string name="ldsp_vm_settings_behavior" tools:ignore="MissingTranslation">Manager behavior</string>
     <string name="ldsp_vm_settings_app_list" tools:ignore="MissingTranslation">App list</string>
