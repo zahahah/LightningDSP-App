@@ -91,7 +91,7 @@ Use Java 17 and an installed Android SDK:
 Builds do not use Firebase or upload crash reports/symbols.
 
 Release outputs are unsigned until signed separately. CI preview builds use the
-Android development/debug signer and are not owner-signed distribution updates. Check the package and
+Android development/debug signer and are not release APKs. Check the package and
 certificate before distribution; never automatically uninstall or delete data.
 See [root build notes](BUILD_ROOT.md) and [native integration](NATIVE-CONTROL-V4.md).
 
