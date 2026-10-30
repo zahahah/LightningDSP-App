@@ -10,7 +10,7 @@ by the original JamesDSP project. We retain the original authorship, contributor
 credits, upstream references and license notices; the new name does not replace
 that history.
 
-The current root integration is **1.7-beta-8** (root versionCode **77**); stable release work is in progress. The root app
+The current root release is **1.7** (root versionCode **78**). The root app
 uses package ID `com.lightning.dsp`; the rootless package remains unchanged.
 When the companion module is explicitly flashed, it removes the old `james.dsp`
 package before installing LightningDSP. The old package's private data is not
