@@ -155,13 +155,15 @@ class Preset(val name: String, externalPath: File? = null): KoinComponent {
                 throw Exception(ctx.getString(R.string.filelibrary_corrupted))
             }
 
-            files.forEach next@ { f ->
-                if(!isKnownEntry(f.name))
-                    return@next
-
-                val target = File(currentPath(ctx), f.name)
-                f.copyTo(target, overwrite = true)
-                Timber.d("Copying to ${target.absolutePath}")
+            val preferenceFiles = files
+                .filter { it.name.startsWith("dsp_") && it.extension == "xml" }
+                .map { file ->
+                    val namespace = file.nameWithoutExtension
+                    namespace to file.inputStream().use(SharedPreferencesXml::parse)
+                }
+            preferenceFiles.forEach { (namespace, values) ->
+                SharedPreferencesXml.apply(ctx, namespace, values)
+                Timber.d("Applied preset preferences to $namespace")
             }
 
             if (files.any { it.name == FILE_LIVEPROG }) {

@@ -20,6 +20,10 @@ object Constants {
     const val PREF_REVERB = "dsp_reverb"
     const val PREF_STEREOWIDE = "dsp_stereowide"
     const val PREF_TUBE = "dsp_tube"
+    val DSP_PREFERENCE_NAMESPACES = listOf(
+        PREF_OUTPUT, PREF_COMPANDER, PREF_BASS, PREF_EQ, PREF_GEQ, PREF_REVERB,
+        PREF_STEREOWIDE, PREF_CROSSFEED, PREF_TUBE, PREF_DDC, PREF_LIVEPROG, PREF_CONVOLVER,
+    )
 
     // Default string values
     const val DEFAULT_CONVOLVER_ADVIMP = "-80;-100;0;0;0;0"

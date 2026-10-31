@@ -452,14 +452,20 @@ object ContextExtensions {
     }
 
     fun Context.restoreDspSettings(silent: Boolean = false) {
-        // Delete DSP settings
+        // Clear through SharedPreferences so live engines and UI readers observe defaults
+        // even when the app process survived a framework/audio soft reboot.
         Timber.d("Reverting dsp preferences")
-        File(applicationInfo.dataDir + "/shared_prefs")
-            .listFiles()?.forEach next@ { f ->
-                if(!f.name.startsWith("dsp_") || f.extension != "xml" || f.isDirectory)
-                    return@next
-                f.delete()
+        val sharedPrefsDir = File(applicationInfo.dataDir + "/shared_prefs")
+        val namespaces = (Constants.DSP_PREFERENCE_NAMESPACES +
+            (sharedPrefsDir.listFiles()?.mapNotNull { file ->
+                file.takeIf { it.isFile && it.name.startsWith("dsp_") && it.extension == "xml" }
+                    ?.nameWithoutExtension
+            } ?: emptyList())).distinct()
+        namespaces.forEach { namespace ->
+            check(getSharedPreferences(namespace, Context.MODE_PRIVATE).edit().clear().commit()) {
+                "Failed to clear DSP preferences for $namespace"
             }
+        }
 
         if(!silent) {
             broadcastPresetLoadEvent()

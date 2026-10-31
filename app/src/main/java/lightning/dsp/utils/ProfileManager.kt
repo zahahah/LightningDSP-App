@@ -176,11 +176,9 @@ class ProfileManager : BroadcastReceiver(), RoutingObserver.RoutingChangedCallba
 
         store(profile)
 
-        // Clear old current files
-        getPrefsDirectory().listFiles()
-            ?.filter { it.name.startsWith("dsp_") }
-            ?.filter { it.extension == "xml" }
-            ?.forEach { it.delete() }
+        // Reset through SharedPreferences before loading the next profile. Deleting XML
+        // files directly leaves already-open preference instances with the old profile.
+        context.restoreDspSettings(silent = true)
     }
 
     private fun store(profile: Profile) {
@@ -212,9 +210,6 @@ class ProfileManager : BroadcastReceiver(), RoutingObserver.RoutingChangedCallba
         return File(context.applicationInfo.dataDir + "/files/profiles", (id ?: ""))
     }
 
-    private fun getPrefsDirectory(): File {
-        return File(context.applicationInfo.dataDir, "shared_prefs")
-    }
 
     override fun onReceive(context: Context?, intent: Intent?) {
         when(intent?.action) {
