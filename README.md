@@ -28,6 +28,19 @@ control retains the AudioEffect/legacy path. Binder registration and accepted or
 applied generations alone do not prove audible processing. The app does not
 restart Audio HAL/audioserver or automatically execute recovery scripts.
 
+## Presets and effect files
+
+The app keeps its libraries under its Android app-specific external files directory,
+usually `Android/data/com.lightning.dsp/files` for the root app. `Presets` contains
+saved or imported `.tar` presets; it is initially empty. `Convolver`, `DDC` and
+`Liveprog` contain their corresponding effect files. Use the app's **Import** action
+to add files through Android's document picker, especially on devices that restrict
+file-manager access to `Android/data`.
+
+The public `/sdcard/LightningDSP` directory copied by the module installer is a
+separate collection of example files, not the app's live preset library. A missing
+`Presets` subdirectory there does not establish that DSP preset loading has failed.
+
 ## Gain and VolumeManager
 
 **Extra Post Gain** defaults off and displays **Use it cautiously**. Root output

@@ -5,31 +5,20 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import timber.log.Timber
 import java.io.File
-import java.io.FileOutputStream
 import java.io.InputStream
 
 
 object StorageUtils {
 
     fun importFile(context: Context, targetDir: String, uri: Uri): File? {
-        val name = queryName(context, uri)
-        if(name == null) {
-            Timber.e("importFile: name is null")
-            return null
-        }
-
-        val destinationFile = File(targetDir + File.separatorChar + name)
-        try {
-            context.contentResolver.openInputStream(uri)?.use { ins ->
-                if(!createFileFromStream(ins, destinationFile))
-                    return null
-            }
+        return try {
+            val name = queryName(context, uri) ?: return null
+            val input = context.contentResolver.openInputStream(uri) ?: return null
+            input.use { LibraryStorage.importStream(File(targetDir), name, it) }
         } catch (ex: Exception) {
-            Timber.e(ex.message)
-            ex.printStackTrace()
-            return null
+            Timber.e(ex, "Failed to import library file")
+            null
         }
-        return destinationFile
     }
 
     fun openInputStreamSafe(context: Context, uri: Uri): InputStream? {
@@ -42,31 +31,10 @@ object StorageUtils {
         }
     }
 
-    private fun createFileFromStream(ins: InputStream, destination: File?): Boolean {
-        try {
-            FileOutputStream(destination).use { os ->
-                val buffer = ByteArray(4096)
-                var length: Int
-                while (ins.read(buffer).also { length = it } > 0) {
-                    os.write(buffer, 0, length)
-                }
-                os.flush()
-            }
-        } catch (ex: Exception) {
-            Timber.e(ex.message)
-            ex.printStackTrace()
-            return false
-        }
-        return true
-    }
-
     fun queryName(context: Context, uri: Uri): String? {
-        val returnCursor = context.contentResolver.query(uri, null, null, null, null)
-        returnCursor ?: return null
-        val nameIndex: Int = returnCursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-        returnCursor.moveToFirst()
-        val name: String = returnCursor.getString(nameIndex)
-        returnCursor.close()
-        return name
+        return context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (index < 0 || !cursor.moveToFirst()) null else cursor.getString(index)
+        }
     }
 }

@@ -12,6 +12,7 @@ import lightning.dsp.utils.extensions.ContextExtensions.broadcastPresetLoadEvent
 import lightning.dsp.utils.extensions.ContextExtensions.sendLocalBroadcast
 import lightning.dsp.utils.extensions.ContextExtensions.toast
 import lightning.dsp.utils.storage.Tar
+import lightning.dsp.utils.storage.LibraryStorage
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import org.xml.sax.SAXException
@@ -24,7 +25,8 @@ import javax.xml.parsers.DocumentBuilderFactory
 
 class Preset(val name: String, externalPath: File? = null): KoinComponent {
     private val ctx: Context by inject()
-    private val externalPath = externalPath ?: File("${ctx.getExternalFilesDir(null)!!.path}/Presets")
+    private val externalPath = externalPath ?: ctx.getExternalFilesDir(null)?.let { File(it, "Presets") }
+        ?: throw IOException("App storage is unavailable. Retry after storage is mounted.")
 
     fun file(): File = File(externalPath, name)
 
@@ -48,60 +50,68 @@ class Preset(val name: String, externalPath: File? = null): KoinComponent {
         )
     }
 
+    var lastSaveError: String? = null
+        private set
+
     fun save(): Boolean {
-        val targetFile = file()
-        if (targetFile.exists())
-            targetFile.delete()
-
+        lastSaveError = null
+        var stage = "creating the preset directory"
         try {
-            externalPath.mkdirs()
-        } catch (_: Exception) {}
+            LibraryStorage.ensureDirectory(externalPath)
+            val targetFile = file()
+            LibraryStorage.replaceFile(targetFile) { stagedFile ->
+                stage = "writing the preset archive"
+                writeArchive(stagedFile)
+                stage = "replacing the preset file"
+            }
+            return true
+        } catch (ex: Exception) {
+            lastSaveError = "Failed while $stage: ${ex.message ?: ex.javaClass.simpleName}"
+            Timber.e(ex, "Preset save failed during %s", stage)
+            return false
+        }
+    }
 
-        Timber.d("Saving preset $name to ${targetFile.path}")
+    private fun writeArchive(targetFile: File) {
+        Tar.Composer(targetFile).use { c ->
+            c.metadata = mutableMapOf(
+                META_VERSION to PRESET_VERSION,
+                META_APP_VERSION to BuildConfig.VERSION_NAME,
+                META_APP_FLAVOR to BuildConfig.FLAVOR,
+                META_LIVEPROG_INCLUDED to false.toString(),
+                META_MIN_VERSION_CODE to MIN_VERSION_CODE
+            )
 
+            val preferenceRoot = currentPath(ctx)
+            val extraNamespaces = preferenceRoot.listFiles()?.filter {
+                it.isFile && it.name.startsWith("dsp_") && it.extension == "xml"
+            }?.map { it.nameWithoutExtension }.orEmpty()
+            val defaults = File.createTempFile("preset-defaults-", ".xml", ctx.cacheDir)
+            try {
+                defaults.writeText("<?xml version=\"1.0\" encoding=\"utf-8\"?><map />")
+                (Constants.DSP_PREFERENCE_NAMESPACES + extraNamespaces).distinct().forEach { namespace ->
+                    val stored = File(preferenceRoot, "$namespace.xml")
+                    check(c.add(if (stored.exists()) stored else defaults, "$namespace.xml")) {
+                        "Unable to read DSP settings for $namespace"
+                    }
+                }
+            } finally {
+                defaults.delete()
+            }
 
-        // Create a TarOutputStream
-        try {
-            Tar.Composer(targetFile).use { c ->
-                c.metadata = mutableMapOf(
-                    META_VERSION to PRESET_VERSION,
-                    META_APP_VERSION to BuildConfig.VERSION_NAME,
-                    META_APP_FLAVOR to BuildConfig.FLAVOR,
-                    META_LIVEPROG_INCLUDED to false.toString(),
-                    META_MIN_VERSION_CODE to MIN_VERSION_CODE
-                )
+            findLiveprogScriptPath(ctx)?.let { path ->
+                val liveprogFile = File(path)
+                if (liveprogFile.exists()) {
+                    Timber.d("Saving included liveprog script state from '$path'")
 
-                currentPath(ctx)
-                    .listFiles()
-                    ?.filter { it.name.startsWith("dsp_") }
-                    ?.filter { it.extension == "xml" }
-                    ?.forEach(c::add)
-
-                findLiveprogScriptPath(ctx)?.let { path ->
-                    val liveprogFile = File(path)
-                    if (liveprogFile.exists()) {
-                        Timber.d("Saving included liveprog script state from '$path'")
-
-                        c.metadata[META_LIVEPROG_INCLUDED] = true.toString()
-                        File(ctx.cacheDir, FILE_LIVEPROG).let {
-                            liveprogFile.copyTo(it, overwrite = true)
-                            c.add(it)
-                        }
+                    c.metadata[META_LIVEPROG_INCLUDED] = true.toString()
+                    File(ctx.cacheDir, FILE_LIVEPROG).let {
+                        liveprogFile.copyTo(it, overwrite = true)
+                        c.add(it)
                     }
                 }
             }
         }
-        catch (ex: ErrnoException) {
-            Timber.d(ex)
-            ex.localizedMessage?.let { ctx.toast(it) }
-            return false
-        }
-        catch (ex: Exception) {
-            Timber.d(ex)
-            return false
-        }
-
-        return true
     }
 
     companion object {
@@ -120,7 +130,14 @@ class Preset(val name: String, externalPath: File? = null): KoinComponent {
         private fun currentPath(ctx: Context) = File(ctx.applicationInfo.dataDir + "/shared_prefs")
         private fun isKnownEntry(n: String) = (n.startsWith("dsp_") && n.endsWith("xml")) || n == FILE_LIVEPROG
 
-        fun validate(inputStream: InputStream) = Tar.Reader(inputStream, ::isKnownEntry).validate()
+        fun validate(inputStream: InputStream): Boolean {
+            var containsSettings = false
+            val valid = Tar.Reader(inputStream) { name ->
+                if (name.startsWith("dsp_") && name.endsWith(".xml")) containsSettings = true
+                isKnownEntry(name)
+            }.validate()
+            return valid && containsSettings
+        }
 
         /**
          * @exception Exception if preset cannot be loaded
@@ -161,6 +178,7 @@ class Preset(val name: String, externalPath: File? = null): KoinComponent {
                     val namespace = file.nameWithoutExtension
                     namespace to file.inputStream().use(SharedPreferencesXml::parse)
                 }
+            require(preferenceFiles.isNotEmpty()) { "Preset contains no DSP settings." }
             preferenceFiles.forEach { (namespace, values) ->
                 SharedPreferencesXml.apply(ctx, namespace, values)
                 Timber.d("Applied preset preferences to $namespace")
@@ -171,9 +189,12 @@ class Preset(val name: String, externalPath: File? = null): KoinComponent {
                     val originalFile = File(it)
                     val targetFile =
                         File("${ctx.getExternalFilesDir(null)!!.path}/Liveprog", originalFile.name)
-                    val tempPath = File(currentPath(ctx), FILE_LIVEPROG)
+                    val tempPath = File(targetFolder, FILE_LIVEPROG)
 
                     if(metadata[META_LIVEPROG_INCLUDED].toBoolean()) {
+                        check(targetFile.parentFile!!.isDirectory || targetFile.parentFile!!.mkdirs()) {
+                            "Cannot create Liveprog library directory"
+                        }
                         if(!targetFile.exists()) {
                             Timber.d("Extracting embedded liveprog file to '${targetFile.absolutePath}'")
                             tempPath.copyTo(targetFile, overwrite = true)

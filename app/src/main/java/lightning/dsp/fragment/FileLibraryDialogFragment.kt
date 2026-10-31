@@ -88,13 +88,15 @@ class FileLibraryDialogFragment : ListPreferenceDialogFragmentCompat(), TargetFr
                                     allowOverwrite = true
                                 ) { file ->
                                     val overwritten = file.exists()
-                                    val success = Preset(file.name).save()
+                                    val preset = Preset(file.name)
+                                    val success = preset.save()
                                     if(overwritten && success)
                                         requireContext().toast(getString(R.string.filelibrary_preset_overwritten, file.nameWithoutExtension))
                                     else if(!overwritten && success)
                                         requireContext().toast(getString(R.string.filelibrary_preset_created, file.nameWithoutExtension))
                                     else
-                                        requireContext().toast(getString(R.string.filelibrary_preset_save_failed))
+                                        requireContext().showAlert(getString(R.string.filelibrary_preset_save_failed),
+                                            preset.lastSaveError ?: "Unable to write the preset file.")
 
                                     refresh()
                                 }
@@ -165,10 +167,12 @@ class FileLibraryDialogFragment : ListPreferenceDialogFragmentCompat(), TargetFr
                     }
                     R.id.overwrite_selection -> {
                         if(fileLibPreference.isPreset()) {
-                            if(Preset(selectedFile.name).save())
+                            val preset = Preset(selectedFile.name)
+                            if(preset.save())
                                 requireContext().toast(getString(R.string.filelibrary_preset_overwritten, name))
                             else
-                                requireContext().toast(getString(R.string.filelibrary_preset_save_failed))
+                                requireContext().showAlert(getString(R.string.filelibrary_preset_save_failed),
+                                    preset.lastSaveError ?: "Unable to write the preset file.")
                         }
                         refresh()
                     }

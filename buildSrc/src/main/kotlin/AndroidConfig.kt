@@ -4,9 +4,9 @@ object AndroidConfig {
     const val compileSdk = 35
     const val targetSdk = 34
 
-    const val versionName = "1.7.1-beta-1"
-    // Root flavor adds four; this beta reissue updates existing code 81 installs.
-    const val versionCode = 78
+    const val versionName = "1.7.1-beta-2"
+    // Root flavor adds four; beta 2 updates existing code 82 installs.
+    const val versionCode = 79
 
     const val kotlinVersion = "2.1.0"
     const val kspVersion = "2.1.0-1.0.29"

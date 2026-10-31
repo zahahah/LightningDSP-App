@@ -3,6 +3,7 @@ package lightning.dsp.utils.extensions
 import android.content.Context
 import android.content.res.AssetManager
 import timber.log.Timber
+import lightning.dsp.utils.storage.LibraryStorage
 import java.io.File
 import java.io.FileOutputStream
 
@@ -10,14 +11,14 @@ object AssetManagerExtensions {
     fun AssetManager.installPrivateAssets(context: Context, force: Boolean) {
         Timber.d("Installing private assets; force=$force")
         context.getExternalFilesDir(null)?.absolutePath?.let {
-            try {
-                this.copyAssetDir("Convolver", it, force)
-                this.copyAssetDir("DDC", it, force)
-                this.copyAssetDir("Liveprog", it, force)
-            }
-            catch (ex: Exception) {
-                Timber.e("Failed to extract assets")
-                Timber.e(ex)
+            for (directory in LibraryStorage.directories) {
+                try {
+                    LibraryStorage.ensureDirectory(File(it, directory))
+                    // Presets contains user-saved/imported archives, not bundled examples.
+                    if (directory != "Presets") copyAssetDir(directory, it, force)
+                } catch (ex: Exception) {
+                    Timber.e(ex, "Failed to initialize library %s", directory)
+                }
             }
         }
     }

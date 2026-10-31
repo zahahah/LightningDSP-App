@@ -32,9 +32,9 @@ class FileLibraryPreference(context: Context, attrs: AttributeSet?) :
                     it.entry
             }
 
-            directory = File(context.getExternalFilesDir(null), type)
+            directory = context.getExternalFilesDir(null)?.let { File(it, type) }
             if(type.lowercase() != "unknown")
-                directory?.mkdir()
+                directory?.mkdirs()
             refresh()
         }
 
@@ -74,6 +74,11 @@ class FileLibraryPreference(context: Context, attrs: AttributeSet?) :
             return
         }
 
+        val target = directory ?: return
+        if (!target.isDirectory && !target.mkdirs()) {
+            context.toast(context.getString(R.string.filelibrary_access_fail), false)
+            return
+        }
         initFileList()
     }
 
