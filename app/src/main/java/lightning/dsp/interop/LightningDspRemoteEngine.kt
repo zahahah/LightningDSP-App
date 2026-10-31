@@ -36,6 +36,9 @@ class LightningDspRemoteEngine(
             when (intent.action) {
                 Constants.ACTION_SAMPLE_RATE_UPDATED -> syncWithPreferences(arrayOf(Constants.PREF_CONVOLVER))
                 Constants.ACTION_PREFERENCES_UPDATED -> syncWithPreferences()
+                Constants.ACTION_PRESET_LOADED -> PresetPreferenceSyncPolicy
+                    .forceUpdateNamespacesFor(intent.action)
+                    ?.let(::syncWithPreferences)
                 Constants.ACTION_SERVICE_RELOAD_LIVEPROG -> syncWithPreferences(arrayOf(Constants.PREF_LIVEPROG))
                 Constants.ACTION_SERVICE_HARD_REBOOT_CORE -> rebootEngine()
                 Constants.ACTION_SERVICE_SOFT_REBOOT_CORE -> { clearCache(); syncWithPreferences() }
@@ -72,6 +75,7 @@ class LightningDspRemoteEngine(
 
         val filter = IntentFilter()
         filter.addAction(Constants.ACTION_PREFERENCES_UPDATED)
+        filter.addAction(Constants.ACTION_PRESET_LOADED)
         filter.addAction(Constants.ACTION_SAMPLE_RATE_UPDATED)
         filter.addAction(Constants.ACTION_SERVICE_RELOAD_LIVEPROG)
         filter.addAction(Constants.ACTION_SERVICE_HARD_REBOOT_CORE)

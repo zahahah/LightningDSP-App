@@ -32,6 +32,7 @@ import lightning.dsp.BuildConfig
 import lightning.dsp.R
 import lightning.dsp.flavor.CrashlyticsImpl
 import lightning.dsp.interop.LightningDspLocalEngine
+import lightning.dsp.interop.PresetPreferenceSyncPolicy
 import lightning.dsp.interop.ProcessorMessageHandler
 import lightning.dsp.model.IEffectSession
 import lightning.dsp.model.preference.AudioEncoding
@@ -134,6 +135,7 @@ open class RootlessAudioProcessorService : BaseAudioProcessorService() {
         // Setup general-purpose broadcast receiver
         val filter = IntentFilter()
         filter.addAction(ACTION_PREFERENCES_UPDATED)
+        filter.addAction(Constants.ACTION_PRESET_LOADED)
         filter.addAction(ACTION_SAMPLE_RATE_UPDATED)
         filter.addAction(ACTION_SERVICE_RELOAD_LIVEPROG)
         filter.addAction(ACTION_SERVICE_HARD_REBOOT_CORE)
@@ -285,6 +287,9 @@ open class RootlessAudioProcessorService : BaseAudioProcessorService() {
             when (intent.action) {
                 ACTION_SAMPLE_RATE_UPDATED -> engine.syncWithPreferences(arrayOf(Constants.PREF_CONVOLVER))
                 ACTION_PREFERENCES_UPDATED -> engine.syncWithPreferences()
+                Constants.ACTION_PRESET_LOADED -> PresetPreferenceSyncPolicy
+                    .forceUpdateNamespacesFor(intent.action)
+                    ?.let(engine::syncWithPreferences)
                 ACTION_SERVICE_RELOAD_LIVEPROG -> engine.syncWithPreferences(arrayOf(Constants.PREF_LIVEPROG))
                 ACTION_SERVICE_HARD_REBOOT_CORE -> restartRecording()
                 ACTION_SERVICE_SOFT_REBOOT_CORE -> requestAudioRecordRecreation()
