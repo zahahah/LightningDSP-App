@@ -77,6 +77,9 @@ class ProfileManager : BroadcastReceiver(), RoutingObserver.RoutingChangedCallba
         rotate(device ?: return)
     }
 
+    /** Re-check the current route after background startup, even if no route event was emitted. */
+    fun refreshCurrentDevice() = routingObserver.refreshSelectedRoute()
+
     fun rotate(newDevice: RoutingObserver.Device) {
         rotate(Profile.from(newDevice))
     }

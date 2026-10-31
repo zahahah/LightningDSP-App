@@ -4,9 +4,12 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
 import android.content.res.Resources
+import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import androidx.annotation.StringRes
 import androidx.core.content.getSystemService
 import androidx.mediarouter.media.MediaControlIntent
@@ -26,7 +29,18 @@ class RoutingObserver(val context: Context) : MediaRouter.Callback(), KoinCompon
 
     private val callbacks = mutableListOf<RoutingChangedCallback>()
     private val router by lazy { MediaRouter.getInstance(context) }
+    private val audioManager by lazy { context.getSystemService<AudioManager>()!! }
     private val prefs: Preferences.App by inject()
+
+    private val audioDeviceCallback = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
+            refreshSelectedRoute()
+        }
+
+        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) {
+            refreshSelectedRoute()
+        }
+    }
 
     var currentDevice by Delegates.observable<Device?>(null) { _, old, new ->
         if (old != new)
@@ -128,7 +142,7 @@ class RoutingObserver(val context: Context) : MediaRouter.Callback(), KoinCompon
     }
 
     override fun onRouteChanged(router: MediaRouter, route: MediaRouter.RouteInfo) {
-        currentDevice = router.selectedRoute.findOutputDevice()
+        refreshSelectedRoute()
     }
 
     override fun onRouteRemoved(router: MediaRouter, route: MediaRouter.RouteInfo) {
@@ -137,6 +151,13 @@ class RoutingObserver(val context: Context) : MediaRouter.Callback(), KoinCompon
 
     fun retrigger() {
         callbacks.forEach { callback -> currentDevice?.let(callback::onRoutingDeviceChanged) }
+    }
+
+    /** MediaRouter does not guarantee a new route-selected callback for an existing route. */
+    fun refreshSelectedRoute() {
+        runCatching { router.selectedRoute.findOutputDevice() }
+            .onSuccess { currentDevice = it }
+            .onFailure { Timber.w(it, "Unable to reconcile the currently selected audio route") }
     }
 
     fun registerOnRoutingChangeListener(callback: RoutingChangedCallback) {
@@ -149,8 +170,10 @@ class RoutingObserver(val context: Context) : MediaRouter.Callback(), KoinCompon
                 this,
                 0
             )
+            audioManager.registerAudioDeviceCallback(audioDeviceCallback, Handler(Looper.getMainLooper()))
         }
         callbacks.add(callback)
+        refreshSelectedRoute()
         currentDevice?.let(callback::onRoutingDeviceChanged)
     }
 
@@ -160,6 +183,7 @@ class RoutingObserver(val context: Context) : MediaRouter.Callback(), KoinCompon
         if (callbacks.isEmpty()) {
             prefs.unregisterOnSharedPreferenceChangeListener(this)
             router.removeCallback(this)
+            audioManager.unregisterAudioDeviceCallback(audioDeviceCallback)
         }
     }
 

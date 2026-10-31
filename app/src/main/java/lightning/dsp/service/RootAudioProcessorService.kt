@@ -99,6 +99,9 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
     override fun onCreate() {
         super.onCreate()
 
+        // Boot/soft-reboot may leave an output route selected without a fresh MediaRouter event.
+        app.profileManager.refreshCurrentDevice()
+
         // Register shared preferences listener
         preferences.registerOnSharedPreferenceChangeListener(this)
         app.rootSessionDatabase.registerOnSessionChangeListener(this)
