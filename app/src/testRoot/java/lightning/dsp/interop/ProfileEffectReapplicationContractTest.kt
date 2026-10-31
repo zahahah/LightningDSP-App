@@ -13,15 +13,12 @@ class ProfileEffectReapplicationContractTest {
     private val sync = File(app,
         "src/main/java/lightning/dsp/interop/LightningDspBaseEngine.kt").readText()
 
-    @Test fun nativeFirProfileApplicationAlsoClearsLegacyEqualizerState() {
-        val method = engine.substringAfter("override fun setMultiEqualizerInternal")
-            .substringBefore("private fun applyLegacyMultiEqualizer")
-        val legacyDisable = method.indexOf("effect.setParameter(1202, false.toShort())")
-        val nativeWrite = method.indexOf("LightningDspControlClient.setFirEqIfSupported")
-
-        assertTrue("A profile using native FIR must also disable stale legacy EQ", legacyDisable >= 0)
-        assertTrue("Clear the legacy stage before handing its profile to native FIR",
-            nativeWrite > legacyDisable)
+    @Test fun regainedControlReplaysAllNamespacesInsteadOfOnlyNativeControls() {
+        val method = engine.substringAfter("private fun watchControl")
+            .substringBefore("override fun syncWithPreferences")
+        assertTrue(method.contains("DspDesiredState.replace"))
+        assertTrue(method.contains("Constants.ACTION_PRESET_LOADED"))
+        assertTrue(method.contains("effect !== attached"))
     }
 
     @Test fun failedProfileNamespacesRemainDirtyAndReceiveBoundedRetries() {

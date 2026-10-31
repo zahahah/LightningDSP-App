@@ -19,6 +19,7 @@ internal object LightningDspControlClient {
     private val probeCallbacks = mutableListOf<(Boolean) -> Unit>()
     private val writes = NativeControlWriteDispatcher(
         isReady = { ready },
+        currentGeneration = DspDesiredState::current,
         enqueue = { executor.execute(it) },
         execute = { action, args ->
             runHelper(action, *args.toTypedArray()).also { response ->
@@ -92,7 +93,10 @@ internal object LightningDspControlClient {
         // Always serialize on the native worker, including preference changes
         // received on Android's main thread. The caller must not also write the
         // same legacy parameter merely because Binder has not replied yet.
-        val queued = writes.dispatch(action, args, fallback)
+        val generation = DspDesiredState.current()
+        val queued = writes.dispatch(action, args) {
+            DspDesiredState.applyIfCurrent(generation, fallback)
+        }
         if (!queued) probeAsync()
         return queued
     }

@@ -55,4 +55,19 @@ class NativeControlWriteDispatcherTest {
         assertFalse(dispatcher.dispatch("fir", listOf("new")) {})
         jobs.single().invoke()
     }
+    @Test fun profileReplacementInvalidatesAllActionsAndOldFallbacks() {
+        var generation = 0L
+        val jobs = mutableListOf<() -> Unit>()
+        val written = mutableListOf<String>()
+        val dispatcher = NativeControlWriteDispatcher(
+            { true }, { jobs.add(it) }, { generation }
+        ) { action, _ -> written.add(action); null }
+        dispatcher.dispatch("fir", emptyList()) { fail("Old profile fallback") }
+        dispatcher.dispatch("post-gain", emptyList()) { fail("Old profile fallback") }
+        generation++
+        dispatcher.dispatch("enabled", emptyList()) { written.add("current-fallback") }
+        jobs.forEach { it() }
+        assertEquals(listOf("enabled", "current-fallback"), written)
+    }
+
 }

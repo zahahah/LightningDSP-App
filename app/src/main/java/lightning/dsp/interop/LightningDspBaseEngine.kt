@@ -38,6 +38,7 @@ abstract class LightningDspBaseEngine(val context: Context, val callbacks: Light
 
     private val syncScope = CoroutineScope(Dispatchers.IO)
     private val syncMutex = Mutex()
+    private var appliedDesiredGeneration = -1L
     protected val cache = PreferenceCache(context)
 
     override fun close() {
@@ -47,8 +48,9 @@ abstract class LightningDspBaseEngine(val context: Context, val callbacks: Light
     }
 
     open fun syncWithPreferences(forceUpdateNamespaces: Array<String>? = null) {
+        val generation = DspDesiredState.current()
         syncScope.launch {
-            syncWithPreferencesAsync(forceUpdateNamespaces, retryAttempt = 0)
+            syncWithPreferencesAsync(forceUpdateNamespaces, retryAttempt = 0, generation)
         }
     }
 
@@ -67,11 +69,17 @@ abstract class LightningDspBaseEngine(val context: Context, val callbacks: Light
     private suspend fun syncWithPreferencesAsync(
         forceUpdateNamespaces: Array<String>? = null,
         retryAttempt: Int,
+        generation: Long,
     ) {
         Timber.d("Synchronizing with preferences... (forced: %s)", forceUpdateNamespaces?.joinToString(";") { it })
 
         var failedNamespaces: List<String> = emptyList()
         syncMutex.withLock {
+          DspDesiredState.applyIfCurrent(generation) {
+            if (appliedDesiredGeneration != generation) {
+                cache.clear()
+                appliedDesiredGeneration = generation
+            }
             cache.select(Constants.PREF_OUTPUT)
             val extendedPostGain = cache.get(R.string.key_output_extra_postgain, PostGainRangePolicy.DEFAULT_EXTENDED)
             val outputPostGain = PostGainRangePolicy.clamp(cache.get(R.string.key_output_postgain, 0f),
@@ -163,7 +171,8 @@ abstract class LightningDspBaseEngine(val context: Context, val callbacks: Light
 
             cache.markChangesAsCommitted(successfulNamespaces)
             failedNamespaces = failed.toList()
-            Timber.i("Preferences synchronized")
+            Timber.i("Preferences synchronized (desired generation=%s)", generation)
+          }
         }
 
         // Route/profile callbacks can arrive while AudioFlinger is switching
@@ -174,7 +183,7 @@ abstract class LightningDspBaseEngine(val context: Context, val callbacks: Light
             Timber.w("Retrying failed DSP namespaces after route/profile sync: %s", failedNamespaces)
             syncScope.launch {
                 delay(retryDelay)
-                syncWithPreferencesAsync(failedNamespaces.toTypedArray(), retryAttempt + 1)
+                syncWithPreferencesAsync(failedNamespaces.toTypedArray(), retryAttempt + 1, generation)
             }
         }
     }

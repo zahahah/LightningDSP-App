@@ -8,10 +8,12 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import lightning.dsp.interop.DspDesiredState
 import lightning.dsp.R
 import lightning.dsp.model.preset.Preset
 import lightning.dsp.utils.extensions.ContextExtensions.registerLocalReceiver
 import lightning.dsp.utils.extensions.ContextExtensions.restoreDspSettings
+import lightning.dsp.utils.extensions.ContextExtensions.broadcastPresetLoadEvent
 import lightning.dsp.utils.extensions.ContextExtensions.unregisterLocalReceiver
 import lightning.dsp.utils.extensions.ensureIsDirectory
 import lightning.dsp.utils.extensions.ensureIsFile
@@ -88,12 +90,16 @@ class ProfileManager : BroadcastReceiver(), RoutingObserver.RoutingChangedCallba
         synchronized(lock) {
             Timber.d("Rotating profile from '${activeProfile?.id}' to '${newProfile.id}'")
             if(newProfile.id == activeProfile?.id) {
-                Timber.w("Profile already loaded. No action taken.")
+                // Reassert live preferences, without overwriting unsaved edits from disk.
+                DspDesiredState.replace { }
+                context.broadcastPresetLoadEvent()
                 return
             }
 
-            storeClearCurrent()
-            activeProfile = newProfile.also(::load)
+            DspDesiredState.replace {
+                storeClearCurrent()
+                activeProfile = newProfile.also(::load)
+            }
         }
     }
 

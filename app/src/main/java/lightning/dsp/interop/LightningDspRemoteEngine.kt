@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.media.audiofx.AudioEffect
 import android.media.audiofx.AudioEffectHidden
+import dev.rikka.tools.refine.Refine
 import lightning.dsp.MainApplication
 import lightning.dsp.interop.structure.EelVmVariable
 import lightning.dsp.utils.Constants
@@ -17,6 +18,7 @@ import lightning.dsp.utils.extensions.AudioEffectExtensions.setParameterImpulseR
 import lightning.dsp.utils.extensions.ContextExtensions.registerLocalReceiver
 import lightning.dsp.utils.extensions.ContextExtensions.showAlert
 import lightning.dsp.utils.extensions.ContextExtensions.toast
+import lightning.dsp.utils.extensions.ContextExtensions.sendLocalBroadcast
 import lightning.dsp.utils.extensions.ContextExtensions.unregisterLocalReceiver
 import lightning.dsp.utils.extensions.crc
 import lightning.dsp.utils.extensions.toShort
@@ -48,9 +50,11 @@ class LightningDspRemoteEngine(
 
     var effect: AudioEffectHidden? = createEffect()
     @Volatile private var disposed = false
+    private var requestedEnabled = false
 
     override var enabled: Boolean
         set(value) {
+            requestedEnabled = value
             // The framework must dispatch audio even when the global control
             // service owns the DSP parameter. Binder acceptance alone does not
             // enable the AudioFlinger effect or its processing thread.
@@ -68,6 +72,7 @@ class LightningDspRemoteEngine(
         set(_){}
 
     init {
+        watchControl(effect)
         LightningDspControlClient.probeAsync { nativeControlReady ->
             if (nativeControlReady && !disposed) syncWithPreferences(arrayOf(Constants.PREF_OUTPUT, Constants.PREF_EQ))
         }
@@ -93,31 +98,35 @@ class LightningDspRemoteEngine(
     }
 
     private fun checkEngine() {
-        if (effect == null || LightningDspControlClient.isAvailable()) return
-        if (!isPidValid) {
-            Timber.e("PID ($pid) for session $sessionId invalid. Engine probably crashed or detached.")
-            context.toast("Engine crashed. Rebooting LightningDSP.", false)
-            rebootEngine()
-        }
-
-        if (isSampleRateAbnormal) {
-            Timber.e("PID ($pid) for session $sessionId invalid. Engine crashed.")
-            context.toast("Abnormal sampling rate. Rebooting LightningDSP.", false)
+        val attached = effect ?: return
+        // Idle audio is not a dead context. Check the framework endpoint itself,
+        // independently of Binder publication and sample-rate/frame telemetry.
+        if (runCatching { Refine.unsafeCast<AudioEffect>(attached).enabled }.isFailure) {
+            Timber.w("AudioEffect endpoint invalid for session %s; recreating", sessionId)
             rebootEngine()
         }
     }
 
+    private fun watchControl(attached: AudioEffectHidden?) {
+        attached ?: return
+        Refine.unsafeCast<AudioEffect>(attached).setControlStatusListener { _, granted ->
+            if (disposed || effect !== attached) return@setControlStatusListener
+            // Invalidate queued work for the old ownership epoch, then let every
+            // writable session reconcile. A session without control waits for gain.
+            DspDesiredState.replace { }
+            context.sendLocalBroadcast(Intent(Constants.ACTION_PRESET_LOADED))
+            if (granted) enabled = requestedEnabled
+        }
+    }
+
     private fun rebootEngine() {
-        try {
+        DspDesiredState.replace {
             effect?.release()
             effect = createEffect()
+            watchControl(effect)
         }
-        catch (ex: IllegalStateException) {
-            Timber.e("Failed to re-instantiate LightningDSP effect")
-            Timber.e(ex.cause)
-            effect = null
-            return
-        }
+        context.sendLocalBroadcast(Intent(Constants.ACTION_PRESET_LOADED))
+        enabled = requestedEnabled
     }
 
     override fun syncWithPreferences(forceUpdateNamespaces: Array<String>?) {
@@ -127,6 +136,10 @@ class LightningDspRemoteEngine(
         }
 
         checkEngine()
+        val attached = effect
+        if (attached != null && !runCatching {
+                Refine.unsafeCast<AudioEffect>(attached).hasControl()
+            }.getOrDefault(false)) return
         super.syncWithPreferences(forceUpdateNamespaces)
     }
 
@@ -212,23 +225,15 @@ class LightningDspRemoteEngine(
         interpolationMode: Int,
         bands: DoubleArray,
     ): Boolean {
-        if (filterType == 0 && bands.size == 30) {
-            // Native FIR is an additional processing path, not a replacement
-            // for the legacy EQ enable bit inside the AudioEffect. Always turn
-            // the legacy stage off when handing this profile to ldsp.control;
-            // otherwise a previous profile's legacy EQ remains audible when
-            // the new profile has EQ disabled (or uses native FIR instead).
-            val legacyDisabled = effect.setParameter(1202, false.toShort()) == AudioEffect.SUCCESS
-            if (LightningDspControlClient.setFirEqIfSupported(
-                    FloatArray(15) { bands[it].toFloat() },
-                    FloatArray(15) { bands[it + 15].toFloat() },
-                    if (interpolationMode == 1) 1 else 0,
-                    enable,
-                    fallback = {
-                        if (!disposed) applyLegacyMultiEqualizer(enable, filterType, interpolationMode, bands)
-                    },
-                )) return legacyDisabled
-        }
+        if (filterType == 0 && bands.size == 30 && LightningDspControlClient.setFirEqIfSupported(
+                FloatArray(15) { bands[it].toFloat() },
+                FloatArray(15) { bands[it + 15].toFloat() },
+                if (interpolationMode == 1) 1 else 0,
+                enable,
+                fallback = {
+                    if (!disposed) applyLegacyMultiEqualizer(enable, filterType, interpolationMode, bands)
+                },
+            )) return true
         return applyLegacyMultiEqualizer(enable, filterType, interpolationMode, bands)
     }
 
