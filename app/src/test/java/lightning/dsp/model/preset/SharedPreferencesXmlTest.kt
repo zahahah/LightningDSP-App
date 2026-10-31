@@ -44,4 +44,20 @@ class SharedPreferencesXmlTest {
             ByteArrayInputStream("<!DOCTYPE map [<!ENTITY x SYSTEM 'file:///etc/passwd'>]><map/>".toByteArray())
         )
     }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsInternalEntityDeclarationsBeforeParsing() {
+        SharedPreferencesXml.parse(
+            "<!DOCTYPE map [<!ENTITY value 'expanded'>]><map><string name='x'>&value;</string></map>"
+                .byteInputStream()
+        )
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsUtf16DocumentTypeDeclarations() {
+        SharedPreferencesXml.parse(
+            "<!DOCTYPE map [<!ENTITY value 'expanded'>]><map/>"
+                .toByteArray(Charsets.UTF_16LE).inputStream()
+        )
+    }
 }

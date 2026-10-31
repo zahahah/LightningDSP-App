@@ -2,6 +2,8 @@ package lightning.dsp.model.preset
 
 import android.content.Context
 import org.w3c.dom.Element
+import org.xml.sax.SAXException
+import java.io.ByteArrayInputStream
 import java.io.InputStream
 import javax.xml.parsers.DocumentBuilderFactory
 
@@ -19,12 +21,13 @@ internal object SharedPreferencesXml {
     }
 
     fun parse(input: InputStream): List<Value> {
-        val factory = DocumentBuilderFactory.newInstance().apply {
-            setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-            setFeature("http://xml.org/sax/features/external-general-entities", false)
-            setFeature("http://xml.org/sax/features/external-parameter-entities", false)
-        }
-        val root = factory.newDocumentBuilder().parse(input).documentElement
+        val xml = input.readBytes()
+        require(!containsDoctype(xml)) { "DOCTYPE is not allowed in preset preferences" }
+        val builder = DocumentBuilderFactory.newInstance().newDocumentBuilder()
+        builder.setEntityResolver { _, _ -> throw SAXException("External XML entities are not allowed") }
+        val document = builder.parse(ByteArrayInputStream(xml))
+        require(document.doctype == null) { "DOCTYPE is not allowed in preset preferences" }
+        val root = document.documentElement
         require(root.tagName == "map") { "SharedPreferences XML root must be <map>" }
 
         return buildList {
@@ -51,6 +54,25 @@ internal object SharedPreferencesXml {
                     })
                     else -> throw IllegalArgumentException("Unsupported SharedPreferences value: ${element.tagName}")
                 })
+            }
+        }
+    }
+
+    // Android's DOM parser does not support the Xerces disallow-doctype-decl
+    // feature. Reject declarations before parsing, including XML's UTF-16/32
+    // encodings, so entity expansion cannot run before the DOM is inspected.
+    private fun containsDoctype(xml: ByteArray): Boolean {
+        val marker = "<!DOCTYPE".toByteArray(Charsets.US_ASCII)
+        val encodings = listOf(
+            marker,
+            marker.flatMap { listOf(it, 0.toByte()) }.toByteArray(),
+            marker.flatMap { listOf(0.toByte(), it) }.toByteArray(),
+            marker.flatMap { listOf(it, 0.toByte(), 0.toByte(), 0.toByte()) }.toByteArray(),
+            marker.flatMap { listOf(0.toByte(), 0.toByte(), 0.toByte(), it) }.toByteArray(),
+        )
+        return encodings.any { encoded ->
+            xml.indices.any { index ->
+                index + encoded.size <= xml.size && encoded.indices.all { xml[index + it] == encoded[it] }
             }
         }
     }
