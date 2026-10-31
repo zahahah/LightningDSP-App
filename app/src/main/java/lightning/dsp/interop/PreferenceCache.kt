@@ -44,8 +44,12 @@ class PreferenceCache(val context: Context) {
     inline fun <reified T : Any> get(@StringRes nameRes: Int, default: T) =
         get(nameRes, default, T::class)
 
-    fun markChangesAsCommitted() {
-        changedNamespaces.clear()
+    fun markNamespaceAsChanged(namespace: String) {
+        if (!changedNamespaces.contains(namespace)) changedNamespaces.add(namespace)
+    }
+
+    fun markChangesAsCommitted(namespaces: Collection<String>) {
+        changedNamespaces.removeAll(namespaces.toSet())
     }
 
     companion object {

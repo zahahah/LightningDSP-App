@@ -212,15 +212,23 @@ class LightningDspRemoteEngine(
         interpolationMode: Int,
         bands: DoubleArray,
     ): Boolean {
-        if (filterType == 0 && bands.size == 30 && LightningDspControlClient.setFirEqIfSupported(
-                FloatArray(15) { bands[it].toFloat() },
-                FloatArray(15) { bands[it + 15].toFloat() },
-                if (interpolationMode == 1) 1 else 0,
-                enable,
-                fallback = {
-                    if (!disposed) applyLegacyMultiEqualizer(enable, filterType, interpolationMode, bands)
-                },
-            )) return true
+        if (filterType == 0 && bands.size == 30) {
+            // Native FIR is an additional processing path, not a replacement
+            // for the legacy EQ enable bit inside the AudioEffect. Always turn
+            // the legacy stage off when handing this profile to ldsp.control;
+            // otherwise a previous profile's legacy EQ remains audible when
+            // the new profile has EQ disabled (or uses native FIR instead).
+            val legacyDisabled = effect.setParameter(1202, false.toShort()) == AudioEffect.SUCCESS
+            if (LightningDspControlClient.setFirEqIfSupported(
+                    FloatArray(15) { bands[it].toFloat() },
+                    FloatArray(15) { bands[it + 15].toFloat() },
+                    if (interpolationMode == 1) 1 else 0,
+                    enable,
+                    fallback = {
+                        if (!disposed) applyLegacyMultiEqualizer(enable, filterType, interpolationMode, bands)
+                    },
+                )) return legacyDisabled
+        }
         return applyLegacyMultiEqualizer(enable, filterType, interpolationMode, bands)
     }
 

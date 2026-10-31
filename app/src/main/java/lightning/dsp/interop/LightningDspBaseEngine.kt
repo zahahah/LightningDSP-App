@@ -5,6 +5,7 @@ import android.content.Intent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -47,7 +48,7 @@ abstract class LightningDspBaseEngine(val context: Context, val callbacks: Light
 
     open fun syncWithPreferences(forceUpdateNamespaces: Array<String>? = null) {
         syncScope.launch {
-            syncWithPreferencesAsync(forceUpdateNamespaces)
+            syncWithPreferencesAsync(forceUpdateNamespaces, retryAttempt = 0)
         }
     }
 
@@ -63,9 +64,13 @@ abstract class LightningDspBaseEngine(val context: Context, val callbacks: Light
         })
     }
 
-    private suspend fun syncWithPreferencesAsync(forceUpdateNamespaces: Array<String>? = null) {
+    private suspend fun syncWithPreferencesAsync(
+        forceUpdateNamespaces: Array<String>? = null,
+        retryAttempt: Int,
+    ) {
         Timber.d("Synchronizing with preferences... (forced: %s)", forceUpdateNamespaces?.joinToString(";") { it })
 
+        var failedNamespaces: List<String> = emptyList()
         syncMutex.withLock {
             cache.select(Constants.PREF_OUTPUT)
             val extendedPostGain = cache.get(R.string.key_output_extra_postgain, PostGainRangePolicy.DEFAULT_EXTENDED)
@@ -125,7 +130,9 @@ abstract class LightningDspBaseEngine(val context: Context, val callbacks: Light
             val convolverAdvImp = cache.get(R.string.key_convolver_adv_imp, Constants.DEFAULT_CONVOLVER_ADVIMP)
             val convolverMode = cache.get(R.string.key_convolver_mode, "0").toInt()
 
-            val targets = cache.changedNamespaces.toTypedArray() + (forceUpdateNamespaces ?: arrayOf())
+            val targets = (cache.changedNamespaces + (forceUpdateNamespaces ?: arrayOf())).distinct().toTypedArray()
+            val successfulNamespaces = mutableListOf<String>()
+            val failed = linkedSetOf<String>()
             preferenceUpdateOrder(targets).forEach {
                 Timber.i("Committing new changes in namespace '$it'")
 
@@ -147,12 +154,34 @@ abstract class LightningDspBaseEngine(val context: Context, val callbacks: Light
 
                 if(!result) {
                     Timber.e("Failed to apply $it")
+                    failed.add(it)
+                    cache.markNamespaceAsChanged(it)
+                } else {
+                    successfulNamespaces.add(it)
                 }
             }
 
-            cache.markChangesAsCommitted()
+            cache.markChangesAsCommitted(successfulNamespaces)
+            failedNamespaces = failed.toList()
             Timber.i("Preferences synchronized")
         }
+
+        // Route/profile callbacks can arrive while AudioFlinger is switching
+        // outputs. Do not forget failed writes: bounded retries re-read the
+        // current profile and reapply only namespaces that did not succeed.
+        if (failedNamespaces.isNotEmpty() && retryAttempt < MAX_PREFERENCE_SYNC_RETRIES) {
+            val retryDelay = PREFERENCE_SYNC_RETRY_DELAYS_MS[retryAttempt]
+            Timber.w("Retrying failed DSP namespaces after route/profile sync: %s", failedNamespaces)
+            syncScope.launch {
+                delay(retryDelay)
+                syncWithPreferencesAsync(failedNamespaces.toTypedArray(), retryAttempt + 1)
+            }
+        }
+    }
+
+    private companion object {
+        const val MAX_PREFERENCE_SYNC_RETRIES = 3
+        val PREFERENCE_SYNC_RETRY_DELAYS_MS = longArrayOf(250, 500, 1_000)
     }
 
     fun setMultiEqualizer(enable: Boolean, filterType: Int, interpolationMode: Int, bands: String): Boolean
