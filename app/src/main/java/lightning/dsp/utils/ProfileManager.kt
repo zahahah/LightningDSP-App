@@ -17,6 +17,8 @@ import lightning.dsp.utils.extensions.ContextExtensions.broadcastPresetLoadEvent
 import lightning.dsp.utils.extensions.ContextExtensions.unregisterLocalReceiver
 import lightning.dsp.utils.extensions.ensureIsDirectory
 import lightning.dsp.utils.extensions.ensureIsFile
+import lightning.dsp.utils.extensions.ContextExtensions.toast
+import lightning.dsp.utils.storage.LibraryStorage
 import lightning.dsp.utils.preferences.Preferences
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -96,10 +98,19 @@ class ProfileManager : BroadcastReceiver(), RoutingObserver.RoutingChangedCallba
                 return
             }
 
-            DspDesiredState.replace {
-                storeClearCurrent()
-                activeProfile = newProfile.also(::load)
+            val replaced = DspDesiredState.replace {
+                replaceDeviceProfile(
+                    hasCurrentProfile = activeProfile != null,
+                    targetExists = File(getProfileDirectory(newProfile.id), FILE_PROFILE_PRESET).isFile,
+                    storeCurrent = { store(activeProfile ?: newProfile) },
+                    replace = {
+                        context.restoreDspSettings(silent = true)
+                        activeProfile = newProfile.also(::load)
+                    },
+                )
             }
+            // A failed save must keep the current profile and reassert its now-current generation.
+            if (!replaced) context.broadcastPresetLoadEvent()
         }
     }
 
@@ -116,7 +127,9 @@ class ProfileManager : BroadcastReceiver(), RoutingObserver.RoutingChangedCallba
                     Timber.d("Copying '${source.id}' to '${dest.id}'")
 
                     val destDir = getProfileDirectory(dest.id).apply { mkdirs() }
-                    File(srcDir, FILE_PROFILE_PRESET).copyTo(File(destDir, FILE_PROFILE_PRESET), true)
+                    LibraryStorage.replaceFile(File(destDir, FILE_PROFILE_PRESET)) { temporary ->
+                        File(srcDir, FILE_PROFILE_PRESET).copyTo(temporary, overwrite = true)
+                    }
                     dest.save(File(destDir, FILE_PROFILE))
 
                     if (dest == activeProfile) {
@@ -178,29 +191,29 @@ class ProfileManager : BroadcastReceiver(), RoutingObserver.RoutingChangedCallba
         }
     }
 
-    private fun storeClearCurrent() {
-        // Store current configuration
-        val profile = activeProfile ?: routingObserver.currentDevice?.let { Profile.from(it) }
-        profile ?: return
-
-        store(profile)
-
-        // Reset through SharedPreferences before loading the next profile. Deleting XML
-        // files directly leaves already-open preference instances with the old profile.
-        context.restoreDspSettings(silent = true)
-    }
-
-    private fun store(profile: Profile) {
+    private fun store(profile: Profile): Boolean {
         Timber.d("Storing current to profile: ${profile.id}")
-
-        val targetDir = getProfileDirectory(profile.id).also { it.mkdirs() }
-        Preset(FILE_PROFILE_PRESET, targetDir).save()
-        profile.save(File(targetDir, FILE_PROFILE))
+        val targetDir = getProfileDirectory(profile.id)
+        val preset = Preset(FILE_PROFILE_PRESET, targetDir)
+        if (!preset.save()) {
+            context.toast(preset.lastSaveError ?: "Unable to save the current device profile")
+            return false
+        }
+        return try {
+            profile.save(File(targetDir, FILE_PROFILE))
+            true
+        } catch (ex: Exception) {
+            Timber.e(ex, "Unable to save device profile metadata")
+            context.toast("Unable to save the current device profile")
+            false
+        }
     }
 
     @Serializable
     data class Profile(val name: String, val id: String, val group: String) {
-        fun save(json: File) = json.writeText(Json.encodeToString<Profile>(this))
+        fun save(json: File) {
+            LibraryStorage.replaceFile(json) { it.writeText(Json.encodeToString<Profile>(this)) }
+        }
 
         companion object {
             fun from(device: RoutingObserver.Device) = Profile(device.name, device.id, device.group.name)

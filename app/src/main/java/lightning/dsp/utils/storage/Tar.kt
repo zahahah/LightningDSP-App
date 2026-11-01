@@ -117,20 +117,29 @@ object Tar {
         }
 
         fun extract(targetFolder: File) : Map<String, String>? {
-            if(targetFolder.exists())
-                targetFolder.delete()
-            targetFolder.mkdirs()
-
             val metadataBytes = ByteArrayOutputStream()
             try {
+                if (java.nio.file.Files.isSymbolicLink(targetFolder.toPath()) ||
+                    targetFolder.canonicalFile.parentFile == null) {
+                    throw IOException("Invalid extraction directory")
+                }
+                if (targetFolder.exists() && !targetFolder.deleteRecursively()) {
+                    throw IOException("Cannot clear the extraction directory")
+                }
+                if (!targetFolder.mkdirs()) throw IOException("Cannot create the extraction directory")
+                val root = targetFolder.canonicalFile
                 process { stream, name ->
                     var count: Int
                     val data = ByteArray(2048)
-                    // create subdirectories in archive entry name
-                    File(targetFolder.absolutePath + "/" + name).parentFile?.mkdirs()
-                    BufferedOutputStream(FileOutputStream(
-                        targetFolder.absolutePath + "/" + name
-                    )).use { dest ->
+                    val destination = File(root, name).canonicalFile
+                    if (!destination.path.startsWith(root.path + File.separator)) {
+                        throw IOException("Archive entry escapes the extraction directory")
+                    }
+                    val parent = requireNotNull(destination.parentFile)
+                    if (!parent.isDirectory && !parent.mkdirs()) {
+                        throw IOException("Cannot create archive entry directory")
+                    }
+                    BufferedOutputStream(FileOutputStream(destination)).use { dest ->
                         while (stream.read(data).also { count = it } != -1) {
                             if (name == FILE_METADATA)
                                 metadataBytes.write(data, 0, count)

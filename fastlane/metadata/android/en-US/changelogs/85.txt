@@ -1,0 +1,4 @@
+Keep device-profile reconciliation and Android-compatible preset loading together.
+Prevent interrupted loads from leaking old effect settings into another profile.
+Save loaded preferences, preserve disabled effects, and stop profile changes when saving fails.
+Keep the native driver and helper unchanged.

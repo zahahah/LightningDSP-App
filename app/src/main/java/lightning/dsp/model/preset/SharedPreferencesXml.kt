@@ -1,11 +1,18 @@
 package lightning.dsp.model.preset
 
 import android.content.Context
+import android.content.SharedPreferences
+import lightning.dsp.utils.Constants
 import org.w3c.dom.Element
 import org.xml.sax.SAXException
 import java.io.ByteArrayInputStream
 import java.io.InputStream
+import java.io.OutputStream
 import javax.xml.parsers.DocumentBuilderFactory
+import javax.xml.transform.OutputKeys
+import javax.xml.transform.TransformerFactory
+import javax.xml.transform.dom.DOMSource
+import javax.xml.transform.stream.StreamResult
 
 /** Reads the SharedPreferences XML format used inside existing preset archives. */
 internal object SharedPreferencesXml {
@@ -18,6 +25,44 @@ internal object SharedPreferencesXml {
         data class FloatValue(override val name: String, val value: Float) : Value
         data class StringSetValue(override val name: String, val value: Set<String>) : Value
         data class NullValue(override val name: String) : Value
+    }
+
+    /** Snapshot loaded values, not XML files that may still have an apply() write pending. */
+    fun write(preferences: SharedPreferences, output: OutputStream) {
+        val document = DocumentBuilderFactory.newInstance().newDocumentBuilder().newDocument()
+        val root = document.createElement("map")
+        document.appendChild(root)
+        preferences.all.toSortedMap().forEach { (name, value) ->
+            require(name.isNotEmpty()) { "SharedPreferences entry has no name" }
+            val tag = when (value) {
+                is String -> "string"
+                is Boolean -> "boolean"
+                is Int -> "int"
+                is Long -> "long"
+                is Float -> "float"
+                is Set<*> -> "set"
+                null -> "null"
+                else -> throw IllegalArgumentException("Unsupported SharedPreferences value for $name")
+            }
+            require(value !is Float || value.isFinite()) { "Non-finite SharedPreferences value for $name" }
+            val entry = document.createElement(tag)
+            entry.setAttribute("name", name)
+            when (value) {
+                is String -> entry.appendChild(document.createTextNode(value))
+                is Set<*> -> value.toSet().forEach { item ->
+                    require(item is String) { "Unsupported SharedPreferences set entry" }
+                    entry.appendChild(document.createElement("string").apply {
+                        appendChild(document.createTextNode(item))
+                    })
+                }
+                null -> Unit
+                else -> entry.setAttribute("value", value.toString())
+            }
+            root.appendChild(entry)
+        }
+        TransformerFactory.newInstance().newTransformer().apply {
+            setOutputProperty(OutputKeys.ENCODING, "UTF-8")
+        }.transform(DOMSource(document), StreamResult(output))
     }
 
     fun parse(input: InputStream): List<Value> {
@@ -77,8 +122,58 @@ internal object SharedPreferencesXml {
         }
     }
 
-    fun apply(context: Context, namespace: String, values: List<Value>) {
-        val editor = context.getSharedPreferences(namespace, Context.MODE_PRIVATE).edit().clear()
+    /** A preset is a complete desired DSP state, even when an older archive omits default namespaces. */
+    fun completeSnapshot(
+        values: Map<String, List<Value>>,
+        additionalNamespaces: Collection<String> = emptyList(),
+    ): Map<String, List<Value>> =
+        (Constants.DSP_PREFERENCE_NAMESPACES + additionalNamespaces + values.keys).distinct()
+            .associateWith { values[it].orEmpty() }
+
+    /** Restore loaded values if any namespace commit or follow-up preparation fails. */
+    fun replaceAll(
+        values: Map<String, List<Value>>,
+        preferencesFor: (String) -> SharedPreferences,
+        afterApply: () -> Unit = {},
+    ) {
+        val targets = values.keys.associateWith(preferencesFor)
+        val previous = targets.mapValues { (_, preferences) -> snapshot(preferences) }
+        try {
+            values.forEach { (namespace, entries) -> apply(targets.getValue(namespace), entries, namespace) }
+            afterApply()
+        } catch (failure: Exception) {
+            previous.forEach { (namespace, entries) ->
+                try {
+                    apply(targets.getValue(namespace), entries, namespace)
+                } catch (rollbackFailure: Exception) {
+                    failure.addSuppressed(rollbackFailure)
+                }
+            }
+            throw failure
+        }
+    }
+
+    private fun snapshot(preferences: SharedPreferences): List<Value> = preferences.all.map { (name, value) ->
+        when (value) {
+            is String -> Value.StringValue(name, value)
+            is Boolean -> Value.BooleanValue(name, value)
+            is Int -> Value.IntValue(name, value)
+            is Long -> Value.LongValue(name, value)
+            is Float -> Value.FloatValue(name, value)
+            is Set<*> -> Value.StringSetValue(name, value.map { item ->
+                require(item is String) { "Unsupported SharedPreferences set entry" }
+                item
+            }.toSet())
+            null -> Value.NullValue(name)
+            else -> throw IllegalArgumentException("Unsupported SharedPreferences value for $name")
+        }
+    }
+
+    fun apply(context: Context, namespace: String, values: List<Value>) =
+        apply(context.getSharedPreferences(namespace, Context.MODE_PRIVATE), values, namespace)
+
+    private fun apply(preferences: SharedPreferences, values: List<Value>, namespace: String) {
+        val editor = preferences.edit().clear()
         values.forEach { value ->
             when (value) {
                 is Value.StringValue -> editor.putString(value.name, value.value)

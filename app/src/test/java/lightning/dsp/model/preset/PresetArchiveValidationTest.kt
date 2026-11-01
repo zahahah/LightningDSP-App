@@ -34,4 +34,9 @@ class PresetArchiveValidationTest {
         assertTrue(Preset.validate(archive("metadata" to "version=3",
             "dsp_bass.xml" to "<map/>").inputStream()))
     }
+    @Test fun nestedTraversalNameIsNotAcceptedAsDspSettings() {
+        assertFalse(Preset.validate(archive("metadata" to "version=3",
+            "dsp_/../../outside.xml" to "<map/>").inputStream()))
+    }
+
 }

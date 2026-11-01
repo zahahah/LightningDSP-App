@@ -2,26 +2,23 @@ package lightning.dsp.model.preset
 
 import android.content.Context
 import android.content.Intent
-import android.system.ErrnoException
 import lightning.dsp.BuildConfig
 import lightning.dsp.R
 import lightning.dsp.backup.BackupManager
 import lightning.dsp.liveprog.EelParser
+import lightning.dsp.interop.DspDesiredState
 import lightning.dsp.utils.Constants
 import lightning.dsp.utils.extensions.ContextExtensions.broadcastPresetLoadEvent
 import lightning.dsp.utils.extensions.ContextExtensions.sendLocalBroadcast
-import lightning.dsp.utils.extensions.ContextExtensions.toast
 import lightning.dsp.utils.storage.Tar
 import lightning.dsp.utils.storage.LibraryStorage
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
-import org.xml.sax.SAXException
 import timber.log.Timber
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
 import java.io.InputStream
-import javax.xml.parsers.DocumentBuilderFactory
 
 class Preset(val name: String, externalPath: File? = null): KoinComponent {
     private val ctx: Context by inject()
@@ -86,17 +83,18 @@ class Preset(val name: String, externalPath: File? = null): KoinComponent {
             val extraNamespaces = preferenceRoot.listFiles()?.filter {
                 it.isFile && it.name.startsWith("dsp_") && it.extension == "xml"
             }?.map { it.nameWithoutExtension }.orEmpty()
-            val defaults = File.createTempFile("preset-defaults-", ".xml", ctx.cacheDir)
+            val snapshot = File.createTempFile("preset-settings-", ".xml", ctx.cacheDir)
             try {
-                defaults.writeText("<?xml version=\"1.0\" encoding=\"utf-8\"?><map />")
                 (Constants.DSP_PREFERENCE_NAMESPACES + extraNamespaces).distinct().forEach { namespace ->
-                    val stored = File(preferenceRoot, "$namespace.xml")
-                    check(c.add(if (stored.exists()) stored else defaults, "$namespace.xml")) {
+                    snapshot.outputStream().use { output ->
+                        SharedPreferencesXml.write(ctx.getSharedPreferences(namespace, Context.MODE_PRIVATE), output)
+                    }
+                    check(c.add(snapshot, "$namespace.xml")) {
                         "Unable to read DSP settings for $namespace"
                     }
                 }
             } finally {
-                defaults.delete()
+                snapshot.delete()
             }
 
             findLiveprogScriptPath(ctx)?.let { path ->
@@ -128,13 +126,15 @@ class Preset(val name: String, externalPath: File? = null): KoinComponent {
         const val META_MIN_VERSION_CODE = "min_version_code" /* version 3+ */
 
         private fun currentPath(ctx: Context) = File(ctx.applicationInfo.dataDir + "/shared_prefs")
-        private fun isKnownEntry(n: String) = (n.startsWith("dsp_") && n.endsWith("xml")) || n == FILE_LIVEPROG
+        private fun isKnownEntry(n: String) = n == FILE_LIVEPROG ||
+            (n.startsWith("dsp_") && n.endsWith(".xml") && '/' !in n && '\\' !in n)
 
         fun validate(inputStream: InputStream): Boolean {
             var containsSettings = false
             val valid = Tar.Reader(inputStream) { name ->
-                if (name.startsWith("dsp_") && name.endsWith(".xml")) containsSettings = true
-                isKnownEntry(name)
+                val known = isKnownEntry(name)
+                if (known && name.endsWith(".xml")) containsSettings = true
+                known
             }.validate()
             return valid && containsSettings
         }
@@ -144,113 +144,78 @@ class Preset(val name: String, externalPath: File? = null): KoinComponent {
          */
         fun load(ctx: Context, stream: InputStream): PresetMetadata {
             Timber.d("Loading preset from stream")
-
-            val targetFolder = File(ctx.cacheDir, "preset")
-            val metadata = Tar.Reader(stream, ::isKnownEntry).extract(targetFolder)
-            metadata ?: throw Exception(ctx.getString(R.string.filelibrary_corrupted))
-
-            if(metadata[BackupManager.META_IS_BACKUP]?.toBoolean() == true) {
-                Timber.e("This is a backup file, not a preset file")
-                targetFolder.deleteRecursively()
-                throw Exception(ctx.getString(R.string.filelibrary_is_backup_not_preset))
-            }
-
-            val version = metadata[META_VERSION]?.toIntOrNull() ?: 2
-            Timber.d("Loaded preset file version $version")
-
-            val minVersionCode = metadata[META_MIN_VERSION_CODE]?.toIntOrNull() ?: 0
-            if(BuildConfig.VERSION_CODE < minVersionCode) {
-                Timber.w("Preset too new. Version code $minVersionCode or later required")
-                targetFolder.deleteRecursively()
-                throw Exception(ctx.getString(R.string.filelibrary_file_too_new))
-            }
-
-            val files = targetFolder.listFiles()
-            if(files == null || files.isEmpty()) {
-                Timber.e("Preset archive did not contain any useful data")
-                targetFolder.deleteRecursively()
-                throw Exception(ctx.getString(R.string.filelibrary_corrupted))
-            }
-
-            val preferenceFiles = files
-                .filter { it.name.startsWith("dsp_") && it.extension == "xml" }
-                .map { file ->
-                    val namespace = file.nameWithoutExtension
-                    namespace to file.inputStream().use(SharedPreferencesXml::parse)
+            val targetFolder = java.nio.file.Files.createTempDirectory(ctx.cacheDir.toPath(), "preset-").toFile()
+            try {
+                val metadata = Tar.Reader(stream, ::isKnownEntry).extract(targetFolder)
+                    ?: throw Exception(ctx.getString(R.string.filelibrary_corrupted))
+                require(metadata[BackupManager.META_IS_BACKUP]?.toBoolean() != true) {
+                    ctx.getString(R.string.filelibrary_is_backup_not_preset)
                 }
-            require(preferenceFiles.isNotEmpty()) { "Preset contains no DSP settings." }
-            preferenceFiles.forEach { (namespace, values) ->
-                SharedPreferencesXml.apply(ctx, namespace, values)
-                Timber.d("Applied preset preferences to $namespace")
-            }
+                val minVersionCode = metadata[META_MIN_VERSION_CODE]?.toIntOrNull() ?: 0
+                require(BuildConfig.VERSION_CODE >= minVersionCode) {
+                    ctx.getString(R.string.filelibrary_file_too_new)
+                }
 
-            if (files.any { it.name == FILE_LIVEPROG }) {
-                findLiveprogScriptPath(ctx)?.let {
-                    val originalFile = File(it)
-                    val targetFile =
-                        File("${ctx.getExternalFilesDir(null)!!.path}/Liveprog", originalFile.name)
-                    val tempPath = File(targetFolder, FILE_LIVEPROG)
+                // Parse every XML before replacing any preferences. Each load owns its staging directory.
+                val files = targetFolder.listFiles().orEmpty()
+                val preferenceFiles = files.filter { it.name.startsWith("dsp_") && it.extension == "xml" }
+                    .associate { file ->
+                        file.nameWithoutExtension to file.inputStream().use(SharedPreferencesXml::parse)
+                    }
+                require(preferenceFiles.isNotEmpty()) { "Preset contains no DSP settings." }
+                val extraNamespaces = currentPath(ctx).listFiles().orEmpty().filter {
+                    it.isFile && isKnownEntry(it.name) && it.extension == "xml"
+                }.map { it.nameWithoutExtension }
 
-                    if(metadata[META_LIVEPROG_INCLUDED].toBoolean()) {
-                        check(targetFile.parentFile!!.isDirectory || targetFile.parentFile!!.mkdirs()) {
-                            "Cannot create Liveprog library directory"
+                DspDesiredState.replace {
+                    // Missing namespaces in older presets mean defaults, never the previous preset's effects.
+                    try {
+                        SharedPreferencesXml.replaceAll(
+                            SharedPreferencesXml.completeSnapshot(preferenceFiles, extraNamespaces),
+                            preferencesFor = { ctx.getSharedPreferences(it, Context.MODE_PRIVATE) },
+                        ) {
+                            if (files.any { it.name == FILE_LIVEPROG } && metadata[META_LIVEPROG_INCLUDED].toBoolean()) {
+                                findLiveprogScriptPath(ctx)?.let { path ->
+                                    val originalFile = File(path)
+                                    val storage = ctx.getExternalFilesDir(null)
+                                        ?: throw IOException("App storage is unavailable. Retry after storage is mounted.")
+                                    val targetFile = File(File(storage, "Liveprog"), originalFile.name)
+                                    val tempPath = File(targetFolder, FILE_LIVEPROG)
+                                    check(targetFile.parentFile!!.isDirectory || targetFile.parentFile!!.mkdirs()) {
+                                        "Cannot create Liveprog library directory"
+                                    }
+                                    if (!targetFile.exists()) {
+                                        tempPath.copyTo(targetFile, overwrite = true)
+                                    } else {
+                                        val parser = EelParser()
+                                        val parserNew = EelParser()
+                                        parser.load(tempPath.absolutePath)
+                                        parserNew.load(targetFile.absolutePath)
+                                        parser.properties.forEach(parserNew::manipulateProperty)
+                                        parserNew.save()
+                                    }
+                                    ctx.sendLocalBroadcast(Intent(Constants.ACTION_SERVICE_RELOAD_LIVEPROG))
+                                }
+                            }
                         }
-                        if(!targetFile.exists()) {
-                            Timber.d("Extracting embedded liveprog file to '${targetFile.absolutePath}'")
-                            tempPath.copyTo(targetFile, overwrite = true)
-                            tempPath.delete()
-                        }
-                        else {
-                            Timber.d("Copying parameters of embedded liveprog file to '${targetFile.absolutePath}'")
-                            val parser = EelParser()
-                            val parserNew = EelParser()
-                            parser.load(tempPath.absolutePath)
-                            parserNew.load(targetFile.absolutePath)
-                            parser.properties.forEach(parserNew::manipulateProperty)
-                            parserNew.save()
-                            tempPath.delete()
-                        }
-                        ctx.sendLocalBroadcast(Intent(Constants.ACTION_SERVICE_RELOAD_LIVEPROG))
+                    } finally {
+                        // Reconcile either the complete imported state or the restored live state on failure.
+                        ctx.broadcastPresetLoadEvent()
                     }
                 }
+                return metadata.toMutableMap()
+            } finally {
+                targetFolder.deleteRecursively()
             }
-
-            // clean up
-            targetFolder.deleteRecursively()
-
-            ctx.broadcastPresetLoadEvent()
-
-            return metadata.toMutableMap()
         }
 
         private fun findLiveprogScriptPath(ctx: Context): String? {
-            val xmlFile = File(currentPath(ctx), "${Constants.PREF_LIVEPROG}.xml")
-            if (!xmlFile.exists())
-                return null
-            try {
-                val factory = DocumentBuilderFactory.newInstance()
-                val builder = factory.newDocumentBuilder()
-                val doc = builder.parse(FileInputStream(xmlFile))
-                val nodes = doc.getElementsByTagName("string")
-
-                for(i in 0 until nodes.length) {
-                    val node = nodes.item(i)
-                    if(node.attributes.getNamedItem("name").nodeValue ==
-                        ctx.getString(R.string.key_liveprog_file)) {
-                        return node.textContent.let {
-                            ctx.getExternalFilesDir(null)!!.absolutePath + "/" + it
-                        }.also {
-                            Timber.d("Found liveprog file path: $it")
-                        }
-                    }
-                }
-            } catch (e: SAXException) {
-                Timber.w(e)
-            }
-            catch (e: IOException) {
-                Timber.w(e)
-            }
-            return null
+            val relativePath = ctx.getSharedPreferences(Constants.PREF_LIVEPROG, Context.MODE_PRIVATE)
+                .getString(ctx.getString(R.string.key_liveprog_file), null)
+                ?.takeIf { it.isNotBlank() } ?: return null
+            val storage = ctx.getExternalFilesDir(null)
+                ?: throw IOException("App storage is unavailable. Retry after storage is mounted.")
+            return File(storage, relativePath).absolutePath
         }
     }
 }
