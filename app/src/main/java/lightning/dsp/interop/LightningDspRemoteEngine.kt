@@ -129,6 +129,41 @@ class LightningDspRemoteEngine(
         enabled = requestedEnabled
     }
 
+    /** Recreate only the current Global attachment; coverage must be verified separately. */
+    internal fun reconcileGlobalOutput(): Boolean {
+        if (disposed || sessionId != 0 || effect == null) return false
+        try {
+            DspDesiredState.replace {
+                LightningDspControlClient.invalidateContext()
+                effect?.release()
+                effect = createEffect()
+                watchControl(effect)
+            }
+        } catch (failure: Exception) {
+            Timber.w(failure, "Global attachment recreation failed")
+            LightningDspControlClient.probeAsync()
+            context.sendLocalBroadcast(Intent(Constants.ACTION_PRESET_LOADED))
+            return false
+        }
+        val replacement = effect
+        // Invalidate pending work, restore every loaded preference, and reacquire the
+        // unique native context. A successful attachment is not coverage evidence.
+        context.sendLocalBroadcast(Intent(Constants.ACTION_PRESET_LOADED))
+        enabled = requestedEnabled
+        if (replacement != null) {
+            val generation = DspDesiredState.current()
+            LightningDspControlClient.probeAsync { ready ->
+                DspDesiredState.applyIfCurrent(generation) {
+                    if (ready && !disposed && effect === replacement) {
+                        enabled = requestedEnabled
+                        context.sendLocalBroadcast(Intent(Constants.ACTION_PRESET_LOADED))
+                    }
+                }
+            }
+        }
+        return replacement != null
+    }
+
     override fun syncWithPreferences(forceUpdateNamespaces: Array<String>?) {
         if(effect == null && !LightningDspControlClient.isAvailable()) {
             Timber.d("Rejecting update due to disposed engine")

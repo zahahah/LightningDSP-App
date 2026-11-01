@@ -26,6 +26,7 @@ import lightning.dsp.BuildConfig
 import lightning.dsp.MainApplication
 import lightning.dsp.R
 import lightning.dsp.flavor.VolumeManagerLifecycle
+import lightning.dsp.interop.GlobalCoverageMonitor
 import lightning.dsp.interop.LightningDspRemoteEngine
 import lightning.dsp.model.IEffectSession
 import lightning.dsp.model.room.AppBlocklistDatabase
@@ -62,6 +63,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
 
     // Enhanced processing
     private var sessionDumpManager: RootSessionDumpManager? = null
+    private var globalCoverageMonitor: GlobalCoverageMonitor? = null
 
     // Preferences
     private val preferences: Preferences.App by inject()
@@ -110,6 +112,13 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
         // Get reference to system services
         audioManager = getSystemService<AudioManager>()!!
         notificationManager = getSystemService<NotificationManager>()!!
+        if (isRoot()) {
+            globalCoverageMonitor = GlobalCoverageMonitor(this,
+                shouldMonitor = { !isServiceDisposing && app.isLegacyMode &&
+                    app.rootSessionDatabase.enabled && app.rootSessionDatabase.hasUsableGlobalSession() },
+                reconcile = { app.rootSessionDatabase.reconcileGlobalOutput() },
+            )
+        }
 
         // Setup database observer
         blockedApps.observeForever(blockedAppObserver)
@@ -211,6 +220,8 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
     override fun onDestroy() {
         super.onDestroy()
         isServiceDisposing = true
+        globalCoverageMonitor?.close()
+        globalCoverageMonitor = null
         backgroundStartup?.cancel()
         backgroundScope.cancel()
 
@@ -235,9 +246,13 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         when (key) {
-            getString(R.string.key_audioformat_processing) -> { updateServiceNotification() }
+            getString(R.string.key_audioformat_processing) -> {
+                updateServiceNotification()
+                globalCoverageMonitor?.requestCheck()
+            }
             getString(R.string.key_powered_on) -> {
                 app.rootSessionDatabase.enabled = sharedPreferences?.getBoolean(key, true) ?: true
+                globalCoverageMonitor?.requestCheck()
                 updateServiceNotification()
             }
             getString(R.string.key_audioformat_enhanced_processing) -> {
@@ -297,6 +312,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
     }
 
     override fun onSessionChanged(sessionList: HashMap<Int, IEffectSession>) {
+        globalCoverageMonitor?.requestCheck()
         updateServiceNotification()
     }
 

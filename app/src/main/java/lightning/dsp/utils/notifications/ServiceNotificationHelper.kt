@@ -72,7 +72,7 @@ object ServiceNotificationHelper: KoinComponent {
         return createServiceNotification(
             context,
             context.getString(
-                if(enabled) R.string.notification_processing_title
+                if(enabled) R.string.notification_global_enabled_title
                 else R.string.notification_processing_disabled_title
             ),
             context.getString(R.string.notification_processing_legacy),

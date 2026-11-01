@@ -35,6 +35,12 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
         return runCatching { effect.enabled }.isSuccess
     }
 
+    /** Caller must independently verify the active output and native context first. */
+    fun reconcileGlobalOutput(): Boolean {
+        if (!app.isLegacyMode || !enabled || sessionList.size != 1) return false
+        return (sessionList[0] as? RemoteEffectSession)?.effect?.reconcileGlobalOutput() ?: false
+    }
+
     override fun createSession(id: Int, uid: Int, packageName: String): IEffectSession? {
         if (sessionList[id] == null) {
             Timber.d("Creating effect for session $id (${packageName})")

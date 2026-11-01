@@ -5,6 +5,41 @@ import lightning.dsp.flavor.RootShellImpl
 import timber.log.Timber
 import java.util.concurrent.Executors
 
+/** Context identity is independent of a probe result: an old probe cannot revive readiness. */
+internal class NativeControlContextState {
+    private var epoch = 0L
+    private var probeEpoch: Long? = null
+    private var available = false
+    private val callbacks = mutableListOf<(Boolean) -> Unit>()
+    data class Request(val epoch: Long, val launch: Boolean, val cached: Boolean)
+    val ready: Boolean get() = synchronized(this) { available }
+    @Synchronized fun currentEpoch() = epoch
+    @Synchronized fun isCurrent(expected: Long) = epoch == expected
+    @Synchronized fun invalidate() {
+        epoch++
+        available = false
+        probeEpoch = null
+        callbacks.clear()
+    }
+    @Synchronized fun request(callback: ((Boolean) -> Unit)?): Request {
+        if (available) return Request(epoch, false, true)
+        callback?.let(callbacks::add)
+        val launch = probeEpoch == null
+        if (launch) probeEpoch = epoch
+        return Request(epoch, launch, false)
+    }
+    @Synchronized fun record(expected: Long, value: Boolean): Boolean {
+        if (epoch != expected) return false
+        available = value
+        return true
+    }
+    @Synchronized fun finish(expected: Long): List<(Boolean) -> Unit> {
+        if (epoch != expected) return emptyList()
+        probeEpoch = null
+        return callbacks.toList().also { callbacks.clear() }
+    }
+}
+
 /** Global ldsp.control client. UID 0 and the vendor-native binding stay in the
  * module helper; the ordinary app never uses guessed Binder codes or Java AIDL
  * to disguise the native service's vendor-local stability. */
@@ -14,9 +49,8 @@ internal object LightningDspControlClient {
         Thread(runnable, "ldsp-global-control").apply { isDaemon = true }
     }
     @Volatile private var rootAvailable = false
-    @Volatile private var ready = false
-    @Volatile private var probing = false
-    private val probeCallbacks = mutableListOf<(Boolean) -> Unit>()
+    private val contextState = NativeControlContextState()
+    private val ready: Boolean get() = contextState.ready
     private val writes = NativeControlWriteDispatcher(
         isReady = { ready },
         currentGeneration = DspDesiredState::current,
@@ -31,16 +65,20 @@ internal object LightningDspControlClient {
     fun isAvailable() = ready
     fun needsRootPermission() = !rootAvailable
 
+    /** Call before releasing/replacing the AudioEffect; probeAsync must run after creation. */
+    fun invalidateContext() = contextState.invalidate()
+
     fun probeAsync(onComplete: ((Boolean) -> Unit)? = null) {
-        synchronized(this) {
-            if (ready) {
-                onComplete?.let { executor.execute { it(true) } }
-                return
+        val request = contextState.request(onComplete)
+        if (request.cached) {
+            onComplete?.let { callback ->
+                executor.execute {
+                    if (contextState.isCurrent(request.epoch) && ready) callback(true)
+                }
             }
-            onComplete?.let(probeCallbacks::add)
-            if (probing) return
-            probing = true
+            return
         }
+        if (!request.launch) return
         executor.execute {
             var result = false
             try {
@@ -49,27 +87,28 @@ internal object LightningDspControlClient {
                     Timber.i("ldsp.control: root unavailable; legacy fallback")
                 } else {
                     for (delayMs in longArrayOf(0, 250, 500, 1_000, 2_000)) {
+                        if (!contextState.isCurrent(request.epoch)) break
                         if (delayMs > 0) Thread.sleep(delayMs)
+                        if (!contextState.isCurrent(request.epoch)) break
                         val response = runHelper("probe")
-                        ready = response?.ready == true
+                        if (!contextState.record(request.epoch, response?.ready == true)) break
                         if (ready) {
                             Timber.i("ldsp.control: global native backend ready; ${response?.raw}")
                             break
                         }
                     }
                 }
-                result = ready
+                result = contextState.isCurrent(request.epoch) && ready
                 if (!result) Timber.i("ldsp.control: discovery/authorization/context gate unavailable; legacy fallback")
             } catch (e: Exception) {
                 Timber.w(e, "ldsp.control: probe failed; legacy fallback")
             } finally {
-                val callbacks = synchronized(this) {
-                    probing = false
-                    probeCallbacks.toList().also { probeCallbacks.clear() }
-                }
+                val callbacks = contextState.finish(request.epoch)
                 callbacks.forEach { callback ->
-                    try { callback(result) }
-                    catch (e: Exception) { Timber.w(e, "ldsp.control: availability callback failed") }
+                    if (contextState.isCurrent(request.epoch)) {
+                        try { callback(result && ready) }
+                        catch (e: Exception) { Timber.w(e, "ldsp.control: availability callback failed") }
+                    }
                 }
             }
         }
@@ -103,6 +142,7 @@ internal object LightningDspControlClient {
 
     private fun runHelper(action: String, vararg args: String): NativeControlReply? {
         if (!rootAvailable || Looper.myLooper() == Looper.getMainLooper()) return null
+        val epoch = contextState.currentEpoch()
         return try {
             val command = (listOf(HELPER, action) + args).joinToString(" ", transform = ::shellQuote)
             val reply = RootShellImpl.cmdForOutput(command).asReversed()
@@ -111,12 +151,11 @@ internal object LightningDspControlClient {
                     if (!it.ok) {
                         Timber.w("ldsp.control: ${it.raw}")
                         if (it.raw.contains("service-unavailable") || it.raw.contains("-transport")) {
-                            ready = false
-                            probeAsync()
+                            if (contextState.record(epoch, false)) probeAsync()
                         }
                     }
                 }
-            if (reply == null) { ready = false; probeAsync() }
+            if (reply == null && contextState.record(epoch, false)) probeAsync()
             reply
         } catch (e: Exception) {
             Timber.w(e, "ldsp.control: native helper failed; legacy fallback")
