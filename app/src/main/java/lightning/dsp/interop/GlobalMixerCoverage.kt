@@ -6,7 +6,7 @@ internal object GlobalMixerCoverage {
     const val MAX_SUPPLEMENTAL_SESSIONS = 8
     private const val UUID = "f27317f4-c984-4de6-9a90-545759495bf2"
     private const val PERFORMANCE_FLAGS = 0x10eL // PRIMARY, FAST, DEEP_BUFFER, RAW
-    private const val OBSERVED_MONO_UNKNOWN_MUSIC_FLAGS = 0x800L
+    private const val OBSERVED_MONO_UNKNOWN_ATTRIBUTE_FLAGS = 0x800L
 
     data class Session(val id: Int, val uid: Int, val output: Int, val ports: Set<Int>) {
         val identity: String get() = "$id:$uid:$output:${ports.sorted().joinToString(",")}"
@@ -272,6 +272,8 @@ internal object GlobalMixerCoverage {
                     ?: throw IllegalArgumentException()
                 val usage = Regex("Usage: (AUDIO_USAGE_[A-Z0-9_]+)\\b").find(client)?.groupValues?.get(1)
                     ?: throw IllegalArgumentException()
+                val attributeFlags = Regex("Attributes: [^\\n]* Flags: 0x([0-9a-fA-F]+) Tags:").find(client)
+                    ?.groupValues?.get(1)?.toLong(16) ?: throw IllegalArgumentException()
                 val channelMask = format.groupValues[2].toLong(16)
                 val streamType = stream.groupValues[1]
                 val streamFlags = stream.groupValues[2].toLong(16)
@@ -282,7 +284,8 @@ internal object GlobalMixerCoverage {
                 // with UNKNOWN usage and this exact client flag. Admit only that
                 // observed tuple; other unknown/high flags remain excluded.
                 val observedMonoMusic = channelMask == 1L && usage == "AUDIO_USAGE_UNKNOWN" &&
-                    streamType == "3" && streamFlags == OBSERVED_MONO_UNKNOWN_MUSIC_FLAGS
+                    streamType == "3" && streamFlags == 0L &&
+                    attributeFlags == OBSERVED_MONO_UNKNOWN_ATTRIBUTE_FLAGS
                 val compatible = supportedPcm && channelMask in setOf(1L, 3L) && streamType == "3" &&
                     ((streamFlags and PERFORMANCE_FLAGS.inv()) == 0L && standardUsage || observedMonoMusic)
                 Client(h.groupValues[3].toInt(), h.groupValues[2].toInt(), h.groupValues[1].toInt(),

@@ -4,9 +4,9 @@ object AndroidConfig {
     const val compileSdk = 35
     const val targetSdk = 34
 
-    const val versionName = "1.7.1-mixers-test-5"
+    const val versionName = "1.7.1-mixers-test-6"
     // Root flavor adds four; this experimental build updates beta-3 installs.
-    const val versionCode = 86
+    const val versionCode = 87
 
     const val kotlinVersion = "2.1.0"
     const val kspVersion = "2.1.0-1.0.29"
