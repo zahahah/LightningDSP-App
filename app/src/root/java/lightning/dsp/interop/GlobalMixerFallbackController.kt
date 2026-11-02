@@ -84,7 +84,7 @@ internal class GlobalMixerFallbackController(
             while (!closed) {
                 if (poll) withTimeoutOrNull(2_000) { requests.receive() } else requests.receive()
                 if (closed) break
-                delay(maxOf(200L, retryNotBefore - SystemClock.elapsedRealtime()))
+                delay(maxOf(75L, retryNotBefore - SystemClock.elapsedRealtime()))
                 try {
                     reconcile(revision)
                 } catch (cancelled: CancellationException) {
@@ -271,6 +271,7 @@ internal class GlobalMixerFallbackController(
             }
             // The worker barrier drained earlier unscoped writes. With no session-0
             // AudioEffect in Session Mode, there is no live endpoint to fence.
+            app.rootSessionDatabase.syncWithPreferences()
             leaseFenced = true
             return true
         }
@@ -314,6 +315,11 @@ internal class GlobalMixerFallbackController(
         leaseFenced = false
         fenceAttempts = 0
         cleanupAttempts = 0
+        if (!app.isGlobalMode && baseline() == null) {
+            // Lease release invalidates stale generations. Reconcile every ordinary
+            // Session Mode engine instead of leaving existing sessions on old work.
+            app.rootSessionDatabase.syncWithPreferences()
+        }
     }
 
     private fun remove(ids: Collection<Int>) {

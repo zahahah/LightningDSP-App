@@ -68,6 +68,7 @@ class GlobalMixerControllerContractTest {
         assertTrue(controller.contains("global?.canControlEndpoint() ?: !app.isGlobalMode"))
         assertTrue(controller.contains("reserveSupplementalSession(target.id)"))
         assertTrue(controller.contains("if (global == null)"))
+        assertTrue(controller.contains("app.rootSessionDatabase.syncWithPreferences()"))
         assertTrue(database.contains("id !in supplementalSessionReservations"))
         listOf("rootless", "plugin").forEach { flavor ->
             val noop = source("$flavor/java/lightning/dsp/interop/GlobalMixerFallbackController.kt")
@@ -100,7 +101,7 @@ class GlobalMixerControllerContractTest {
         assertFalse(internal.contains("inspectionRetries.reset"))
         assertFalse(internal.contains("revision++"))
         assertTrue(internal.contains("!closed && poll"))
-        assertTrue(s.contains("delay(maxOf(200L, retryNotBefore - SystemClock.elapsedRealtime()))"))
+        assertTrue(s.contains("delay(maxOf(75L, retryNotBefore - SystemClock.elapsedRealtime()))"))
         assertEquals(5, Regex("unknownSnapshot\\(\\)").findAll(s).count() - 1)
     }
 
