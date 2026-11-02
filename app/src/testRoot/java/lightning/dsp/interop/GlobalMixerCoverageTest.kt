@@ -8,7 +8,8 @@ class GlobalMixerCoverageTest {
     private data class Playback(val session: Int = 361, val uid: Int = 10322, val port: Int = 70,
                                 val type: String = "", val format: String = "00000001",
                                 val channels: String = "00000003", val flags: String = "000",
-                                val bitPerfect: Boolean = false)
+                                val bitPerfect: Boolean = false, val suffix: String = "false false 129.05 t 0 0 0 0 1",
+                                val extended: Boolean = true)
     private fun effect(id: Int, session: Int, suspended: Boolean = false) = """
         Effect ID $id:
           Session State Registered Internal Enabled Suspended:
@@ -19,9 +20,10 @@ class GlobalMixerCoverageTest {
         append("Output thread 0x$id, name AudioOut, tid 100, type 0 ($type):\n")
         append("  I/O handle: $id\n  Standby: ${if (tracks.isEmpty()) "yes" else "no"}\n")
         append("  ${tracks.size} Tracks${if (tracks.isEmpty()) "" else " of which ${tracks.size} are active"}\n")
-        append("    Type Id Active Client(pid/uid) Session Port Id S Flags Format Chn mask SRate ST BitPerfect InternalMute Latency\n")
+        append("    Type Id Active Client(pid/uid) Session Port Id S Flags Format Chn mask SRate ST Usg CT G db L dB R dB VS dB PortVol dB PortMuted Server FrmCnt FrmRdy F Underruns Flushed BitPerfect InternalMute Latency\n")
+        if (tracks.firstOrNull()?.extended != false) append(" Spat Meta Sce Silent Top\n")
         tracks.forEachIndexed { index, t ->
-            append("    ${t.type} ${index + 1} yes 9716/ ${t.uid} ${t.session} ${t.port} A 0x${t.flags} ${t.format} ${t.channels} 44100 3 1 2 -inf 0 0 0 -inf false 0000 12376 12376 A 0 0 ${t.bitPerfect} false 455.17\n")
+            append("    ${t.type} ${index + 1} yes 9716/ ${t.uid} ${t.session} ${t.port} A 0x${t.flags} ${t.format} ${t.channels} 44100 3 1 2 -inf 0 0 0 -inf false 0000 12376 12376 A 0 0 ${if (t.bitPerfect) t.suffix.replaceFirst("false", "true") else t.suffix}\n")
         }
         append("  ${effects.size} Effect Chains\n")
         effects.forEach { append("  1 effects for session 0\n$it\n") }
@@ -37,13 +39,14 @@ class GlobalMixerCoverageTest {
     }
     private fun inspect(tracks: List<Playback> = listOf(Playback()), globalOutput: Int = 13,
                         suspended: Boolean = false, extra: List<String> = emptyList(), owned: Set<Int> = emptySet(),
-                        flags: String = "104", type: String = "MIXER", usage: String = "MEDIA"):
+                        flags: String = "104", type: String = "MIXER", usage: String = "MEDIA",
+                        transformFlinger: (String) -> String = { it }):
         GlobalMixerCoverage.Snapshot {
         val baseline = output(globalOutput, emptyList(), listOf(effect(27, 0, suspended)))
         val flinger = baseline + output(21, tracks, extra, type)
         val policy = " Outputs (2):\n" + policyOutput(globalOutput, emptyList()) + policyOutput(21, tracks, flags, usage) +
             "\n Inputs (0):\nEffect ID: 27; Attached to I/O handle: $globalOutput; Session: 0;\n"
-        return GlobalMixerCoverage.inspect(flinger, policy, 27, owned)
+        return GlobalMixerCoverage.inspect(transformFlinger(flinger), policy, 27, owned)
     }
 
     @Test fun normalRawFastOutputIsEligibleEvenAtZeroVolume() {
@@ -52,12 +55,60 @@ class GlobalMixerCoverageTest {
         assertEquals(listOf(361), snapshot.targets.map { it.id })
         assertEquals(13, snapshot.globalOutput)
     }
+    @Test fun latencyWithoutSpatialColumnsIsAlsoEligible() {
+        val snapshot = inspect(listOf(Playback(suffix = "false false 455.17", extended = false)))
+        assertTrue(snapshot.reason, snapshot.known)
+        assertEquals(1, snapshot.targets.size)
+    }
+    @Test fun malformedBitPerfectAndUnknownTrailingLayoutsAreExcluded() {
+        listOf(
+            "unknown false 129.05 t 0 0 0 0 1",
+            "false unknown 129.05 t 0 0 0 0 1",
+            "false false 129.05 t 0 0 0 0",
+            "false false 129.05 t 0 0 0 0 1 extra",
+            "false false false 129.05 t 0 0 0 0 1",
+            "true false 129.05 t 0 0 0 0 1",
+        ).forEach { suffix ->
+            val snapshot = inspect(listOf(Playback(suffix = suffix)))
+            assertTrue(snapshot.reason, snapshot.known)
+            assertTrue("Malformed/unsafe row must not become a target", snapshot.targets.isEmpty())
+        }
+    }
+    @Test fun shiftedOrUnknownHeaderColumnsAreExcluded() {
+        listOf(
+            "Flushed BitPerfect InternalMute" to "Flushed InternalMute BitPerfect",
+            "ST Usg CT" to "ST Unknown Usg CT",
+            "Spat Meta Sce Silent Top" to "Spat Meta Unknown Silent Top",
+        ).forEach { (from, to) ->
+            val snapshot = inspect(transformFlinger = { it.replace(from, to) })
+            assertTrue(snapshot.reason, snapshot.known)
+            assertTrue(snapshot.targets.isEmpty())
+        }
+    }
+    @Test fun knownLegacyHeaderWithoutBitPerfectIsStillEligible() {
+        val snapshot = inspect(
+            tracks = listOf(Playback(suffix = "false 455.17", extended = false)),
+            transformFlinger = { it.replace("Flushed BitPerfect InternalMute", "Flushed InternalMute") })
+        assertTrue(snapshot.reason, snapshot.known)
+        assertEquals(1, snapshot.targets.size)
+    }
     @Test fun deepBufferAndGameAreEligible() {
         assertEquals(1, inspect(flags = "8", usage = "GAME").targets.size)
     }
     @Test fun actualFastTrackIsExcluded() { assertTrue(inspect(listOf(Playback(type = "F"))).targets.isEmpty()) }
     @Test fun nonzeroTrackFlagsAreExcluded() { assertTrue(inspect(listOf(Playback(flags = "001"))).targets.isEmpty()) }
     @Test fun bitPerfectTrackIsExcluded() { assertTrue(inspect(listOf(Playback(bitPerfect = true))).targets.isEmpty()) }
+    @Test fun noTargetDiagnosticsDistinguishTrackAndOutputGuardsWithoutIdentities() {
+        val track = inspect(listOf(Playback(flags = "001")))
+        val output = inspect(flags = "1000")
+        assertTrue(track.reason, track.reason.contains("track type/flags/layout/format guards=1"))
+        assertTrue(output.reason, output.reason.contains("output type/flags guards=1"))
+        listOf(track, output).forEach { snapshot ->
+            assertFalse(snapshot.reason.contains("361"))
+            assertFalse(snapshot.reason.contains("10322"))
+        }
+        assertTrue(inspect(tracks = emptyList()).reason.contains("no active sessions"))
+    }
     @Test fun specialAndUnknownOutputFlagsAreExcluded() {
         listOf("1", "10", "1000", "4000", "40000", "80000000").forEach {
             assertTrue("flags=$it", inspect(flags = it).targets.isEmpty())
@@ -116,6 +167,37 @@ class GlobalMixerCoverageTest {
         assertFalse(GlobalMixerCoverage.inspect("x".repeat(GlobalMixerCoverage.MAX_DUMP_CHARS + 1), "", 27).known)
         assertFalse(GlobalMixerCoverage.inspect(output(13, emptyList(), listOf(effect(27, 0))).substringBefore("Effect ID"), "", 27).known)
         assertFalse(GlobalMixerCoverage.inspect("", "", -1).known)
+    }
+    @Test fun unknownDiagnosticsIdentifyTheFailedPhaseWithoutDumpContent() {
+        val baseline = output(13, emptyList(), listOf(effect(27, 0)))
+        val validPolicy = " Outputs (1):\n" + policyOutput(13, emptyList()) +
+            "\n Inputs (0):\nEffect ID: 27; Attached to I/O handle: 13; Session: 0;\n"
+        val privateMarker = "private-diagnostic-marker"
+        val cases = listOf(
+            GlobalMixerCoverage.inspect(privateMarker, validPolicy, 27) to
+                "AudioFlinger diagnostic layout is incomplete or unsupported",
+            GlobalMixerCoverage.inspect(baseline.replace("Standby: yes", "Standby: $privateMarker"), validPolicy, 27) to
+                "AudioFlinger diagnostic layout is incomplete or unsupported",
+            GlobalMixerCoverage.inspect(baseline, privateMarker, 27) to
+                "AudioPolicy diagnostic layout is incomplete or unsupported",
+            GlobalMixerCoverage.inspect(baseline, validPolicy.replace("Global active count: 0", "Global active count: $privateMarker"), 27) to
+                "AudioPolicy diagnostic layout is incomplete or unsupported",
+            GlobalMixerCoverage.inspect(baseline, validPolicy, 28) to
+                "Audio topology or baseline attachment identity is inconsistent or missing",
+            inspect(transformFlinger = { it.replace(" 9716/ 10322 ", " 9716/ 10323 ") }) to
+                "Audio topology or baseline attachment identity is inconsistent or missing",
+            GlobalMixerCoverage.inspect("x".repeat(GlobalMixerCoverage.MAX_DUMP_CHARS + 1), validPolicy, 27) to
+                "Audio diagnostic size limit exceeded",
+            GlobalMixerCoverage.inspect(baseline, "x".repeat(GlobalMixerCoverage.MAX_DUMP_CHARS + 1), 27) to
+                "Audio diagnostic size limit exceeded",
+            GlobalMixerCoverage.inspect(baseline, validPolicy, 0) to "Invalid global effect identity",
+        )
+        cases.forEach { (snapshot, expected) ->
+            assertFalse(snapshot.known)
+            assertEquals(expected, snapshot.reason)
+            assertFalse(snapshot.reason.contains(privateMarker))
+            assertTrue(snapshot.targets.isEmpty())
+        }
     }
     @Test fun countAndBudgetAreBoundedByPlaybackIdentity() {
         val tracks = (1..12).map { Playback(session = it, port = it) }

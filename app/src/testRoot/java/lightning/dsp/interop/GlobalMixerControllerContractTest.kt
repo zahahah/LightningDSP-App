@@ -55,4 +55,63 @@ class GlobalMixerControllerContractTest {
             assertFalse(noop.contains("RootShellImpl"))
         }
     }
+    @Test fun unknownInspectionRetriesAreBoundedAndResetOnlyExplicitly() {
+        val policy = SupplementalInspectionRetryPolicy()
+        repeat(3) { assertTrue(policy.retry(true)) }
+        repeat(20) { assertFalse(policy.retry(true)) }
+        policy.reset()
+        assertFalse(policy.retry(false))
+        repeat(3) { assertTrue(policy.retry(true)) }
+        assertFalse(policy.retry(true))
+    }
+
+    @Test fun unknownSnapshotsRetireOwnedEffectsAndRetryWithoutRevisionChanges() {
+        val s = controller
+        val unknown = s.substringAfter("private suspend fun unknownSnapshot()").substringBefore("// Fixed category")
+        assertTrue(unknown.indexOf("removeAll()") < unknown.indexOf("inspectionRetries.retry"))
+        assertTrue(unknown.contains("releaseLeaseIfSafe()"))
+        assertTrue(unknown.contains("!closed && shouldRun()"))
+        assertTrue(unknown.contains("SystemClock.elapsedRealtime() + 2_000"))
+        assertFalse(unknown.contains("requestCheck()"))
+        assertFalse(unknown.contains("revision++"))
+        val external = s.substringAfter("fun requestCheck()").substringBefore("fun preferencesChanged()")
+        assertTrue(external.contains("inspectionRetries.reset()"))
+        val internal = s.substringAfter("private fun requestInternalCheck()").substringBefore("private suspend fun unknownSnapshot")
+        assertFalse(internal.contains("inspectionRetries.reset"))
+        assertFalse(internal.contains("revision++"))
+        assertTrue(internal.contains("!closed && poll"))
+        assertTrue(s.contains("delay(maxOf(200L, retryNotBefore - SystemClock.elapsedRealtime()))"))
+        assertEquals(5, Regex("unknownSnapshot\\(\\)").findAll(s).count() - 1)
+    }
+
+    @Test fun diagnosticsAreRateLimitedAndDistinguishCollectionAndEligibilityFailures() {
+        val s = controller
+        listOf("root_unavailable", "missing_timeout", "missing_head", "dump_failed_or_timed_out",
+            "dump_truncated", "dump_completion_marker_missing", "parser_unknown", "unstable_snapshot",
+            "no_candidates", "barrier_failed", "fence_failed", "preparation_failed",
+            "activation_failed", "verification_failed", "owned_removed", "inspection_exhausted").forEach {
+            assertTrue(it, s.contains("\"$it\""))
+        }
+        assertTrue(s.contains("now - previous < 15_000"))
+        assertTrue(s.contains("parser rejected snapshot: \${it.reason}"))
+        assertFalse(s.contains("Timber.w(failure"))
+        assertFalse(s.contains("Timber.i(flinger"))
+        assertFalse(s.contains("Timber.i(policy"))
+    }
+
+    @Test fun unexpectedFailuresReportOnlySafeTypeAndFixedPhase() {
+        val s = controller
+        val caught = s.substringAfter("catch (failure: Exception)").substringBefore("requestCheck()")
+        assertTrue(caught.contains("failure.javaClass.simpleName"))
+        assertTrue(caught.contains("diagnose(\"controller_exception\""))
+        assertTrue(caught.contains("phase=$" + "diagnosticPhase type=$" + "type"))
+        assertFalse(caught.contains("failure.message"))
+        assertFalse(caught.contains("failure.stackTrace"))
+        assertFalse(caught.contains("Timber.w(failure"))
+        listOf("inspection", "construction", "preparation", "activation", "verification",
+            "teardown", "lease_barrier", "legacy_fence", "lease_release").forEach {
+            assertTrue(it, s.contains("diagnosticPhase = \"$it\""))
+        }
+    }
+
 }

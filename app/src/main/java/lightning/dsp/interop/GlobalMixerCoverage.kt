@@ -32,14 +32,24 @@ internal object GlobalMixerCoverage {
     private data class PolicyOutput(val id: Int, val flags: Long, val clients: List<Client>)
 
     fun inspect(flinger: String, policy: String, globalEffectId: Int,
-                ownedEffectIds: Set<Int> = emptySet()): Snapshot = try {
-        require(flinger.length <= MAX_DUMP_CHARS && policy.length <= MAX_DUMP_CHARS)
-        require(globalEffectId > 0)
-        inspectParsed(parseOutputs(flinger), parsePolicy(policy), policy, globalEffectId, ownedEffectIds)
-    } catch (_: IllegalArgumentException) {
-        Snapshot(false, "Audio diagnostic layout is incomplete, inconsistent or unsupported")
-    } catch (_: NoSuchElementException) {
-        Snapshot(false, "Expected attachment identity was not observed")
+                ownedEffectIds: Set<Int> = emptySet()): Snapshot {
+        if (flinger.length > MAX_DUMP_CHARS || policy.length > MAX_DUMP_CHARS)
+            return Snapshot(false, "Audio diagnostic size limit exceeded")
+        if (globalEffectId <= 0) return Snapshot(false, "Invalid global effect identity")
+        var reason = "AudioFlinger diagnostic layout is incomplete or unsupported"
+        return try {
+            val outputs = parseOutputs(flinger)
+            require(outputs.isNotEmpty())
+            reason = "AudioPolicy diagnostic layout is incomplete or unsupported"
+            val policyOutputs = parsePolicy(policy)
+            require(policyOutputs.isNotEmpty())
+            reason = "Audio topology or baseline attachment identity is inconsistent or missing"
+            inspectParsed(outputs, policyOutputs, policy, globalEffectId, ownedEffectIds)
+        } catch (_: IllegalArgumentException) {
+            Snapshot(false, reason)
+        } catch (_: NoSuchElementException) {
+            Snapshot(false, reason)
+        }
     }
 
     private fun inspectParsed(outputs: List<Output>, policy: List<PolicyOutput>, policyText: String,
@@ -69,25 +79,37 @@ internal object GlobalMixerCoverage {
         val reserved = effects.filter { it.session <= 0 }.map { it.output }.toSet()
         val allActive = active.flatMap { out -> out.tracks.filter { it.active }.map { out.id to it } }
         val grouped = allActive.groupBy { it.second.session }
+        val excluded = linkedMapOf<String, Int>()
+        fun exclude(reason: String): Session? {
+            excluded[reason] = excluded.getOrDefault(reason, 0) + 1
+            return null
+        }
         val targets = grouped.mapNotNull { (sid, rows) ->
             val outputIds = rows.map { it.first }.toSet()
             val uids = rows.map { it.second.uid }.toSet()
-            if (sid <= 0 || uids.size != 1 || uids.single() < 10000 || outputIds.size != 1) return@mapNotNull null
+            if (sid <= 0 || uids.size != 1 || uids.single() < 10000 || outputIds.size != 1)
+                return@mapNotNull exclude("session identity guards")
             val outputId = outputIds.single()
             val output = outputs.single { it.id == outputId }
             val descriptor = policy.single { it.id == outputId }
-            if (outputId in reserved || output.type != "MIXER" || (descriptor.flags and PERFORMANCE_FLAGS.inv()) != 0L)
-                return@mapNotNull null
+            if (outputId in reserved) return@mapNotNull exclude("reserved output guards")
+            if (output.type != "MIXER" || (descriptor.flags and PERFORMANCE_FLAGS.inv()) != 0L)
+                return@mapNotNull exclude("output type/flags guards")
             if (rows.any { (_, t) -> !t.normal || t.channels != 3L || t.stream != 3 || t.format !in setOf(1, 3, 4, 5, 6) })
-                return@mapNotNull null
-            if (descriptor.clients.filter { it.session == sid }.any { !it.compatible }) return@mapNotNull null
-            if (effects.any { it.session == sid && it.id !in owned }) return@mapNotNull null
+                return@mapNotNull exclude("track type/flags/layout/format guards")
+            if (descriptor.clients.filter { it.session == sid }.any { !it.compatible })
+                return@mapNotNull exclude("policy compatibility guards")
+            if (effects.any { it.session == sid && it.id !in owned }) return@mapNotNull exclude("existing effect guards")
             Session(sid, uids.single(), outputId, rows.map { it.second.port }.toSet())
         }.sortedBy { it.id }.take(MAX_SUPPLEMENTAL_SESSIONS)
         val signature = "${global.id}:${global.output}:" + allActive.map { (out, t) ->
             "$out:${t.uid}:${t.session}:${t.port}:${t.normal}:${t.format}:${t.channels}:${t.stream}"
         }.sorted().joinToString("|") + ":targets=" + targets.joinToString("|") { it.identity }
-        return Snapshot(true, "Observed attachment topology; processing is not inferred", global.output,
+        val reason = "Observed attachment topology; processing is not inferred" + if (targets.isEmpty()) {
+            "; no supplemental target: " + if (grouped.isEmpty()) "no active sessions"
+            else excluded.entries.joinToString(", ") { "${it.key}=${it.value}" }
+        } else ""
+        return Snapshot(true, reason, global.output,
             targets, effects, grouped.size, signature)
     }
 
@@ -108,12 +130,11 @@ internal object GlobalMixerCoverage {
             require(total <= 256)
             val active = summary.groupValues[2].ifEmpty { require(total == 0); "0" }.toInt()
             val table = block.substring(summary.range.last + 1).substringBefore("Effect Chains")
+            val normalRow = normalTrackLayout(table)
             val row = Regex("(?m)^\\s*(?:(\\S+)\\s+)?(\\d+)\\s+(yes|no)\\s+(\\d+)/\\s*(\\d+)\\s+(\\d+)\\s+(\\d+)\\s+\\S+\\s+0x[0-9a-fA-F]+\\s+([0-9a-fA-F]+)\\s+([0-9a-fA-F]+)\\s+\\d+\\s+(\\d+)\\b[^\\n]*$")
             val tracks = row.findAll(table).map {
                 Track(it.groupValues[3] == "yes", it.groupValues[5].toInt(), it.groupValues[6].toInt(),
-                    it.groupValues[7].toInt(), it.groupValues[1].isEmpty() &&
-                        Regex("\\s0x0+\\s").containsMatchIn(it.value) &&
-                        (!table.contains("BitPerfect") || Regex("\\sfalse\\s+(?:true|false)\\s+\\S+\\s*$").containsMatchIn(it.value)),
+                    it.groupValues[7].toInt(), it.groupValues[1].isEmpty() && normalRow?.matches(it.value) == true,
                     it.groupValues[8].toInt(16),
                     it.groupValues[9].toLong(16), it.groupValues[10].toInt())
             }.toList()
@@ -136,6 +157,31 @@ internal object GlobalMixerCoverage {
             }
             Output(id, type, standby == "yes", tracks, effects)
         }
+    }
+
+    private fun normalTrackLayout(table: String): Regex? {
+        val lines = table.lineSequence().map { it.trim().replace(Regex("\\s+"), " ") }.toList()
+        val headers = lines.filter { it.startsWith("Type Id Active ") }
+        if (headers.size != 1) return null
+        val prefix = "Type Id Active Client(pid/uid) Session Port Id S Flags Format Chn mask SRate ST Usg CT G db L dB R dB VS dB PortVol dB PortMuted Server FrmCnt FrmRdy F Underruns Flushed "
+        val bitPerfect = when (headers.single()) {
+            prefix + "BitPerfect InternalMute Latency" -> true
+            prefix + "InternalMute Latency" -> false
+            else -> return null
+        }
+        val extended = lines.getOrNull(lines.indexOf(headers.single()) + 1) == "Spat Meta Sce Silent Top"
+        val number = "(?:-?\\d+(?:\\.\\d+)?|-inf)"
+        // Anchor at the actual Flags column, then consume each known column. Latency
+        // may carry a separate status token; Android's spatial counters follow it.
+        // Never search for a convenient pair of booleans elsewhere in the row.
+        val layout = "^\\s*\\d+\\s+(?:yes|no)\\s+\\d+/\\s*\\d+\\s+\\d+\\s+\\d+\\s+\\S+" +
+            "\\s+0x0+\\s+[0-9a-fA-F]+\\s+[0-9a-fA-F]+\\s+\\d+\\s+\\d+" +
+            "\\s+[0-9a-fA-F]+\\s+\\d+" + "\\s+$number".repeat(5) +
+            "\\s+(?:true|false)\\s+[0-9a-fA-F]+\\s+\\d+\\s+\\d+\\s+[A-Za-z]\\s+\\d+\\s+\\d+" +
+            (if (bitPerfect) "\\s+false" else "") + "\\s+(?:true|false)" +
+            "\\s+(?:\\d+(?:\\.\\d+)?(?:\\s+[A-Za-z])?|new)" +
+            (if (extended) "(?:\\s+\\d+){5}" else "") + "\\s*$"
+        return Regex(layout)
     }
 
     private fun parsePolicy(text: String): List<PolicyOutput> {
