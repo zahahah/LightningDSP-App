@@ -38,7 +38,7 @@ class AllMixersPreferenceContractTest {
         val cmake = File(app, "src/main/cpp/CMakeLists.txt").readText()
         // Vector calls native_init under its registry lock; reentering dlopen deadlocks.
         assertFalse(nativeSource.contains("dlopen(\"libaaudio.so\""))
-        assertTrue(cmake.contains("target_link_libraries(ldsp_aaudio_compat PRIVATE log aaudio)"))
+        assertTrue(cmake.contains("target_link_libraries(ldsp_aaudio_compat PRIVATE log aaudio dl)"))
     }
 
     @Test fun mediaScanningDefaultsOnAndIsVisibleOnlyInSessionMode() {

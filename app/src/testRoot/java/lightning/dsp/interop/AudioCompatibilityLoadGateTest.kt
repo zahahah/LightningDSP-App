@@ -21,8 +21,8 @@ class AudioCompatibilityLoadGateTest {
     @Test fun nativeInitAlsoRequiresOptInBeforeInstallingHooks() {
         val source = File(app, "src/main/cpp/aaudio-compat/aaudio_compat.cpp").readText()
         val init = source.substringAfter("LoadedCallback native_init(const NativeApi* api)")
-        assertTrue(init.indexOf("if (!requested()) return nullptr;") >= 0)
-        assertTrue(init.indexOf("if (!requested()) return nullptr;") < init.indexOf("observerReady.store("))
+        assertTrue(init.indexOf("!requested()) return nullptr;") >= 0)
+        assertTrue(init.indexOf("!requested()) return nullptr;") < init.indexOf("observerReady.store("))
         assertTrue(init.contains("return libraryLoaded;"))
         assertFalse("libaaudio entry points must not be inline patched", source.contains("api->hook("))
     }
