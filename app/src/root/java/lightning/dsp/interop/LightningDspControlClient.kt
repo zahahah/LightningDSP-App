@@ -50,7 +50,11 @@ internal object LightningDspControlClient {
     }
     @Volatile private var rootAvailable = false
     private val contextState = NativeControlContextState()
-    private val ready: Boolean get() = contextState.ready
+    private val coverageGate = NativeControlCoverageGate(
+        enqueue = { executor.execute(it) },
+        invalidate = { DspDesiredState.replace { contextState.invalidate() } },
+    )
+    private val ready: Boolean get() = !coverageGate.blocked && contextState.ready
     private val writes = NativeControlWriteDispatcher(
         isReady = { ready },
         currentGeneration = DspDesiredState::current,
@@ -63,12 +67,30 @@ internal object LightningDspControlClient {
     )
 
     fun isAvailable() = ready
+    fun isCoverageLeaseActive() = coverageGate.blocked
     fun needsRootPermission() = !rootAvailable
 
     /** Call before releasing/replacing the AudioEffect; probeAsync must run after creation. */
     fun invalidateContext() = contextState.invalidate()
 
+    /** Quiescence is not a native-parameter rollback. After this barrier the
+     * caller must successfully write the current global legacy state before
+     * constructing any supplemental AudioEffect. */
+    fun acquireCoverageLease(onQuiesced: (Long) -> Unit): Long {
+        return coverageGate.acquire(onQuiesced)
+    }
+
+    /** Caller has already closed its extras and completed the final legacy
+     * fence, or established that its original endpoint was destroyed. */
+    fun releaseCoverageLease(token: Long) {
+        if (coverageGate.release(token)) probeAsync()
+    }
+
     fun probeAsync(onComplete: ((Boolean) -> Unit)? = null) {
+        if (coverageGate.blocked) {
+            onComplete?.let { callback -> executor.execute { callback(false) } }
+            return
+        }
         val request = contextState.request(onComplete)
         if (request.cached) {
             onComplete?.let { callback ->
@@ -82,14 +104,15 @@ internal object LightningDspControlClient {
         executor.execute {
             var result = false
             try {
+                if (coverageGate.blocked || !contextState.isCurrent(request.epoch)) return@execute
                 rootAvailable = RootShellImpl.hasRootShell()
                 if (!rootAvailable) {
                     Timber.i("ldsp.control: root unavailable; legacy fallback")
                 } else {
                     for (delayMs in longArrayOf(0, 250, 500, 1_000, 2_000)) {
-                        if (!contextState.isCurrent(request.epoch)) break
+                        if (coverageGate.blocked || !contextState.isCurrent(request.epoch)) break
                         if (delayMs > 0) Thread.sleep(delayMs)
-                        if (!contextState.isCurrent(request.epoch)) break
+                        if (coverageGate.blocked || !contextState.isCurrent(request.epoch)) break
                         val response = runHelper("probe")
                         if (!contextState.record(request.epoch, response?.ready == true)) break
                         if (ready) {
@@ -141,7 +164,7 @@ internal object LightningDspControlClient {
     }
 
     private fun runHelper(action: String, vararg args: String): NativeControlReply? {
-        if (!rootAvailable || Looper.myLooper() == Looper.getMainLooper()) return null
+        if (coverageGate.blocked || !rootAvailable || Looper.myLooper() == Looper.getMainLooper()) return null
         val epoch = contextState.currentEpoch()
         return try {
             val command = (listOf(HELPER, action) + args).joinToString(" ", transform = ::shellQuote)

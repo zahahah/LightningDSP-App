@@ -13,4 +13,11 @@ class DspDesiredStateTest {
         DspDesiredState.applyIfCurrent(DspDesiredState.current()) { value = "current" }
         assertEquals("current", value)
     }
+    @Test fun endpointTeardownDoesNotInvalidateOtherEnginesCurrentGeneration() {
+        val generation = DspDesiredState.current()
+        var applied = false
+        DspDesiredState.serialized { assertEquals(generation, DspDesiredState.current()) }
+        DspDesiredState.applyIfCurrent(generation) { applied = true }
+        assertTrue(applied)
+    }
 }

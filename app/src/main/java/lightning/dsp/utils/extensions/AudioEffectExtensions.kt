@@ -27,16 +27,19 @@ object AudioEffectExtensions {
         val partitionCount = ceil(string.length.toDouble() / MAX_CHAR_PARTITION_SIZE).toInt()
 
         // Send buffer info for module to allocate memory
-        setParameterIntArray(PARAM_CHAR_BUFFER_INFO, intArrayOf(partitionCount, MAX_CHAR_PARTITION_SIZE))
+        val allocation = setParameterIntArray(PARAM_CHAR_BUFFER_INFO, intArrayOf(partitionCount, MAX_CHAR_PARTITION_SIZE))
+        if (allocation != AudioEffect.SUCCESS) return allocation
 
-        for (i in 0 until partitionCount)
-            setParameterCharArray(
+        for (i in 0 until partitionCount) {
+            val sent = setParameterCharArray(
                 parameterSend,
                 string.substring(
                     MAX_CHAR_PARTITION_SIZE * i,
                     (MAX_CHAR_PARTITION_SIZE * i + MAX_CHAR_PARTITION_SIZE).coerceAtMost(string.length)
                 )
             )
+            if (sent != AudioEffect.SUCCESS) return sent
+        }
 
         // Commit buffer
         return safeAccess { this.setParameter(parameterCommit, 1.toShort()) }
@@ -55,7 +58,8 @@ object AudioEffectExtensions {
         val partitionCount = ceil(frames.toDouble() / MAX_IR_PARTITION_SIZE).toInt()
 
         // Send buffer info for module to allocate memory
-        setParameterIntArray(PARAM_FLOAT_BUFFER_INFO, intArrayOf(frames, channels, 0, partitionCount))
+        val allocation = setParameterIntArray(PARAM_FLOAT_BUFFER_INFO, intArrayOf(frames, channels, 0, partitionCount))
+        if (allocation != AudioEffect.SUCCESS) return allocation
 
         // Fill final array with zero padding
         val finalArray = FloatArray(partitionCount * MAX_IR_PARTITION_SIZE)
@@ -63,7 +67,8 @@ object AudioEffectExtensions {
         System.arraycopy(impulseResponse, 0, finalArray, 0, frames)
         for (i in 0 until partitionCount) {
             System.arraycopy(finalArray, MAX_IR_PARTITION_SIZE * i, sendArray, 0, MAX_IR_PARTITION_SIZE)
-            setParameterFloatArray(parameterSend, sendArray)
+            val sent = setParameterFloatArray(parameterSend, sendArray)
+            if (sent != AudioEffect.SUCCESS) return sent
         }
 
         // Commit buffer

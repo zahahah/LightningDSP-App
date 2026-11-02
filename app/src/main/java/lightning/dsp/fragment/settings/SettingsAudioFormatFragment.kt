@@ -32,6 +32,7 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
     private val encoding by lazy { findPreference<ListPreference>(getString(R.string.key_audioformat_encoding)) }
     private val bufferSize by lazy { findPreference<MaterialSeekbarPreference>(getString(R.string.key_audioformat_buffersize)) }
     private val legacyMode by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_processing)) }
+    private val allMixers by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_all_mixers)) }
     private val enhancedMode by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_enhanced_processing)) }
     private val enhancedModeInfo by lazy { findPreference<Preference>(getString(R.string.key_audioformat_enhanced_processing_info)) }
     private val benchmark by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_optimization_benchmark)) }
@@ -43,6 +44,7 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         preferenceManager.sharedPreferencesName = Constants.PREF_APP
         setPreferencesFromResource(R.xml.app_audio_format_preferences, rootKey)
+        updateAllMixersAvailability(preferences.get<Boolean>(R.string.key_audioformat_processing))
 
         extraPostGain?.apply {
             isVisible = isRoot()
@@ -72,12 +74,14 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
         // Rootless: Hide audio processing category
         legacyMode?.parent?.isVisible = isRoot()
         legacyMode?.setOnPreferenceChangeListener { _, newValue ->
-            if (!(newValue as Boolean))
+            val globalMode = newValue as Boolean
+            updateAllMixersAvailability(globalMode)
+            if (!globalMode)
                 requireContext().requestIgnoreBatteryOptimizations()
             else
                 enhancedMode?.isChecked = false
 
-            RootAudioProcessorService.updateLegacyMode(requireContext(), newValue)
+            RootAudioProcessorService.updateLegacyMode(requireContext(), globalMode)
             true
         }
         enhancedMode?.setOnPreferenceChangeListener { _, newValue ->
@@ -141,6 +145,20 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
         encoding?.setOnPreferenceChangeListener { _, _ ->
             context?.sendLocalBroadcast(Intent(Constants.ACTION_SERVICE_HARD_REBOOT_CORE))
             true
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updateAllMixersAvailability(preferences.get<Boolean>(R.string.key_audioformat_processing))
+    }
+
+    private fun updateAllMixersAvailability(globalMode: Boolean) {
+        allMixers?.apply {
+            isVisible = isRoot()
+            // Global's XML dependency is inverted for media-session scanning.
+            // Change availability only; retain the user's saved all-mixers choice.
+            isEnabled = isRoot() && globalMode
         }
     }
 

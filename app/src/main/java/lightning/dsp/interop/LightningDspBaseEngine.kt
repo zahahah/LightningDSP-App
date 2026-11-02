@@ -9,6 +9,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import lightning.dsp.BuildConfig
 import lightning.dsp.R
 import lightning.dsp.interop.structure.EelVmVariable
@@ -28,7 +29,11 @@ internal fun orderNativePreferenceUpdates(targets: Array<String>, nativeReady: B
         when (it) { Constants.PREF_OUTPUT -> 1; Constants.PREF_EQ -> 2; else -> 0 }
     }.toTypedArray()
 
-abstract class LightningDspBaseEngine(val context: Context, val callbacks: LightningDspWrapper.LightningDspCallbacks? = null) : AutoCloseable {
+abstract class LightningDspBaseEngine(
+    val context: Context,
+    val callbacks: LightningDspWrapper.LightningDspCallbacks? = null,
+    private val publishSampleRate: Boolean = true,
+) : AutoCloseable {
     abstract var enabled: Boolean
     open var sampleRate: Float = 0.0f
         set(value) {
@@ -59,23 +64,37 @@ abstract class LightningDspBaseEngine(val context: Context, val callbacks: Light
     }
 
     protected open fun preferenceUpdateOrder(targets: Array<String>): Array<String> = targets
+    protected open fun canApplyPreferenceState(): Boolean = true
 
     private fun reportSampleRate(value: Float) {
-        context.sendLocalBroadcast(Intent(Constants.ACTION_REPORT_SAMPLE_RATE).apply {
-            putExtra(Constants.EXTRA_SAMPLE_RATE, value)
-        })
+        EngineScopePolicy.publishSampleRate(publishSampleRate, value) {
+            context.sendLocalBroadcast(Intent(Constants.ACTION_REPORT_SAMPLE_RATE).apply {
+                putExtra(Constants.EXTRA_SAMPLE_RATE, it)
+            })
+        }
+    }
+
+    /** Await the existing complete writer path, rather than enabling a new
+     * endpoint while its initial asynchronous preference job is still queued.
+     * The caller owns bounded retries and must reject a changed generation. */
+    protected suspend fun syncCompleteState(expectedGeneration: Long): Boolean = withContext(Dispatchers.IO) {
+        syncWithPreferencesAsync(Constants.DSP_PREFERENCE_NAMESPACES.toTypedArray(),
+            retryAttempt = 0, generation = expectedGeneration, scheduleRetry = false)
     }
 
     private suspend fun syncWithPreferencesAsync(
         forceUpdateNamespaces: Array<String>? = null,
         retryAttempt: Int,
         generation: Long,
-    ) {
+        scheduleRetry: Boolean = true,
+    ): Boolean {
         Timber.d("Synchronizing with preferences... (forced: %s)", forceUpdateNamespaces?.joinToString(";") { it })
 
         var failedNamespaces: List<String> = emptyList()
+        var applied = false
         syncMutex.withLock {
           DspDesiredState.applyIfCurrent(generation) {
+            if (!canApplyPreferenceState()) return@applyIfCurrent
             if (appliedDesiredGeneration != generation) {
                 cache.clear()
                 appliedDesiredGeneration = generation
@@ -171,6 +190,7 @@ abstract class LightningDspBaseEngine(val context: Context, val callbacks: Light
 
             cache.markChangesAsCommitted(successfulNamespaces)
             failedNamespaces = failed.toList()
+            applied = true
             Timber.i("Preferences synchronized (desired generation=%s)", generation)
           }
         }
@@ -178,7 +198,7 @@ abstract class LightningDspBaseEngine(val context: Context, val callbacks: Light
         // Route/profile callbacks can arrive while AudioFlinger is switching
         // outputs. Do not forget failed writes: bounded retries re-read the
         // current profile and reapply only namespaces that did not succeed.
-        if (failedNamespaces.isNotEmpty() && retryAttempt < MAX_PREFERENCE_SYNC_RETRIES) {
+        if (scheduleRetry && failedNamespaces.isNotEmpty() && retryAttempt < MAX_PREFERENCE_SYNC_RETRIES) {
             val retryDelay = PREFERENCE_SYNC_RETRY_DELAYS_MS[retryAttempt]
             Timber.w("Retrying failed DSP namespaces after route/profile sync: %s", failedNamespaces)
             syncScope.launch {
@@ -186,6 +206,7 @@ abstract class LightningDspBaseEngine(val context: Context, val callbacks: Light
                 syncWithPreferencesAsync(failedNamespaces.toTypedArray(), retryAttempt + 1, generation)
             }
         }
+        return applied && failedNamespaces.isEmpty() && DspDesiredState.current() == generation
     }
 
     private companion object {
@@ -233,8 +254,7 @@ abstract class LightningDspBaseEngine(val context: Context, val callbacks: Light
 
         if(!File(fullPath).exists() || File(fullPath).isDirectory) {
             Timber.w("setVdc: file does not exist")
-            setVdcInternal(false, "")
-            return true /* non-critical */
+            return setVdcInternal(false, "")
         }
 
         return safeFileReader(fullPath)?.use {
@@ -248,8 +268,7 @@ abstract class LightningDspBaseEngine(val context: Context, val callbacks: Light
 
         // Handle disabled state before everything else
         if(!enable || !File(path).exists() || File(path).isDirectory) {
-            setConvolverInternal(false, FloatArray(0), 0, 0, 0)
-            return true
+            return setConvolverInternal(false, FloatArray(0), 0, 0, 0)
         }
 
         val advConv = waveEditStr.split(";")

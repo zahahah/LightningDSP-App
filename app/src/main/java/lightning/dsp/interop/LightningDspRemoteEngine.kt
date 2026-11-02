@@ -31,10 +31,23 @@ class LightningDspRemoteEngine(
     val sessionId: Int,
     val priority: Int,
     callbacks: LightningDspWrapper.LightningDspCallbacks? = null,
-) : LightningDspBaseEngine(context, callbacks) {
+    private val supplemental: Boolean = false,
+    private val onSupplementalInvalidated: (() -> Unit)? = null,
+) : LightningDspBaseEngine(context, callbacks, publishSampleRate = !supplemental) {
+
+    private val usesUnscopedNative: Boolean
+        get() = EngineScopePolicy.usesUnscopedNative(sessionId, supplemental)
+    private val nativeReady: Boolean
+        get() = usesUnscopedNative && LightningDspControlClient.isAvailable()
 
     private val broadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
+            if (supplemental && !supplementalAdmitted) return
+            if (supplemental && intent.action in arrayOf(
+                    Constants.ACTION_SERVICE_HARD_REBOOT_CORE, Constants.ACTION_SERVICE_SOFT_REBOOT_CORE)) {
+                invalidateSupplemental()
+                return
+            }
             when (intent.action) {
                 Constants.ACTION_SAMPLE_RATE_UPDATED -> syncWithPreferences(arrayOf(Constants.PREF_CONVOLVER))
                 Constants.ACTION_PREFERENCES_UPDATED -> syncWithPreferences()
@@ -50,19 +63,32 @@ class LightningDspRemoteEngine(
 
     var effect: AudioEffectHidden? = createEffect()
     @Volatile private var disposed = false
+    private val supplementalState = SupplementalStateFence(
+        canUseEndpoint = { supplemental && sessionId > 0 &&
+            LightningDspControlClient.isCoverageLeaseActive() && canControlEndpoint() },
+        isEnabled = { enabled },
+        writeCompleteState = { syncCompleteState(it) },
+        enable = { enabled = true },
+    )
+    private val supplementalAdmitted: Boolean get() = !supplemental || supplementalState.admitted
+    private val preparedGeneration: Long get() = supplementalState.preparedGeneration
+    @Volatile private var supplementalInvalidated = false
     private var requestedEnabled = false
 
     override var enabled: Boolean
         set(value) {
+            if (disposed || (supplemental && value &&
+                    (!supplementalAdmitted || preparedGeneration != DspDesiredState.current() ||
+                        !LightningDspControlClient.isCoverageLeaseActive() || !canControlEndpoint()))) return
             requestedEnabled = value
             // The framework must dispatch audio even when the global control
             // service owns the DSP parameter. Binder acceptance alone does not
             // enable the AudioFlinger effect or its processing thread.
-            try { effect?.enabled = value }
+            try { if (!supplemental || canControlEndpoint()) effect?.enabled = value }
             catch (e: Exception) { Timber.w(e, "Framework effect enable failed; native diagnostics retained") }
-            LightningDspControlClient.setEnabledIfSupported(value)
+            if (usesUnscopedNative) LightningDspControlClient.setEnabledIfSupported(value)
         }
-        get() = effect?.enabled ?: false
+        get() = runCatching { effect?.enabled ?: false }.getOrDefault(false)
 
     override var sampleRate: Float
         get() {
@@ -73,10 +99,10 @@ class LightningDspRemoteEngine(
 
     init {
         watchControl(effect)
-        LightningDspControlClient.probeAsync { nativeControlReady ->
+        if (usesUnscopedNative) LightningDspControlClient.probeAsync { nativeControlReady ->
             if (nativeControlReady && !disposed) syncWithPreferences(arrayOf(Constants.PREF_OUTPUT, Constants.PREF_EQ))
         }
-        syncWithPreferences()
+        if (!supplemental) syncWithPreferences()
 
         val filter = IntentFilter()
         filter.addAction(Constants.ACTION_PREFERENCES_UPDATED)
@@ -89,6 +115,7 @@ class LightningDspRemoteEngine(
     }
 
     private fun createEffect(): AudioEffectHidden? {
+        if (supplemental && sessionId <= 0) return null
         return try {
             AudioEffectHidden(EFFECT_TYPE_CUSTOM, EFFECT_LIGHTNINGDSP, priority, sessionId)
         } catch (e: Exception) {
@@ -102,6 +129,10 @@ class LightningDspRemoteEngine(
         // Idle audio is not a dead context. Check the framework endpoint itself,
         // independently of Binder publication and sample-rate/frame telemetry.
         if (runCatching { Refine.unsafeCast<AudioEffect>(attached).enabled }.isFailure) {
+            if (supplemental) {
+                invalidateSupplemental()
+                return
+            }
             Timber.w("AudioEffect endpoint invalid for session %s; recreating", sessionId)
             rebootEngine()
         }
@@ -111,6 +142,10 @@ class LightningDspRemoteEngine(
         attached ?: return
         Refine.unsafeCast<AudioEffect>(attached).setControlStatusListener { _, granted ->
             if (disposed || effect !== attached) return@setControlStatusListener
+            if (supplemental) {
+                if (!granted) invalidateSupplemental()
+                return@setControlStatusListener
+            }
             // Invalidate queued work for the old ownership epoch, then let every
             // writable session reconcile. A session without control waits for gain.
             DspDesiredState.replace { }
@@ -120,17 +155,25 @@ class LightningDspRemoteEngine(
     }
 
     private fun rebootEngine() {
+        if (supplemental) {
+            if (supplementalAdmitted) invalidateSupplemental()
+            return
+        }
         DspDesiredState.replace {
+            if (disposed) return@replace
+            if (usesUnscopedNative) LightningDspControlClient.invalidateContext()
             effect?.release()
             effect = createEffect()
             watchControl(effect)
         }
         context.sendLocalBroadcast(Intent(Constants.ACTION_PRESET_LOADED))
         enabled = requestedEnabled
+        if (usesUnscopedNative) LightningDspControlClient.probeAsync()
     }
 
     override fun syncWithPreferences(forceUpdateNamespaces: Array<String>?) {
-        if(effect == null && !LightningDspControlClient.isAvailable()) {
+        if (disposed || (supplemental && !supplementalAdmitted)) return
+        if(effect == null && !nativeReady) {
             Timber.d("Rejecting update due to disposed engine")
             return
         }
@@ -144,14 +187,63 @@ class LightningDspRemoteEngine(
     }
 
     override fun preferenceUpdateOrder(targets: Array<String>) =
-        orderNativePreferenceUpdates(targets, LightningDspControlClient.isAvailable())
+        orderNativePreferenceUpdates(targets, nativeReady)
+
+    override fun canApplyPreferenceState(): Boolean =
+        !disposed && (!supplemental || supplementalAdmitted) &&
+            (if (effect == null) nativeReady else canControlEndpoint())
+
+    internal fun effectIdOrNull(): Int? = effect?.let { attached ->
+        if (disposed) null else runCatching { Refine.unsafeCast<AudioEffect>(attached).id }.getOrNull()
+    }
+
+    internal fun canControlEndpoint(): Boolean = !disposed && !supplementalInvalidated &&
+        (effect?.let { runCatching { Refine.unsafeCast<AudioEffect>(it).hasControl() }.getOrDefault(false) } == true)
+
+    internal fun isClosed(): Boolean = disposed
+
+    /** Called only after the coverage lease's worker barrier. Completing every
+     * legacy namespace also supersedes any previously accepted native update. */
+    internal suspend fun prepareLegacyState(expectedGeneration: Long): Boolean {
+        if (supplemental || sessionId != 0 || !LightningDspControlClient.isCoverageLeaseActive() ||
+            !canControlEndpoint()) return false
+        return syncCompleteState(expectedGeneration) && canControlEndpoint() &&
+            LightningDspControlClient.isCoverageLeaseActive() &&
+            DspDesiredState.current() == expectedGeneration
+    }
+
+    /** Construction is deliberately inert. The controller must first prove a
+     * fresh owned effect ID and current target, then prepare while disabled. */
+    internal suspend fun prepareSupplemental(expectedGeneration: Long): Boolean {
+        if (!supplemental) return false
+        return supplementalState.prepare(expectedGeneration)
+    }
+
+    internal fun activateSupplemental(expectedGeneration: Long): Boolean =
+        supplemental && supplementalState.activate(expectedGeneration)
+
+    private fun invalidateSupplemental() = DspDesiredState.serialized {
+        if (supplementalInvalidated || disposed) return@serialized
+        val hadControl = canControlEndpoint()
+        supplementalInvalidated = true
+        supplementalState.invalidate()
+        requestedEnabled = false
+        if (hadControl) runCatching { effect?.enabled = false }
+        runCatching { onSupplementalInvalidated?.invoke() }
+            .onFailure { Timber.w(it, "Supplemental retirement callback failed") }
+    }
 
     override fun close() {
-        disposed = true
-        context.unregisterLocalReceiver(broadcastReceiver)
-        effect?.release()
-        effect = null
-        super.close()
+        DspDesiredState.serialized {
+            if (disposed) return@serialized
+            disposed = true
+            supplementalState.invalidate()
+            context.unregisterLocalReceiver(broadcastReceiver)
+            if (usesUnscopedNative) LightningDspControlClient.invalidateContext()
+            effect?.release()
+            effect = null
+            super.close()
+        }
     }
 
     override fun setOutputControl(threshold: Float, release: Float, postGain: Float): Boolean {
@@ -161,7 +253,7 @@ class LightningDspRemoteEngine(
             1500,
             floatArrayOf(threshold, release, postGain)
         ) == AudioEffect.SUCCESS
-        val nativeQueued = LightningDspControlClient.setPostGainIfSupported(postGain) {
+        val nativeQueued = usesUnscopedNative && LightningDspControlClient.setPostGainIfSupported(postGain) {
             if (!disposed) effect.setParameterFloatArray(1500, floatArrayOf(threshold, release, postGain))
         }
         return limiterApplied || nativeQueued
@@ -225,7 +317,7 @@ class LightningDspRemoteEngine(
         interpolationMode: Int,
         bands: DoubleArray,
     ): Boolean {
-        if (filterType == 0 && bands.size == 30 && LightningDspControlClient.setFirEqIfSupported(
+        if (usesUnscopedNative && filterType == 0 && bands.size == 30 && LightningDspControlClient.setFirEqIfSupported(
                 FloatArray(15) { bands[it].toFloat() },
                 FloatArray(15) { bands[it + 15].toFloat() },
                 if (interpolationMode == 1) 1 else 0,
@@ -259,8 +351,8 @@ class LightningDspRemoteEngine(
 
         Timber.i("VDC hash before: $prevCrc, current: $currentCrc")
         if (prevCrc != currentCrc && enable) {
-            effect.setParameterCharBuffer(12001, 10009, vdc)
-            effect.setParameter(25001, currentCrc) // Commit hash
+            if (effect.setParameterCharBuffer(12001, 10009, vdc) != AudioEffect.SUCCESS) return false
+            if (effect.setParameter(25001, currentCrc) != AudioEffect.SUCCESS) return false // Commit hash
         }
 
         return effect.setParameter(1212, enable.toShort()) == AudioEffect.SUCCESS
@@ -278,8 +370,8 @@ class LightningDspRemoteEngine(
 
         Timber.i("Convolver hash before: $prevCrc, current: $irCrc")
         if (prevCrc != irCrc && enable) {
-            effect.setParameterImpulseResponseBuffer(12000, 10004, impulseResponse, irChannels)
-            effect.setParameter(25003, irCrc) // Commit hash
+            if (effect.setParameterImpulseResponseBuffer(12000, 10004, impulseResponse, irChannels) != AudioEffect.SUCCESS) return false
+            if (effect.setParameter(25003, irCrc) != AudioEffect.SUCCESS) return false // Commit hash
         }
 
         return effect.setParameter(1205, enable.toShort()) == AudioEffect.SUCCESS
@@ -291,8 +383,8 @@ class LightningDspRemoteEngine(
 
         Timber.i("GraphicEQ hash before: $prevCrc, current: $currentCrc")
         if (prevCrc != currentCrc && enable) {
-            effect.setParameterCharBuffer(12001, 10006, bands)
-            effect.setParameter(25000, currentCrc) // Commit hash
+            if (effect.setParameterCharBuffer(12001, 10006, bands) != AudioEffect.SUCCESS) return false
+            if (effect.setParameter(25000, currentCrc) != AudioEffect.SUCCESS) return false // Commit hash
         }
 
         return effect.setParameter(1210, enable.toShort()) == AudioEffect.SUCCESS
@@ -304,8 +396,8 @@ class LightningDspRemoteEngine(
 
         Timber.i("Liveprog hash before: $prevCrc, current: $currentCrc")
         if (prevCrc != currentCrc && enable) {
-            effect.setParameterCharBuffer(12001, 10010, script)
-            effect.setParameter(25002, currentCrc) // Commit hash
+            if (effect.setParameterCharBuffer(12001, 10010, script) != AudioEffect.SUCCESS) return false
+            if (effect.setParameter(25002, currentCrc) != AudioEffect.SUCCESS) return false // Commit hash
         }
 
         return effect.setParameter(1213, enable.toShort()) == AudioEffect.SUCCESS

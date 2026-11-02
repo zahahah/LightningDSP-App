@@ -39,6 +39,13 @@
             app:iconSpaceReserved="false" />
 
         <lightning.dsp.preference.MaterialSwitchPreference
+            android:key="@string/key_audioformat_all_mixers"
+            android:defaultValue="@bool/default_audioformat_all_mixers"
+            android:title="@string/audio_format_all_mixers"
+            android:summary="@string/audio_format_all_mixers_summary"
+            app:iconSpaceReserved="false" />
+
+        <lightning.dsp.preference.MaterialSwitchPreference
             android:key="@string/key_audioformat_enhanced_processing"
             android:defaultValue="@bool/default_audioformat_enhanced_processing"
             android:title="@string/audio_format_enhanced_processing"

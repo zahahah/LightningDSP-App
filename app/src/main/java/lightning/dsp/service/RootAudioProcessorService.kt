@@ -27,6 +27,7 @@ import lightning.dsp.MainApplication
 import lightning.dsp.R
 import lightning.dsp.flavor.VolumeManagerLifecycle
 import lightning.dsp.interop.LightningDspRemoteEngine
+import lightning.dsp.interop.GlobalMixerFallbackController
 import lightning.dsp.model.IEffectSession
 import lightning.dsp.model.room.AppBlocklistDatabase
 import lightning.dsp.model.room.AppBlocklistRepository
@@ -62,6 +63,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
 
     // Enhanced processing
     private var sessionDumpManager: RootSessionDumpManager? = null
+    private var mixerFallback: GlobalMixerFallbackController? = null
 
     // Preferences
     private val preferences: Preferences.App by inject()
@@ -70,6 +72,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == Constants.ACTION_PREFERENCES_UPDATED) {
                 app.rootSessionDatabase.syncWithPreferences()
+                mixerFallback?.preferencesChanged()
             }
         }
     }
@@ -110,6 +113,13 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
         // Get reference to system services
         audioManager = getSystemService<AudioManager>()!!
         notificationManager = getSystemService<NotificationManager>()!!
+        if (isRoot()) {
+            mixerFallback = GlobalMixerFallbackController(this) {
+                !isServiceDisposing && app.isLegacyMode && app.rootSessionDatabase.enabled &&
+                    preferences.get<Boolean>(R.string.key_audioformat_all_mixers) &&
+                    app.rootSessionDatabase.hasUsableGlobalSession()
+            }
+        }
 
         // Setup database observer
         blockedApps.observeForever(blockedAppObserver)
@@ -211,6 +221,8 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
     override fun onDestroy() {
         super.onDestroy()
         isServiceDisposing = true
+        mixerFallback?.close()
+        mixerFallback = null
         backgroundStartup?.cancel()
         backgroundScope.cancel()
 
@@ -235,9 +247,14 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         when (key) {
-            getString(R.string.key_audioformat_processing) -> { updateServiceNotification() }
+            getString(R.string.key_audioformat_processing) -> {
+                mixerFallback?.requestCheck()
+                updateServiceNotification()
+            }
+            getString(R.string.key_audioformat_all_mixers) -> mixerFallback?.requestCheck()
             getString(R.string.key_powered_on) -> {
                 app.rootSessionDatabase.enabled = sharedPreferences?.getBoolean(key, true) ?: true
+                mixerFallback?.requestCheck()
                 updateServiceNotification()
             }
             getString(R.string.key_audioformat_enhanced_processing) -> {
@@ -297,6 +314,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
     }
 
     override fun onSessionChanged(sessionList: HashMap<Int, IEffectSession>) {
+        mixerFallback?.requestCheck()
         updateServiceNotification()
     }
 
