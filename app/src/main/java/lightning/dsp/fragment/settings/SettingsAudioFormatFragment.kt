@@ -5,12 +5,16 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.preference.ListPreference
 import androidx.preference.Preference
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import lightning.dsp.R
 import lightning.dsp.activity.OnboardingActivity
 import lightning.dsp.interop.BenchmarkManager
+import lightning.dsp.interop.AAudioCompatibilityOption
+import lightning.dsp.interop.AAudioCompatibilityResult
 import lightning.dsp.interop.PostGainRangePolicy
 import lightning.dsp.preference.MaterialSeekbarPreference
 import lightning.dsp.preference.MaterialSwitchPreference
@@ -34,6 +38,7 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
     private val globalMode by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_processing)) }
     private val allMixers by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_all_mixers)) }
     private val enhancedMode by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_enhanced_processing)) }
+    private val audioCompat by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_aaudio_compat)) }
     private val enhancedModeInfo by lazy { findPreference<Preference>(getString(R.string.key_audioformat_enhanced_processing_info)) }
     private val benchmark by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_optimization_benchmark)) }
     private val benchmarkRefresh by lazy { findPreference<Preference>(getString(R.string.key_audioformat_optimization_refresh)) }
@@ -45,6 +50,50 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
         preferenceManager.sharedPreferencesName = Constants.PREF_APP
         setPreferencesFromResource(R.xml.app_audio_format_preferences, rootKey)
         updateProcessingMode(preferences.get<Boolean>(R.string.key_audioformat_processing))
+
+        audioCompat?.apply {
+            val compatContext = requireContext().applicationContext
+            isVisible = isRoot()
+            isChecked = AAudioCompatibilityOption.requested(compatContext)
+            if (isRoot()) {
+                isEnabled = false
+                lifecycleScope.launch {
+                    val actual = withContext(Dispatchers.IO) { AAudioCompatibilityOption.actual() }
+                    val requested = AAudioCompatibilityOption.requested(compatContext)
+                    if (actual != null && actual == requested) isEnabled = true
+                    else {
+                        if (actual != null) isChecked = actual
+                        setSummary(R.string.audio_format_aaudio_compat_unknown)
+                    }
+                }
+            }
+            setOnPreferenceChangeListener { preference, newValue ->
+                val enabled = newValue as Boolean
+                val appContext = requireContext().applicationContext
+                preference.isEnabled = false
+                lifecycleScope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        AAudioCompatibilityOption.set(appContext, enabled)
+                    }
+                    when (result) {
+                        AAudioCompatibilityResult.APPLIED -> {
+                            preference.isEnabled = true
+                            (preference as MaterialSwitchPreference).isChecked = enabled
+                            if (isAdded) requireContext().toast(R.string.audio_format_aaudio_compat_restart)
+                        }
+                        AAudioCompatibilityResult.FAILED -> {
+                            preference.isEnabled = true
+                            if (isAdded) requireContext().toast(R.string.audio_format_aaudio_compat_failed)
+                        }
+                        AAudioCompatibilityResult.UNKNOWN -> {
+                            preference.setSummary(R.string.audio_format_aaudio_compat_unknown)
+                            if (isAdded) requireContext().toast(R.string.audio_format_aaudio_compat_unknown)
+                        }
+                    }
+                }
+                false
+            }
+        }
 
         extraPostGain?.apply {
             isVisible = isRoot()
@@ -78,8 +127,6 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
             updateProcessingMode(globalEnabled)
             if (!globalEnabled)
                 requireContext().requestIgnoreBatteryOptimizations()
-            else
-                enhancedMode?.isChecked = false
 
             RootAudioProcessorService.updateGlobalMode(requireContext(), globalEnabled)
             true
@@ -156,6 +203,17 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
     private fun updateProcessingMode(globalEnabled: Boolean) {
         globalMode?.title = getString(if (globalEnabled)
             R.string.audio_format_processing_global else R.string.audio_format_processing_session)
+        enhancedMode?.isVisible = isRoot() && !globalEnabled
+        enhancedModeInfo?.isVisible = isRoot() && !globalEnabled
+        if (isRoot() && !globalEnabled) enhancedMode?.apply {
+            val permission = requireContext().hasDumpPermission()
+            // Display unavailability without changing the user's saved preference.
+            isPersistent = false
+            isChecked = permission && preferences.get<Boolean>(R.string.key_audioformat_enhanced_processing)
+            isPersistent = true
+            summaryOff = getString(if (permission) R.string.audio_format_enhanced_processing_off
+                else R.string.enhanced_processing_missing_perm)
+        }
         allMixers?.apply {
             // Coverage supplements outputs in Global Mode and unreported sessions
             // in Session Mode; the stored opt-in remains shared between the modes.

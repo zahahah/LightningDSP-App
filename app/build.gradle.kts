@@ -100,6 +100,9 @@ android {
             minSdk = AndroidConfig.minSdk
             buildConfigField("boolean", "ROOTLESS", "false")
             buildConfigField("boolean", "PLUGIN", "false")
+            externalNativeBuild {
+                cmake { arguments.add("-DLDSP_BUILD_AAUDIO_COMPAT=ON") }
+            }
         }
         create("plugin") {
             dimension = "version"

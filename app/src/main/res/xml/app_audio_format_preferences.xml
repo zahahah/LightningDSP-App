@@ -55,6 +55,14 @@
             app:iconSpaceReserved="false" />
 
         <lightning.dsp.preference.MaterialSwitchPreference
+            android:key="@string/key_audioformat_aaudio_compat"
+            android:defaultValue="@bool/default_audioformat_aaudio_compat"
+            android:title="@string/audio_format_aaudio_compat"
+            android:summary="@string/audio_format_aaudio_compat_summary"
+            android:persistent="false"
+            app:iconSpaceReserved="false" />
+
+        <lightning.dsp.preference.MaterialSwitchPreference
             android:key="@string/key_output_extra_postgain"
             android:title="@string/output_extra_postgain"
             android:summary="@string/output_extra_postgain_warning"

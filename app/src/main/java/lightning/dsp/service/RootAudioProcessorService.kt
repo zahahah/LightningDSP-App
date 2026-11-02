@@ -28,6 +28,7 @@ import lightning.dsp.R
 import lightning.dsp.flavor.VolumeManagerLifecycle
 import lightning.dsp.interop.LightningDspRemoteEngine
 import lightning.dsp.interop.GlobalMixerFallbackController
+import lightning.dsp.interop.AAudioCompatibilityOption
 import lightning.dsp.model.IEffectSession
 import lightning.dsp.model.room.AppBlocklistDatabase
 import lightning.dsp.model.room.AppBlocklistRepository
@@ -100,6 +101,11 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
 
     override fun onCreate() {
         super.onCreate()
+
+        if (isRoot()) backgroundScope.launch(Dispatchers.IO) {
+            if (!AAudioCompatibilityOption.restore(applicationContext))
+                Timber.w("AAudio compatibility request could not be restored")
+        }
 
         // Boot/soft-reboot may leave an output route selected without a fresh MediaRouter event.
         app.profileManager.refreshCurrentDevice()
@@ -247,6 +253,12 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         when (key) {
             getString(R.string.key_audioformat_processing) -> {
+                if (app.isEnhancedProcessing) {
+                    if (sessionDumpManager == null) setupEnhancedProcessing()
+                } else {
+                    sessionDumpManager?.destroy()
+                    sessionDumpManager = null
+                }
                 mixerFallback?.requestCheck()
                 updateServiceNotification()
             }

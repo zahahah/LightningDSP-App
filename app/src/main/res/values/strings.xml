@@ -309,6 +309,11 @@
     <string name="audio_format_processing_legacy_on">Attach globally to session 0</string>
     <string name="audio_format_processing_legacy_off">Per-app sessions (requires app support)</string>
     <string name="audio_format_enhanced_processing">Media session scanning</string>
+    <string name="audio_format_aaudio_compat">Improve app compatibility</string>
+    <string name="audio_format_aaudio_compat_summary">Requires selecting incompatible apps in Vector or LSPosed.</string>
+    <string name="audio_format_aaudio_compat_restart">Restart selected apps to apply this change. Audio latency may increase.</string>
+    <string name="audio_format_aaudio_compat_failed">Could not update compatibility mode. Check root access.</string>
+    <string name="audio_format_aaudio_compat_unknown">Unable to verify compatibility mode. Check root access and reopen settings.</string>
     <string name="audio_format_enhanced_processing_on">Scanning enabled for broader app compatibility</string>
     <string name="audio_format_enhanced_processing_off">Media session scanning disabled</string>
     <string name="audio_format_enhanced_processing_info_title">About media session scanning</string>

@@ -47,3 +47,12 @@ target_link_libraries( # Specifies the target library.
         # Links the target library to the log library
         # included in the NDK.
         ${log-lib})
+
+# Loaded only through the root flavor's explicitly scoped Xposed entrypoint.
+option(LDSP_BUILD_AAUDIO_COMPAT "Build the optional Xposed AAudio compatibility hook" OFF)
+if(LDSP_BUILD_AAUDIO_COMPAT)
+    add_library(ldsp_aaudio_compat SHARED aaudio-compat/aaudio_compat.cpp)
+    target_compile_features(ldsp_aaudio_compat PRIVATE cxx_std_17)
+    target_compile_options(ldsp_aaudio_compat PRIVATE -fvisibility=hidden -Wall -Wextra -Werror)
+    target_link_libraries(ldsp_aaudio_compat PRIVATE log aaudio)
+endif()

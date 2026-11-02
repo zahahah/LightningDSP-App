@@ -22,6 +22,43 @@ class AllMixersPreferenceContractTest {
             .single { it.getAttribute("name") == name }.textContent
     }
 
+    @Test fun audioCompatibilityIsOptInAndFollowsMediaScanning() {
+        assertEquals("false", value("src/main/res/values/defaults.xml", "bool", "default_audioformat_aaudio_compat"))
+        assertEquals("Improve app compatibility", value("src/main/res/values/strings.xml", "string", "audio_format_aaudio_compat"))
+        assertEquals("Requires selecting incompatible apps in Vector or LSPosed.",
+            value("src/main/res/values/strings.xml", "string", "audio_format_aaudio_compat_summary"))
+        val nodes = xml("src/main/res/xml/app_audio_format_preferences.xml")
+            .getElementsByTagName("lightning.dsp.preference.MaterialSwitchPreference")
+        val settings = (0 until nodes.length).map { nodes.item(it) as Element }
+        val scanning = settings.indexOfFirst { it.getAttributeNS(androidNamespace, "key") == "@string/key_audioformat_enhanced_processing" }
+        val compat = settings.indexOfFirst { it.getAttributeNS(androidNamespace, "key") == "@string/key_audioformat_aaudio_compat" }
+        assertEquals(scanning + 1, compat)
+        assertEquals("false", settings[compat].getAttributeNS(androidNamespace, "persistent"))
+        val nativeSource = File(app, "src/main/cpp/aaudio-compat/aaudio_compat.cpp").readText()
+        val cmake = File(app, "src/main/cpp/CMakeLists.txt").readText()
+        // Vector calls native_init under its registry lock; reentering dlopen deadlocks.
+        assertFalse(nativeSource.contains("dlopen(\"libaaudio.so\""))
+        assertTrue(cmake.contains("target_link_libraries(ldsp_aaudio_compat PRIVATE log aaudio)"))
+    }
+
+    @Test fun mediaScanningDefaultsOnAndIsVisibleOnlyInSessionMode() {
+        assertEquals("true", value("src/main/res/values/defaults.xml", "bool",
+            "default_audioformat_enhanced_processing"))
+        val source = File(app,
+            "src/main/java/lightning/dsp/fragment/settings/SettingsAudioFormatFragment.kt").readText()
+        assertTrue(source.contains("enhancedMode?.isVisible = isRoot() && !globalEnabled"))
+        assertTrue(source.contains("val permission = requireContext().hasDumpPermission()"))
+        assertTrue(source.contains("isPersistent = false"))
+        val application = File(app, "src/main/java/lightning/dsp/MainApplication.kt").readText()
+        assertTrue(application.contains("&& hasDumpPermission()"))
+        val service = File(app, "src/main/java/lightning/dsp/service/RootAudioProcessorService.kt").readText()
+        val modeChange = service.substringAfter("getString(R.string.key_audioformat_processing) -> {")
+            .substringBefore("getString(R.string.key_audioformat_all_mixers)")
+        assertTrue(modeChange.contains("if (app.isEnhancedProcessing)"))
+        assertTrue(modeChange.contains("setupEnhancedProcessing()"))
+        assertTrue(modeChange.contains("sessionDumpManager?.destroy()"))
+    }
+
     @Test fun settingHasApprovedTextAndDefaultWithoutAnInvertedDependency() {
         assertEquals("audioformat_all_mixers", value("src/main/res/values/keys.xml",
             "string", "key_audioformat_all_mixers"))
@@ -57,9 +94,10 @@ class AllMixersPreferenceContractTest {
             .substringBefore("companion object")
         assertTrue(helper.contains("isVisible = isRoot()"))
         assertTrue(helper.contains("isEnabled = isRoot()"))
-        assertFalse(helper.contains("isChecked"))
-        assertFalse(helper.contains("preferences.set"))
-        assertFalse(helper.contains("startService"))
+        val coverageSetting = helper.substringAfter("allMixers?.apply {").substringBefore("\n        }")
+        assertFalse(coverageSetting.contains("isChecked"))
+        assertFalse(coverageSetting.contains("preferences.set"))
+        assertFalse(coverageSetting.contains("startService"))
         assertFalse(Regex("allMixers\\?*\\.isChecked\\s*=").containsMatchIn(source))
     }
 

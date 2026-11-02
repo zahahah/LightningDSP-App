@@ -26,6 +26,13 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/wrapper-validation@v4
+      - name: Test native AAudio hook with sanitizers
+        run: |
+          clang++ -std=c++17 -Wall -Wextra -Werror -pthread \
+            -fsanitize=address,undefined -fno-omit-frame-pointer \
+            app/src/main/cpp/aaudio-compat/tests/hook_test.cpp \
+            -o "$RUNNER_TEMP/ldsp-aaudio-hook-test"
+          "$RUNNER_TEMP/ldsp-aaudio-hook-test"
       - name: Test and compile all supported adapters, then assemble root release
         run: >-
           ./gradlew --no-daemon --max-workers=2

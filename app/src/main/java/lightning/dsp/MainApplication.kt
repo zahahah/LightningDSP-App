@@ -34,6 +34,7 @@ import lightning.dsp.utils.Constants
 import lightning.dsp.utils.ProfileManager
 import lightning.dsp.utils.RoutingObserver
 import lightning.dsp.utils.extensions.ContextExtensions.registerLocalReceiver
+import lightning.dsp.utils.extensions.PermissionExtensions.hasDumpPermission
 import lightning.dsp.utils.isRoot
 import lightning.dsp.utils.isRootless
 import lightning.dsp.utils.notifications.Notifications
@@ -69,7 +70,7 @@ open class MainApplication : Application(), SharedPreferences.OnSharedPreference
         get() = prefs.get<Boolean>(R.string.key_audioformat_processing)
     val isEnhancedProcessing
         get() = !isGlobalMode &&
-                prefs.get<Boolean>(R.string.key_audioformat_enhanced_processing)
+                prefs.get<Boolean>(R.string.key_audioformat_enhanced_processing) && hasDumpPermission()
 
     private val applicationScope = CoroutineScope(SupervisorJob())
     private val blockedAppDatabase by lazy { AppBlocklistDatabase.getDatabase(this, applicationScope) }

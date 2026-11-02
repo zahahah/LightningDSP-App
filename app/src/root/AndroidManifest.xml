@@ -11,7 +11,7 @@
     <application
         tools:node="merge">
         <meta-data android:name="xposedmodule" android:value="true" />
-        <meta-data android:name="xposeddescription" android:value="LightningDSP optional Disable Audio Focus" />
+        <meta-data android:name="xposeddescription" android:value="LightningDSP optional audio compatibility and focus controls" />
         <meta-data android:name="xposedminversion" android:value="83" />
         <meta-data android:name="xposedscope" android:value="android" />
         <activity

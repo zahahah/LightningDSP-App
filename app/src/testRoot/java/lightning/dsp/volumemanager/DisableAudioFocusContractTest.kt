@@ -14,7 +14,8 @@ class DisableAudioFocusContractTest {
         val entry = File(app, "src/root/assets/xposed_init").readText().trim()
         val hook = File(app, "src/root/java/lightning/dsp/volumemanager/focus/DisableAudioFocusHook.java").readText()
         assertTrue(manifest.contains("android:name=\"xposedscope\" android:value=\"android\""))
-        assertEquals("lightning.dsp.volumemanager.focus.DisableAudioFocusHook", entry)
+        assertEquals(listOf("lightning.dsp.volumemanager.focus.DisableAudioFocusHook",
+            "lightning.dsp.interop.AudioCompatibilityHook"), entry.lines())
         assertTrue(hook.contains("DisableAudioFocusTarget.isFrameworkPackage(packageInfo.packageName)"))
         val target = File(app, "src/root/java/lightning/dsp/volumemanager/focus/DisableAudioFocusTarget.kt").readText()
         assertTrue(target.contains("packageName == \"android\" || packageName == \"system\""))
