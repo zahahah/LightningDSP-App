@@ -134,7 +134,7 @@ internal class GlobalMixerFallbackController(
             releaseLeaseIfSafe()
             if (lease != null) return
         }
-        val snapshot = stableSnapshot(global)
+        val snapshot = stableSnapshot(global, retainOnlyOnTransition = true)
         if (!current(expected, global)) return
         if (snapshot == null || !snapshot.known) {
             unknownSnapshot()
@@ -326,7 +326,7 @@ internal class GlobalMixerFallbackController(
         Timber.i("Supplemental mixer [%s]: %s", category, detail)
     }
 
-    private suspend fun stableSnapshot(global: LightningDspRemoteEngine): GlobalMixerCoverage.Snapshot? {
+    private suspend fun stableSnapshot(global: LightningDspRemoteEngine, retainOnlyOnTransition: Boolean = false): GlobalMixerCoverage.Snapshot? {
         diagnosticPhase = "inspection"
         val id = global.effectIdOrNull() ?: run {
             diagnose("baseline_identity_missing", "baseline effect identity unavailable")
@@ -337,9 +337,11 @@ internal class GlobalMixerFallbackController(
         delay(150)
         val second = inspect(id) ?: return null
         if (!second.known) return null
-        if (second.signature != first.signature || global.effectIdOrNull() != id) {
-            diagnose("unstable_snapshot", "topology or baseline identity changed between samples")
-            return null
+        if (global.effectIdOrNull() != id) return null
+        if (second.signature != first.signature) {
+            diagnose("unstable_snapshot", "topology changed between samples")
+            return if (retainOnlyOnTransition)
+                GlobalMixerCoverage.retentionOnlyDuringTransition(first, second) else null
         }
         return second
     }

@@ -354,6 +354,37 @@ class GlobalMixerCoverageTest {
             assertNotEquals(safe.signature, it.signature)
         }
     }
+    @Test fun ownedPausedTransitionFlagsRetainButNeverCreate() {
+        val foreground = inspect(extra = listOf(effect(31, 361)), owned = setOf(31))
+        val owner = GlobalMixerCoverage.OwnedAttachment(foreground.targets.single(), 31, true)
+        val transition = inspect(tracks = listOf(Playback(active = true, state = "P", flags = "200")),
+            extra = listOf(effect(31, 361)), owned = setOf(31))
+        val paused = inspect(tracks = listOf(Playback(active = false, flags = "600")),
+            extra = listOf(effect(31, 361)), owned = setOf(31))
+        listOf(foreground, transition, paused, foreground).forEach { snapshot ->
+            assertTrue(snapshot.reason, snapshot.retainsAttachment(owner.session, 31))
+            assertTrue(GlobalMixerCoverage.reconcile(snapshot, listOf(owner)).obsolete.isEmpty())
+        }
+        assertTrue(transition.targets.isEmpty())
+        assertTrue(inspect(tracks = listOf(Playback(active = true, state = "P", flags = "200"))).targets.isEmpty())
+        assertFalse(inspect(tracks = listOf(Playback(active = true, state = "P", flags = "204")),
+            extra = listOf(effect(31, 361)), owned = setOf(31)).retainsAttachment(owner.session, 31))
+    }
+    @Test fun changingTopologyRetainsOnlyCommonOwnedAttachmentsAndCreatesNone() {
+        val first = inspect(extra = listOf(effect(31, 361)), owned = setOf(31))
+        val owner = first.targets.single()
+        val changed = first.copy(signature = "different", targets = listOf(owner))
+        val result = GlobalMixerCoverage.retentionOnlyDuringTransition(first, changed)!!
+        assertTrue(result.retainsAttachment(owner, 31))
+        assertTrue(result.targets.isEmpty())
+        val moved = changed.copy(globalOutput = owner.output)
+        assertNull(GlobalMixerCoverage.retentionOnlyDuringTransition(first, moved))
+        val missing = changed.copy(retainableSessions = emptyList())
+        assertFalse(GlobalMixerCoverage.retentionOnlyDuringTransition(first, missing)!!.retainsAttachment(owner, 31))
+        val changedId = changed.copy(effects = changed.effects.map { if (it.id == 31) it.copy(id = 32) else it })
+        assertFalse(GlobalMixerCoverage.retentionOnlyDuringTransition(first, changedId)!!.retainsAttachment(owner, 31))
+        assertNull(GlobalMixerCoverage.retentionOnlyDuringTransition(first, changed.copy(known = false)))
+    }
     @Test fun reconciliationKeepsSameOwnedEndpointAcrossPauseAndResume() {
         val foreground = inspect(extra = listOf(effect(31, 361)), owned = setOf(31))
         val background = inspect(tracks = listOf(Playback(active = false, flags = "600")),

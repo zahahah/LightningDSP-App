@@ -44,6 +44,18 @@ internal object GlobalMixerCoverage {
             snapshot.targets.filter { it.id !in retainedIds && it.uid != excludedUid } else emptyList()
         return Reconciliation(obsolete, targets)
     }
+    /** A changing topology may retain only attachments confirmed in both samples.
+     * Never use this result to create an attachment. */
+    fun retentionOnlyDuringTransition(first: Snapshot, second: Snapshot): Snapshot? {
+        if (!first.known || !second.known || first.globalOutput == null ||
+            first.globalOutput != second.globalOutput) return null
+        val retained = first.retainableSessions.intersect(second.retainableSessions.toSet()).filter { session ->
+            first.effects.any { a -> a.session == session.id && a.output == session.output &&
+                second.effects.any { b -> b.id == a.id && b.session == a.session && b.output == a.output } }
+        }
+        return second.copy(targets = emptyList(), retainableSessions = retained,
+            reason = "Topology changing; retaining only attachments confirmed in both samples")
+    }
     private data class Track(val active: Boolean, val uid: Int, val session: Int, val port: Int,
                              val normal: Boolean, val format: Int, val channels: Long, val stream: Int,
                              val controlFlags: Long, val paused: Boolean)
@@ -135,15 +147,14 @@ internal object GlobalMixerCoverage {
             // Only retain a proven owned paused session for INTERRUPT/STREAM_END_DONE;
             // invalid/disabled/poisoned and unknown flags remain ineligible.
             if (rows.any { (_, t) -> t.controlFlags != 0L &&
-                !(sid in ownedSessions && !t.active && t.paused &&
-                    (t.controlFlags and 0x600L.inv()) == 0L &&
-                    clients.single { it.port == t.port }.active == false) })
+                !(sid in ownedSessions && t.paused &&
+                    (t.controlFlags and 0x600L.inv()) == 0L) })
                 return@mapNotNull exclude("track control-block guards")
             if (effects.any { it.session == sid && it.id !in owned }) return@mapNotNull exclude("existing effect guards")
             Session(sid, uids.single(), outputId, rows.map { it.second.port }.toSet())
         }.sortedBy { it.id }
         val activeIds = grouped.filter { (_, rows) -> rows.any { it.second.active } &&
-            rows.all { (out, track) -> policy.single { it.id == out }.clients.any {
+            rows.all { it.second.controlFlags == 0L } && rows.all { (out, track) -> policy.single { it.id == out }.clients.any {
                 it.session == track.session && it.port == track.port && it.active == track.active
             } }
         }.keys
