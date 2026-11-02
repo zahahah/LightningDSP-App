@@ -7,7 +7,7 @@ import org.junit.Test
 class GlobalMixerCoverageTest {
     private data class Playback(val session: Int = 361, val uid: Int = 10322, val port: Int = 70,
                                 val type: String = "", val format: String = "00000001",
-                                val channels: String = "00000003", val flags: String = "000",
+                                val channels: String = "00000003", val flags: String = "000", val policyFlags: String = "0", val policyChannels: String = "3",
                                 val bitPerfect: Boolean = false, val suffix: String = "false false 129.05 t 0 0 0 0 1",
                                 val extended: Boolean = true, val active: Boolean = true,
                                 val state: String = if (active) "A" else "P")
@@ -34,8 +34,8 @@ class GlobalMixerCoverageTest {
         append("    Global active count: ${tracks.count { it.active }}\n")
         tracks.forEachIndexed { index, t ->
             append("    ${index + 1}. Port ID: ${t.port}; Session ID: ${t.session}; uid ${t.uid}; State: ${if (t.active) "Active" else "Inactive"}\n")
-            append("      Format: AUDIO_FORMAT_PCM_16_BIT; 1; Channel mask: 0x3\n")
-            append("      Stream: 3; Flags: 0x0; Usage: AUDIO_USAGE_$usage\n")
+            append("      Format: AUDIO_FORMAT_PCM_16_BIT; 1; Channel mask: 0x${t.policyChannels}\n")
+            append("      Stream: 3; Flags: 0x${t.policyFlags}; Usage: AUDIO_USAGE_$usage\n")
         }
     }
     private fun inspect(tracks: List<Playback> = listOf(Playback()), globalOutput: Int = 13,
@@ -119,9 +119,21 @@ class GlobalMixerCoverageTest {
     @Test fun specialOutputTypesAreExcluded() {
         listOf("DIRECT", "OFFLOAD", "MMAP", "UNKNOWN").forEach { assertTrue(inspect(type = it).targets.isEmpty()) }
     }
+    @Test fun whatsappMonoVoiceMessageProfileIsEligibleButUnknownVariantsAreNot() {
+        val voiceMessage = Playback(channels = "00000001", policyChannels = "1", policyFlags = "800")
+        val snapshot = inspect(listOf(voiceMessage), usage = "UNKNOWN")
+        assertTrue(snapshot.reason, snapshot.known)
+        assertEquals(listOf(361), snapshot.targets.map { it.id })
+        assertTrue(inspect(listOf(voiceMessage), usage = "UNKNOWN",
+            transformFlinger = { it.replace("00000001 00000001 44100", "00000001 00000002 44100") }).targets.isEmpty())
+        assertTrue(inspect(listOf(voiceMessage.copy(policyFlags = "810")), usage = "UNKNOWN").targets.isEmpty())
+        assertTrue(inspect(listOf(voiceMessage.copy(channels = "00000003", policyChannels = "3")),
+            usage = "UNKNOWN").targets.isEmpty())
+        assertTrue(inspect(listOf(voiceMessage), usage = "VOICE_COMMUNICATION").targets.isEmpty())
+    }
     @Test fun unsupportedFormatChannelsAndUsageAreExcluded() {
         assertTrue(inspect(listOf(Playback(format = "08000000"))).targets.isEmpty())
-        assertTrue(inspect(listOf(Playback(channels = "00000001"))).targets.isEmpty())
+        assertTrue(inspect(listOf(Playback(channels = "00000005", policyChannels = "5"))).targets.isEmpty())
         assertTrue(inspect(usage = "VOICE_COMMUNICATION").targets.isEmpty())
     }
     @Test fun sharedSessionCollectsAllCorroboratedPorts() {
@@ -325,7 +337,7 @@ class GlobalMixerCoverageTest {
             { it.replace("Session ID: 361", "Session ID: 362") },
             { it.replace("Port ID: 70; Session", "Port ID: 71; Session") },
             { it.replace("Usage: AUDIO_USAGE_MEDIA", "Usage: AUDIO_USAGE_VOICE_COMMUNICATION") },
-            { it.replace("Channel mask: 0x3", "Channel mask: 0x1") },
+            { it.replace("Channel mask: 0x3", "Channel mask: 0x5") },
         )
         transforms.forEach { transform ->
             val snapshot = inspect(tracks = listOf(Playback(active = false)), extra = listOf(effect(31, 361)),
