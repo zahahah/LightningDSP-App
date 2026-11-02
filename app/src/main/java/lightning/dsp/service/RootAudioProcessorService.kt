@@ -35,6 +35,7 @@ import lightning.dsp.model.room.AppBlocklistRepository
 import lightning.dsp.model.room.BlockedApp
 import lightning.dsp.session.root.OnRootSessionChangeListener
 import lightning.dsp.session.root.RootSessionDumpManager
+import lightning.dsp.session.root.SessionDumpAdmission
 import lightning.dsp.utils.Constants
 import lightning.dsp.utils.extensions.ContextExtensions.sendLocalBroadcast
 import lightning.dsp.utils.extensions.ContextExtensions.registerLocalReceiver
@@ -226,6 +227,9 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
     override fun onDestroy() {
         super.onDestroy()
         isServiceDisposing = true
+        val oldSessionDumpManager = sessionDumpManager
+        sessionDumpManager = null
+        oldSessionDumpManager?.destroy()
         mixerFallback?.close()
         mixerFallback = null
         backgroundStartup?.cancel()
@@ -258,6 +262,13 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
                 } else {
                     sessionDumpManager?.destroy()
                     sessionDumpManager = null
+                    if (app.isGlobalMode) {
+                        // Stop ordinary per-app engines without tearing down a
+                        // healthy session-zero baseline. The supplemental
+                        // controller independently reconciles its own engines.
+                        app.rootSessionDatabase.sessionList.keys.filter { it > 0 }.toList()
+                            .forEach(app.rootSessionDatabase::removeSession)
+                    }
                 }
                 mixerFallback?.requestCheck()
                 updateServiceNotification()
@@ -277,7 +288,10 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
                     sessionDumpManager?.destroy()
                     sessionDumpManager = null
                     app.rootSessionDatabase.setExcludedUids(arrayOf())
-                    app.rootSessionDatabase.clearSessions()
+                    if (app.isGlobalMode) {
+                        app.rootSessionDatabase.sessionList.keys.filter { it > 0 }.toList()
+                            .forEach(app.rootSessionDatabase::removeSession)
+                    } else app.rootSessionDatabase.clearSessions()
                 }
             }
         }
@@ -316,12 +330,20 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
     }
 
     private fun setupEnhancedProcessing() {
+        if (isServiceDisposing || sessionDumpManager != null || !app.isEnhancedProcessing) return
         app.rootSessionDatabase.clearSessions()
 
-        sessionDumpManager = RootSessionDumpManager(this)
-        sessionDumpManager?.setOnSessionDump(app.rootSessionDatabase::update)
-        sessionDumpManager?.setOnDumpMethodChanged(app.rootSessionDatabase::clearSessions)
-        sessionDumpManager?.pollOnce(false)
+        val manager = RootSessionDumpManager(this)
+        sessionDumpManager = manager
+        manager.setOnSessionDump { dump ->
+            if (SessionDumpAdmission.allows(!isServiceDisposing && sessionDumpManager === manager, app.isEnhancedProcessing))
+                app.rootSessionDatabase.update(dump)
+        }
+        manager.setOnDumpMethodChanged {
+            if (SessionDumpAdmission.allows(!isServiceDisposing && sessionDumpManager === manager, app.isEnhancedProcessing))
+                app.rootSessionDatabase.clearSessions()
+        }
+        manager.pollOnce(false)
     }
 
     override fun onSessionChanged(sessionList: HashMap<Int, IEffectSession>) {

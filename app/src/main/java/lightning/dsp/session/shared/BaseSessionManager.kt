@@ -22,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import lightning.dsp.R
@@ -60,6 +61,7 @@ abstract class BaseSessionManager(protected val context: Context) : DumpManager.
     private val pollingMutex = Mutex()
     private val pollingScope = CoroutineScope(Dispatchers.Main)
     private var continuousPollingJob: Job? = null
+    private var destroyed = false
 
     // Callbacks
     private var audioPlaybackCallback: AudioManager.AudioPlaybackCallback? = null
@@ -103,7 +105,14 @@ abstract class BaseSessionManager(protected val context: Context) : DumpManager.
     @CallSuper
     open fun destroy()
     {
+        if (destroyed) return
+        destroyed = true
         Timber.d("Destroying SessionDumpManager")
+
+        preferences.unregisterOnSharedPreferenceChangeListener(preferencesListener)
+        continuousPollingJob?.cancel()
+        continuousPollingJob = null
+        pollingScope.cancel()
 
         dumpManager.unregisterOnDumpMethodChangeListener(this)
 
@@ -187,6 +196,7 @@ abstract class BaseSessionManager(protected val context: Context) : DumpManager.
 
     fun pollOnce(blocking: Boolean)
     {
+        if (destroyed) return
         pollingScope.launch {
             pollSessionDump(blocking)
         }

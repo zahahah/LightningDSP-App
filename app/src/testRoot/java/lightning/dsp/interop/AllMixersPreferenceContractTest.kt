@@ -57,6 +57,9 @@ class AllMixersPreferenceContractTest {
         assertTrue(modeChange.contains("if (app.isEnhancedProcessing)"))
         assertTrue(modeChange.contains("setupEnhancedProcessing()"))
         assertTrue(modeChange.contains("sessionDumpManager?.destroy()"))
+        assertTrue(modeChange.contains("if (app.isGlobalMode)"))
+        assertTrue(modeChange.contains("sessionList.keys.filter { it > 0 }"))
+        assertTrue(modeChange.contains("forEach(app.rootSessionDatabase::removeSession)"))
     }
 
     @Test fun settingHasApprovedTextAndDefaultWithoutAnInvertedDependency() {
