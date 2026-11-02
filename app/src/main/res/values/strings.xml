@@ -305,7 +305,7 @@
     <string name="audio_format_processing_session">Session Mode</string>
     <string name="audio_format_processing_session_summary">Apply effects to individual app sessions</string>
     <string name="audio_format_all_mixers">Cover additional sessions</string>
-    <string name="audio_format_all_mixers_summary">Applies effects to supported sessions not covered by Global Mode.</string>
+    <string name="audio_format_all_mixers_summary">Covers supported audio sessions not already handled by LightningDSP.</string>
     <string name="audio_format_processing_legacy_on">Attach globally to session 0</string>
     <string name="audio_format_processing_legacy_off">Per-app sessions (requires app support)</string>
     <string name="audio_format_enhanced_processing">Media session scanning</string>

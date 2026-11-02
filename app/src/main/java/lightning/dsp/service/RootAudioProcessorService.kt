@@ -83,14 +83,13 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
     private val blockedAppRepository by lazy { AppBlocklistRepository(blockedAppDatabase.appBlocklistDao()) }
     private val blockedApps by lazy { blockedAppRepository.blocklist.asLiveData() }
     private val blockedAppObserver = Observer<List<BlockedApp>?> { apps ->
-        if(!app.isEnhancedProcessing)
-            return@Observer
-
-        apps?.map { it.uid }?.let { uids ->
-            Timber.d("blockedAppObserver: Excluded UIDs: ${uids.joinToString("; ")}")
-
-            app.rootSessionDatabase.setExcludedUids(uids.toTypedArray())
-            sessionDumpManager?.pollOnce(false)
+        apps?.map { it.uid }?.toSet()?.let { uids ->
+            mixerFallback?.setExcludedUids(uids)
+            if (app.isEnhancedProcessing) {
+                Timber.d("blockedAppObserver: Excluded UIDs: ${uids.joinToString("; ")}")
+                app.rootSessionDatabase.setExcludedUids(uids.toTypedArray())
+                sessionDumpManager?.pollOnce(false)
+            }
         }
     }
 
@@ -115,9 +114,9 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
         notificationManager = getSystemService<NotificationManager>()!!
         if (isRoot()) {
             mixerFallback = GlobalMixerFallbackController(this) {
-                !isServiceDisposing && app.isGlobalMode && app.rootSessionDatabase.enabled &&
+                !isServiceDisposing && app.rootSessionDatabase.enabled &&
                     preferences.get<Boolean>(R.string.key_audioformat_all_mixers) &&
-                    app.rootSessionDatabase.hasUsableGlobalSession()
+                    (!app.isGlobalMode || app.rootSessionDatabase.hasUsableGlobalSession())
             }
         }
 
@@ -207,7 +206,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
                         if (sessionId != 0)
                             delay(800)
                         app.rootSessionDatabase.removeSessionByIntent(intent)
-                        if (app.rootSessionDatabase.sessionList.isEmpty()) {
+                        if (app.rootSessionDatabase.sessionList.isEmpty() && mixerFallback?.hasOwnedSessions() != true) {
                             stopSelf()
                         }
                     }

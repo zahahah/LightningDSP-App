@@ -157,10 +157,10 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
         globalMode?.title = getString(if (globalEnabled)
             R.string.audio_format_processing_global else R.string.audio_format_processing_session)
         allMixers?.apply {
-            isVisible = isRoot() && globalEnabled
-            // Global's XML dependency is inverted for media-session scanning.
-            // Hide this setting in Session Mode without changing the saved choice.
-            isEnabled = isRoot() && globalEnabled
+            // Coverage supplements outputs in Global Mode and unreported sessions
+            // in Session Mode; the stored opt-in remains shared between the modes.
+            isVisible = isRoot()
+            isEnabled = isRoot()
         }
     }
 

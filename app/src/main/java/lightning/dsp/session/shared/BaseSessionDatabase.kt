@@ -116,6 +116,8 @@ abstract class BaseSessionDatabase(protected val context: Context) {
             changeCallbacks.forEach { it.onSessionChanged(sessionList) }
     }
 
+    fun isUidExcluded(uid: Int): Boolean = excludedUids.contains(uid)
+
     fun registerOnSessionChangeListener(changeListener: OnSessionChangeListener) {
         changeCallbacks.add(changeListener)
         changeListener.onSessionChanged(sessionList)

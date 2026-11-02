@@ -18,6 +18,22 @@ import timber.log.Timber
 
 class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
 
+    /** Prevent a broadcast or enhanced scan from creating a second AudioEffect
+     * for a session currently owned by the mixer-coverage controller. */
+    private val supplementalSessionReservations = mutableSetOf<Int>()
+
+    @Synchronized
+    fun reserveSupplementalSession(id: Int): Boolean {
+        if (id <= 0 || sessionList.containsKey(id) || id in supplementalSessionReservations) return false
+        supplementalSessionReservations += id
+        return true
+    }
+
+    @Synchronized
+    fun releaseSupplementalSession(id: Int) {
+        supplementalSessionReservations -= id
+    }
+
     private val app
         get() = context.applicationContext as MainApplication
 
@@ -79,7 +95,8 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
         }
         return true
     }
-    override fun shouldAddSession(id: Int, uid: Int, packageName: String) = true
+    override fun shouldAddSession(id: Int, uid: Int, packageName: String) =
+        synchronized(this) { id !in supplementalSessionReservations }
 
     override fun onSessionRemoved(item: IEffectSession) {
         (item as RemoteEffectSession).run {

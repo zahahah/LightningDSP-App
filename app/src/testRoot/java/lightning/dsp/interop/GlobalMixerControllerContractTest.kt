@@ -15,11 +15,13 @@ class GlobalMixerControllerContractTest {
         assertTrue(s.indexOf("ensureLeaseAndFence(global, expected)") < s.indexOf("LightningDspRemoteEngine(app, target.id"))
         val fence = s.substringAfter("private suspend fun ensureLeaseAndFence")
         assertTrue(fence.indexOf("barrier?.await()") < fence.indexOf("global.prepareLegacyState(generation)"))
-        assertTrue(fence.indexOf("global.prepareLegacyState(generation)") < fence.indexOf("leaseFenced = true"))
+        val globalFence = fence.substringAfter("if (!global.prepareLegacyState(generation)")
+        assertTrue(globalFence.indexOf("global.prepareLegacyState") < globalFence.indexOf("leaseFenced = true"))
     }
     @Test fun identityThenFullStateThenFreshSnapshotPrecedeActivation() {
         val s = controller
         assertTrue(s.indexOf("before.effects.any { it.id == id }") < s.indexOf("engine.prepareSupplemental(generation)"))
+        assertTrue(s.contains("val before = inspect(global?.effectIdOrNull())"))
         assertTrue(s.indexOf("engine.prepareSupplemental(generation)") < s.indexOf("val fresh = stableSnapshot(global)"))
         assertTrue(s.indexOf("fresh.ownsAttachment(target, id)") < s.indexOf("engine.activateSupplemental(generation)"))
         assertTrue(s.contains("DspDesiredState.current() != generation"))
@@ -38,7 +40,7 @@ class GlobalMixerControllerContractTest {
     @Test fun inactiveOwnedCoverageIsRetainedWithoutCreatingInactiveSessions() {
         val s = controller
         assertTrue(s.contains("val plan = GlobalMixerCoverage.reconcile(snapshot"))
-        assertTrue(s.contains("GlobalMixerCoverage.OwnedAttachment(it.session, it.effectId, it.engine.canControlEndpoint())"))
+        assertTrue(s.contains("it.engine.canControlEndpoint() && it.session.uid !in excludedUids"))
         assertTrue(s.contains("poll = snapshot.activeSessions > 0 || owned.isNotEmpty()"))
         assertTrue(s.contains("if (owned.size >= GlobalMixerCoverage.MAX_SUPPLEMENTAL_SESSIONS) break"))
         val creation = s.substringAfter("for (target in plan.newTargets)")
@@ -57,9 +59,16 @@ class GlobalMixerControllerContractTest {
     }
     @Test fun featureIsServiceOwnedRootOnlyAndIndependentOfVolumeManager() {
         val service = source("main/java/lightning/dsp/service/RootAudioProcessorService.kt")
+        val database = source("main/java/lightning/dsp/session/root/RootSessionDatabase.kt")
         assertTrue(service.contains("if (isRoot()) {\n            mixerFallback = GlobalMixerFallbackController"))
         assertTrue(service.contains("mixerFallback?.close()"))
         assertTrue(service.contains("preferences.get<Boolean>(R.string.key_audioformat_all_mixers)"))
+        assertTrue(service.contains("(!app.isGlobalMode || app.rootSessionDatabase.hasUsableGlobalSession())"))
+        assertTrue(service.contains("mixerFallback?.hasOwnedSessions() != true"))
+        assertTrue(controller.contains("global?.canControlEndpoint() ?: !app.isGlobalMode"))
+        assertTrue(controller.contains("reserveSupplementalSession(target.id)"))
+        assertTrue(controller.contains("if (global == null)"))
+        assertTrue(database.contains("id !in supplementalSessionReservations"))
         listOf("rootless", "plugin").forEach { flavor ->
             val noop = source("$flavor/java/lightning/dsp/interop/GlobalMixerFallbackController.kt")
             assertFalse(noop.contains("LightningDspRemoteEngine("))

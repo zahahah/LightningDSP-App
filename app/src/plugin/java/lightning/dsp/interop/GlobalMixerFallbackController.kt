@@ -6,5 +6,7 @@ import android.content.Context
 internal class GlobalMixerFallbackController(context: Context, shouldRun: () -> Boolean) : AutoCloseable {
     fun requestCheck() = Unit
     fun preferencesChanged() = Unit
+    fun setExcludedUids(uids: Set<Int>) = Unit
+    fun hasOwnedSessions() = false
     override fun close() = Unit
 }

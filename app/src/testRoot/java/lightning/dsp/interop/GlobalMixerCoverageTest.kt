@@ -52,11 +52,35 @@ class GlobalMixerCoverageTest {
         return GlobalMixerCoverage.inspect(transformFlinger(flinger), transformPolicy(policy), 27, owned)
     }
 
+    private fun inspectSessionMode(tracks: List<Playback> = listOf(Playback()), effects: List<String> = emptyList(), usage: String = "MEDIA"):
+        GlobalMixerCoverage.Snapshot {
+        val flinger = output(45, tracks, effects)
+        val policy = " Outputs (1):\n" + policyOutput(45, tracks, usage = usage) + "\n Inputs (0):\n"
+        return GlobalMixerCoverage.inspect(flinger, policy, null)
+    }
+
     @Test fun normalRawFastOutputIsEligibleEvenAtZeroVolume() {
         val snapshot = inspect()
         assertTrue(snapshot.reason, snapshot.known)
         assertEquals(listOf(361), snapshot.targets.map { it.id })
         assertEquals(13, snapshot.globalOutput)
+    }
+    @Test fun sessionModeDiscoversUncoveredPlaybackWithoutCreatingGlobalSessionZero() {
+        val snapshot = inspectSessionMode()
+        assertTrue(snapshot.reason, snapshot.known)
+        assertNull(snapshot.globalOutput)
+        assertEquals(listOf(361), snapshot.targets.map { it.id })
+    }
+    @Test fun sessionModeStillRecognizesMonoUnknownWhatsAppMessageSessions() {
+        val snapshot = inspectSessionMode(listOf(Playback(
+            channels = "00000001", policyChannels = "1", attributeFlags = "800"
+        )), usage = "UNKNOWN")
+        assertTrue(snapshot.reason, snapshot.known)
+        assertEquals(listOf(361), snapshot.targets.map { it.id })
+    }
+    @Test fun sessionModeWithoutBaselineFailsClosedWhenSessionZeroEffectAppears() {
+        val snapshot = inspectSessionMode(effects = listOf(effect(27, 0)))
+        assertFalse(snapshot.known)
     }
     @Test fun latencyWithoutSpatialColumnsIsAlsoEligible() {
         val snapshot = inspect(listOf(Playback(suffix = "false false 455.17", extended = false)))

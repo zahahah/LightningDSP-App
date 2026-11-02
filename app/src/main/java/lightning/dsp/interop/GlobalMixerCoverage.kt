@@ -48,8 +48,7 @@ internal object GlobalMixerCoverage {
     /** A changing topology may retain only attachments confirmed in both samples.
      * Never use this result to create an attachment. */
     fun retentionOnlyDuringTransition(first: Snapshot, second: Snapshot): Snapshot? {
-        if (!first.known || !second.known || first.globalOutput == null ||
-            first.globalOutput != second.globalOutput) return null
+        if (!first.known || !second.known || first.globalOutput != second.globalOutput) return null
         val retained = first.retainableSessions.intersect(second.retainableSessions.toSet()).filter { session ->
             first.effects.any { a -> a.session == session.id && a.output == session.output &&
                 second.effects.any { b -> b.id == a.id && b.session == a.session && b.output == a.output } }
@@ -65,11 +64,11 @@ internal object GlobalMixerCoverage {
     private data class Client(val uid: Int, val session: Int, val port: Int, val active: Boolean, val compatible: Boolean)
     private data class PolicyOutput(val id: Int, val flags: Long, val clients: List<Client>)
 
-    fun inspect(flinger: String, policy: String, globalEffectId: Int,
+    fun inspect(flinger: String, policy: String, globalEffectId: Int?,
                 ownedEffectIds: Set<Int> = emptySet()): Snapshot {
         if (flinger.length > MAX_DUMP_CHARS || policy.length > MAX_DUMP_CHARS)
             return Snapshot(false, "Audio diagnostic size limit exceeded")
-        if (globalEffectId <= 0) return Snapshot(false, "Invalid global effect identity")
+        if (globalEffectId != null && globalEffectId <= 0) return Snapshot(false, "Invalid global effect identity")
         var reason = "AudioFlinger diagnostic layout is incomplete or unsupported"
         return try {
             val outputs = parseOutputs(flinger)
@@ -87,7 +86,7 @@ internal object GlobalMixerCoverage {
     }
 
     private fun inspectParsed(outputs: List<Output>, policy: List<PolicyOutput>, policyText: String,
-                              globalEffectId: Int, owned: Set<Int>): Snapshot {
+                              globalEffectId: Int?, owned: Set<Int>): Snapshot {
         require(outputs.isNotEmpty() && policy.isNotEmpty())
         require(outputs.size <= 64 && policy.size <= 64)
         require(outputs.map { it.id }.distinct().size == outputs.size)
@@ -109,11 +108,17 @@ internal object GlobalMixerCoverage {
         }
         require(policy.filter { descriptor -> descriptor.clients.any { it.active && (it.session to descriptor.id) !in ownedPlacements } }
             .all { descriptor -> outputs.any { it.id == descriptor.id } })
-        val global = effects.single { it.id == globalEffectId && it.session == 0 }
-        val policyGlobal = Regex("Effect ID: $globalEffectId; Attached to I/O handle: (\\d+); Session: (-?\\d+);")
-            .findAll(policyText).toList()
-        require(policyGlobal.size == 1 && policyGlobal.single().groupValues[1].toInt() == global.output &&
-                policyGlobal.single().groupValues[2].toInt() == 0)
+        val global = if (globalEffectId == null) {
+            require(effects.none { it.session == 0 })
+            null
+        } else {
+            effects.single { it.id == globalEffectId && it.session == 0 }.also { effect ->
+                val policyGlobal = Regex("Effect ID: $globalEffectId; Attached to I/O handle: (\\d+); Session: (-?\\d+);")
+                    .findAll(policyText).toList()
+                require(policyGlobal.size == 1 && policyGlobal.single().groupValues[1].toInt() == effect.output &&
+                    policyGlobal.single().groupValues[2].toInt() == 0)
+            }
+        }
         // A suspended baseline still reserves its mixer. Never force it back or build
         // a feedback loop of new session effects on the same mixer.
         val reserved = effects.filter { it.session <= 0 }.map { it.output }.toSet()
@@ -161,7 +166,7 @@ internal object GlobalMixerCoverage {
         }.keys
         val targets = eligible.filter { it.id in activeIds }.take(MAX_SUPPLEMENTAL_SESSIONS)
         val retained = eligible.filter { it.id in ownedSessions }
-        val signature = "${global.id}:${global.output}:" + observed.filter {
+        val signature = "${global?.id ?: 0}:${global?.output ?: 0}:" + observed.filter {
             it.second.active || it.second.session in ownedSessions
         }.map { (out, t) ->
             "$out:${t.uid}:${t.session}:${t.port}:${t.normal}:${t.format}:${t.channels}:${t.stream}:" +
@@ -174,7 +179,7 @@ internal object GlobalMixerCoverage {
             "; no supplemental target: " + if (allActive.isEmpty()) "no active sessions"
             else excluded.entries.joinToString(", ") { "${it.key}=${it.value}" }
         } else ""
-        return Snapshot(true, reason, global.output,
+        return Snapshot(true, reason, global?.output,
             targets, effects, allActive.map { it.second.session }.distinct().size, signature, retained)
     }
 

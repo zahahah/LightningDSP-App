@@ -29,7 +29,7 @@ class AllMixersPreferenceContractTest {
             "bool", "default_audioformat_all_mixers"))
         assertEquals("Cover additional sessions", value("src/main/res/values/strings.xml",
             "string", "audio_format_all_mixers"))
-        assertEquals("Applies effects to supported sessions not covered by Global Mode.",
+        assertEquals("Covers supported audio sessions not already handled by LightningDSP.",
             value("src/main/res/values/strings.xml", "string", "audio_format_all_mixers_summary"))
 
         val nodes = xml("src/main/res/xml/app_audio_format_preferences.xml")
@@ -55,8 +55,8 @@ class AllMixersPreferenceContractTest {
         assertTrue(source.contains("updateProcessingMode(globalEnabled)"))
         val helper = source.substringAfter("private fun updateProcessingMode(globalEnabled: Boolean)")
             .substringBefore("companion object")
-        assertTrue(helper.contains("isVisible = isRoot() && globalEnabled"))
-        assertTrue(helper.contains("isEnabled = isRoot() && globalEnabled"))
+        assertTrue(helper.contains("isVisible = isRoot()"))
+        assertTrue(helper.contains("isEnabled = isRoot()"))
         assertFalse(helper.contains("isChecked"))
         assertFalse(helper.contains("preferences.set"))
         assertFalse(helper.contains("startService"))

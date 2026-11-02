@@ -50,6 +50,7 @@ internal class GlobalMixerFallbackController(
     private val inspectionRetries = SupplementalInspectionRetryPolicy()
     private val diagnosticTimes = mutableMapOf<String, Long>()
     private var revision = 0L
+    private var excludedUids: Set<Int> = emptySet()
     private var closed = false
     private var poll = false
     private var retryNotBefore = 0L
@@ -60,7 +61,12 @@ internal class GlobalMixerFallbackController(
     private var fenceAttempts = 0
     private var cleanupAttempts = 0
     private var diagnosticPhase = "idle"
-    private data class Owned(val session: GlobalMixerCoverage.Session, val engine: LightningDspRemoteEngine, val effectId: Int)
+    private data class Owned(
+        val session: GlobalMixerCoverage.Session,
+        val engine: LightningDspRemoteEngine,
+        val effectId: Int,
+        val reservedInSessionDatabase: Boolean,
+    )
 
     private val playbackCallback = object : AudioManager.AudioPlaybackCallback() {
         override fun onPlaybackConfigChanged(configs: MutableList<AudioPlaybackConfiguration>?) = requestCheck()
@@ -114,15 +120,25 @@ internal class GlobalMixerFallbackController(
         requestCheck()
     }
 
+    fun setExcludedUids(uids: Set<Int>) {
+        excludedUids = uids
+        requestCheck()
+    }
+
+    fun hasOwnedSessions(): Boolean = owned.isNotEmpty()
+
     private fun baseline() = (app.rootSessionDatabase.sessionList[0] as? RemoteEffectSession)?.effect
-    private fun current(expected: Long, global: LightningDspRemoteEngine) =
-        !closed && revision == expected && shouldRun() && baseline() === global && global.canControlEndpoint()
+    private fun current(expected: Long, global: LightningDspRemoteEngine?) =
+        !closed && revision == expected && shouldRun() && baseline() === global &&
+            (global?.canControlEndpoint() ?: !app.isGlobalMode)
 
     private suspend fun reconcile(expected: Long) {
+        val startedAt = SystemClock.elapsedRealtime()
         diagnosticPhase = "baseline_check"
         val global = baseline()
-        if (!shouldRun() || global == null || !global.canControlEndpoint()) {
-            diagnose("baseline_unavailable", "feature disabled or controllable baseline unavailable; supplemental effects withdrawn")
+        if (!shouldRun() || (app.isGlobalMode && (global == null || !global.canControlEndpoint())) ||
+            (global != null && !global.canControlEndpoint())) {
+            diagnose("baseline_unavailable", "feature disabled or required control endpoint unavailable; supplemental effects withdrawn")
             removeAll()
             attempts.clear()
             releaseLeaseIfSafe()
@@ -141,12 +157,17 @@ internal class GlobalMixerFallbackController(
             return
         }
         poll = snapshot.activeSessions > 0 || owned.isNotEmpty()
-        val targets = snapshot.targets.filter { it.uid != android.os.Process.myUid() }.associateBy { it.id }
+        val targets = snapshot.targets.filter {
+            it.uid != android.os.Process.myUid() && it.uid !in excludedUids
+        }.associateBy { it.id }
         // Withdraw before adding anything. A global chain reserves its actual output even
         // when the framework suspended it due to a positive-session effect.
         val plan = GlobalMixerCoverage.reconcile(snapshot, owned.values.map {
-            GlobalMixerCoverage.OwnedAttachment(it.session, it.effectId, it.engine.canControlEndpoint())
-        }, excludedUid = android.os.Process.myUid())
+            GlobalMixerCoverage.OwnedAttachment(it.session, it.effectId,
+                it.engine.canControlEndpoint() && it.session.uid !in excludedUids)
+        }, excludedUid = android.os.Process.myUid()).let { coverage ->
+            coverage.copy(newTargets = coverage.newTargets.filter { it.uid !in excludedUids })
+        }
         remove(plan.obsolete)
         if (targets.isEmpty()) {
             diagnose("no_candidates", "no eligible supplemental candidates; self excluded=${snapshot.targets.size - targets.size}; ${snapshot.reason}")
@@ -166,8 +187,8 @@ internal class GlobalMixerFallbackController(
             if (!current(expected, global)) return
             // A native helper already accepted before the lease cannot be unsent. Both
             // the serial barrier and a successful legacy fence have completed by here.
-            val before = stableSnapshot(global)
-            if (before == null) {
+            val before = inspect(global?.effectIdOrNull())
+            if (before == null || !before.known) {
                 unknownSnapshot()
                 return
             }
@@ -175,15 +196,22 @@ internal class GlobalMixerFallbackController(
             attempts.record(target.identity)
             val generation = DspDesiredState.current()
             diagnosticPhase = "construction"
+            val reserved = !app.isGlobalMode && app.rootSessionDatabase.reserveSupplementalSession(target.id)
+            if (!app.isGlobalMode && !reserved) continue
+            if (!current(expected, global) || app.rootSessionDatabase.sessionList.containsKey(target.id)) {
+                if (reserved) app.rootSessionDatabase.releaseSupplementalSession(target.id)
+                continue
+            }
             val engine = LightningDspRemoteEngine(app, target.id, 0, supplemental = true,
                 onSupplementalInvalidated = ::requestInternalCheck)
             val id = engine.effectIdOrNull()
             if (id == null || !engine.canControlEndpoint() || before.effects.any { it.id == id }) {
                 diagnose("creation_failed", "effect identity/control not established; supplemental discarded")
                 engine.close()
+                if (reserved) app.rootSessionDatabase.releaseSupplementalSession(target.id)
                 continue
             }
-            owned[target.id] = Owned(target, engine, id)
+            owned[target.id] = Owned(target, engine, id, reserved)
             diagnosticPhase = "preparation"
             val prepared = engine.prepareSupplemental(generation)
             if (!prepared || !current(expected, global) || DspDesiredState.current() != generation) {
@@ -215,13 +243,13 @@ internal class GlobalMixerFallbackController(
                 diagnose("verification_failed", "enabled unsuspended attachment not verified on current target; removing")
                 remove(listOf(target.id))
             } else {
-                diagnose("attachment_observed", "enabled unsuspended supplemental attachment observed; audible processing unverified")
+                diagnose("attachment_observed", "enabled unsuspended supplemental attachment observed in ${SystemClock.elapsedRealtime() - startedAt} ms; audible processing unverified")
             }
         }
         if (owned.isEmpty()) releaseLeaseIfSafe()
     }
 
-    private suspend fun ensureLeaseAndFence(global: LightningDspRemoteEngine, expected: Long): Boolean {
+    private suspend fun ensureLeaseAndFence(global: LightningDspRemoteEngine?, expected: Long): Boolean {
         diagnosticPhase = "lease_barrier"
         if (lease == null) {
             val drained = CompletableDeferred<Unit>()
@@ -236,6 +264,16 @@ internal class GlobalMixerFallbackController(
             return false
         }
         if (leaseFenced) return true
+        if (global == null) {
+            if (app.isGlobalMode || !current(expected, null)) {
+                diagnose("fence_failed", "session-only baseline changed; creation refused")
+                return false
+            }
+            // The worker barrier drained earlier unscoped writes. With no session-0
+            // AudioEffect in Session Mode, there is no live endpoint to fence.
+            leaseFenced = true
+            return true
+        }
         if (fenceAttempts++ >= 3) {
             diagnose("fence_exhausted", "legacy fence retry budget exhausted; creation refused")
             return false
@@ -282,11 +320,13 @@ internal class GlobalMixerFallbackController(
         if (ids.isEmpty()) return
         diagnosticPhase = "teardown"
         diagnose("owned_removed", "removing ${ids.size} owned supplemental effects; baseline retained")
+        val reservedIds = ids.filter { owned[it]?.reservedInSessionDatabase == true }
         SupplementalLifecycle.retireOwned(ids, owned,
             hasControl = { it.engine.canControlEndpoint() },
             disable = { it.engine.enabled = false },
             close = { it.engine.close() },
         )
+        reservedIds.forEach(app.rootSessionDatabase::releaseSupplementalSession)
         // Existing engine listeners reconcile the new generation on the next
         // preference event; explicitly reapply currently owned loaded state too.
         baseline()?.syncWithPreferences()
@@ -326,9 +366,10 @@ internal class GlobalMixerFallbackController(
         Timber.i("Supplemental mixer [%s]: %s", category, detail)
     }
 
-    private suspend fun stableSnapshot(global: LightningDspRemoteEngine, retainOnlyOnTransition: Boolean = false): GlobalMixerCoverage.Snapshot? {
+    private suspend fun stableSnapshot(global: LightningDspRemoteEngine?, retainOnlyOnTransition: Boolean = false): GlobalMixerCoverage.Snapshot? {
         diagnosticPhase = "inspection"
-        val id = global.effectIdOrNull() ?: run {
+        val id = global?.effectIdOrNull()
+        if (global != null && id == null) {
             diagnose("baseline_identity_missing", "baseline effect identity unavailable")
             return null
         }
@@ -337,7 +378,7 @@ internal class GlobalMixerFallbackController(
         delay(150)
         val second = inspect(id) ?: return null
         if (!second.known) return null
-        if (global.effectIdOrNull() != id) return null
+        if (global?.effectIdOrNull() != id) return null
         if (second.signature != first.signature) {
             diagnose("unstable_snapshot", "topology changed between samples")
             return if (retainOnlyOnTransition)
@@ -346,7 +387,7 @@ internal class GlobalMixerFallbackController(
         return second
     }
 
-    private suspend fun inspect(globalId: Int): GlobalMixerCoverage.Snapshot? {
+    private suspend fun inspect(globalId: Int?): GlobalMixerCoverage.Snapshot? {
         val ids = owned.values.map { it.effectId }.toSet()
         return withContext(Dispatchers.IO) {
             if (!RootShellImpl.hasRootShell()) {
