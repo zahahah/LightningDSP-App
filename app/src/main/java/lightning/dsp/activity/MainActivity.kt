@@ -327,9 +327,9 @@ class MainActivity : BaseActivity() {
         }
 
 
-        /* Root: require battery optimizations turned off when legacy mode is disabled,
+        /* Root: require battery optimizations turned off when Global mode is disabled,
            otherwise, the service will be block from launching from background */
-        if (isRoot() && !(application as MainApplication).isLegacyMode) {
+        if (isRoot() && !(application as MainApplication).isGlobalMode) {
             requestIgnoreBatteryOptimizations()
         }
 
@@ -510,11 +510,11 @@ class MainActivity : BaseActivity() {
                         binding.toolbar.isVisible = true
                         binding.powerToggle.isToggled = prefsApp.get(R.string.key_powered_on)
                     }
-                    if (shouldReattachGlobalMode(app.isLegacyMode,
+                    if (shouldReattachGlobalMode(app.isGlobalMode,
                             app.rootSessionDatabase.hasUsableGlobalSession(),
                             rootEffectWasUnavailable)) {
                         try {
-                            RootAudioProcessorService.updateLegacyMode(this, true)
+                            RootAudioProcessorService.updateGlobalMode(this, true)
                             rootEffectWasUnavailable = false
                         } catch (e: Exception) {
                             Timber.w(e, "Unable to reattach Global mode after factory discovery")

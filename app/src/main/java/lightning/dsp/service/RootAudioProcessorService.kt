@@ -115,7 +115,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
         notificationManager = getSystemService<NotificationManager>()!!
         if (isRoot()) {
             mixerFallback = GlobalMixerFallbackController(this) {
-                !isServiceDisposing && app.isLegacyMode && app.rootSessionDatabase.enabled &&
+                !isServiceDisposing && app.isGlobalMode && app.rootSessionDatabase.enabled &&
                     preferences.get<Boolean>(R.string.key_audioformat_all_mixers) &&
                     app.rootSessionDatabase.hasUsableGlobalSession()
             }
@@ -125,8 +125,8 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
         blockedApps.observeForever(blockedAppObserver)
 
         // Launch foreground service
-        val notification = if (app.isLegacyMode)
-            ServiceNotificationHelper.createServiceNotificationLegacy(this)
+        val notification = if (app.isGlobalMode)
+            ServiceNotificationHelper.createServiceNotificationGlobal(this)
         else
             ServiceNotificationHelper.createServiceNotification(this, arrayOf())
 
@@ -283,7 +283,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
                 if (state == LightningDspRemoteEngine.PluginState.Available) {
                     initializeProcessingIfNeeded()
                     if (BackgroundAudioStartupPolicy.shouldOpenGlobalSession(
-                            app.isLegacyMode, app.rootSessionDatabase.hasUsableGlobalSession())) {
+                            app.isGlobalMode, app.rootSessionDatabase.hasUsableGlobalSession())) {
                         if (app.rootSessionDatabase.sessionList.containsKey(0))
                             app.rootSessionDatabase.removeSession(0)
                         app.rootSessionDatabase.addSession(0, android.os.Process.myUid(), packageName)
@@ -320,7 +320,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
 
     private fun updateServiceNotification() {
         if(preferences.get<Boolean>(R.string.key_audioformat_processing))
-            ServiceNotificationHelper.pushServiceNotificationLegacy(this)
+            ServiceNotificationHelper.pushServiceNotificationGlobal(this)
         else
             ServiceNotificationHelper.pushServiceNotification(this, app.rootSessionDatabase.sessionList.values.toTypedArray())
     }
@@ -389,8 +389,8 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
             }
         }
 
-        fun updateLegacyMode(context: Context, enable: Boolean) {
-            Timber.d("updateLegacyMode: enable=$enable")
+        fun updateGlobalMode(context: Context, enable: Boolean) {
+            Timber.d("updateGlobalMode: enable=$enable")
 
             val action =
                 if (enable) AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION

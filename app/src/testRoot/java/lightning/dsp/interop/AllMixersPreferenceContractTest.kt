@@ -27,9 +27,9 @@ class AllMixersPreferenceContractTest {
             "string", "key_audioformat_all_mixers"))
         assertEquals("true", value("src/main/res/values/defaults.xml",
             "bool", "default_audioformat_all_mixers"))
-        assertEquals("Apply effects to all mixers", value("src/main/res/values/strings.xml",
+        assertEquals("Cover additional sessions", value("src/main/res/values/strings.xml",
             "string", "audio_format_all_mixers"))
-        assertEquals("Applies effects to all supported audio mixers in Global mode.",
+        assertEquals("Applies effects to supported sessions not covered by Global Mode.",
             value("src/main/res/values/strings.xml", "string", "audio_format_all_mixers_summary"))
 
         val nodes = xml("src/main/res/xml/app_audio_format_preferences.xml")
@@ -51,15 +51,39 @@ class AllMixersPreferenceContractTest {
     @Test fun rootAvailabilityTracksGlobalWithoutOverwritingTheSavedChoice() {
         val source = File(app,
             "src/main/java/lightning/dsp/fragment/settings/SettingsAudioFormatFragment.kt").readText()
-        assertTrue(source.contains("updateAllMixersAvailability(preferences.get<Boolean>(R.string.key_audioformat_processing))"))
-        assertTrue(source.contains("updateAllMixersAvailability(globalMode)"))
-        val helper = source.substringAfter("private fun updateAllMixersAvailability(globalMode: Boolean)")
+        assertTrue(source.contains("updateProcessingMode(preferences.get<Boolean>(R.string.key_audioformat_processing))"))
+        assertTrue(source.contains("updateProcessingMode(globalEnabled)"))
+        val helper = source.substringAfter("private fun updateProcessingMode(globalEnabled: Boolean)")
             .substringBefore("companion object")
-        assertTrue(helper.contains("isVisible = isRoot()"))
-        assertTrue(helper.contains("isEnabled = isRoot() && globalMode"))
+        assertTrue(helper.contains("isVisible = isRoot() && globalEnabled"))
+        assertTrue(helper.contains("isEnabled = isRoot() && globalEnabled"))
         assertFalse(helper.contains("isChecked"))
         assertFalse(helper.contains("preferences.set"))
         assertFalse(helper.contains("startService"))
         assertFalse(Regex("allMixers\\?*\\.isChecked\\s*=").containsMatchIn(source))
+    }
+
+    @Test fun processingModesAreNamedWithoutChangingStoredIdentity() {
+        assertEquals("Global Mode", value("src/main/res/values/strings.xml",
+            "string", "audio_format_processing_global"))
+        assertEquals("Session Mode", value("src/main/res/values/strings.xml",
+            "string", "audio_format_processing_session"))
+        assertEquals("audioformat_processing", value("src/main/res/values/keys.xml",
+            "string", "key_audioformat_processing"))
+        val source = File(app,
+            "src/main/java/lightning/dsp/fragment/settings/SettingsAudioFormatFragment.kt").readText()
+        assertTrue(source.contains("globalMode?.title = getString(if (globalEnabled)"))
+        assertTrue(source.contains("R.string.audio_format_processing_global else R.string.audio_format_processing_session"))
+        assertTrue(source.contains("RootAudioProcessorService.updateGlobalMode"))
+        assertFalse(source.contains("legacyMode"))
+        val nodes = xml("src/main/res/xml/app_audio_format_preferences.xml")
+            .getElementsByTagName("lightning.dsp.preference.MaterialSwitchPreference")
+        val mode = (0 until nodes.length).map { nodes.item(it) as Element }.single {
+            it.getAttributeNS(androidNamespace, "key") == "@string/key_audioformat_processing"
+        }
+        assertEquals("@string/audio_format_processing_global", mode.getAttributeNS(androidNamespace, "title"))
+        assertEquals("@string/audio_format_processing_global_summary", mode.getAttributeNS(androidNamespace, "summaryOn"))
+        assertEquals("@string/audio_format_processing_session_summary", mode.getAttributeNS(androidNamespace, "summaryOff"))
+        assertFalse(source.contains("R.string.audio_format_processing_legacy"))
     }
 }

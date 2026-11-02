@@ -140,15 +140,14 @@ internal class GlobalMixerFallbackController(
             unknownSnapshot()
             return
         }
-        poll = snapshot.activeSessions > 0
+        poll = snapshot.activeSessions > 0 || owned.isNotEmpty()
         val targets = snapshot.targets.filter { it.uid != android.os.Process.myUid() }.associateBy { it.id }
         // Withdraw before adding anything. A global chain reserves its actual output even
         // when the framework suspended it due to a positive-session effect.
-        val obsolete = owned.values.filter { entry ->
-            targets[entry.session.id] != entry.session || !entry.engine.canControlEndpoint() ||
-                !snapshot.ownsAttachment(entry.session, entry.effectId)
-        }.map { it.session.id }
-        remove(obsolete)
+        val plan = GlobalMixerCoverage.reconcile(snapshot, owned.values.map {
+            GlobalMixerCoverage.OwnedAttachment(it.session, it.effectId, it.engine.canControlEndpoint())
+        }, excludedUid = android.os.Process.myUid())
+        remove(plan.obsolete)
         if (targets.isEmpty()) {
             diagnose("no_candidates", "no eligible supplemental candidates; self excluded=${snapshot.targets.size - targets.size}; ${snapshot.reason}")
             attempts.clear()
@@ -156,9 +155,10 @@ internal class GlobalMixerFallbackController(
             return
         }
         attempts.retain(targets.values.map { it.identity }.toSet())
-        for (target in targets.values) {
+        for (target in plan.newTargets) {
             if (!current(expected, global)) return
             if (target.id in owned || !attempts.mayAttempt(target.identity)) continue
+            if (owned.size >= GlobalMixerCoverage.MAX_SUPPLEMENTAL_SESSIONS) break
             if (!ensureLeaseAndFence(global, expected)) {
                 if (owned.isEmpty()) releaseLeaseIfSafe()
                 return

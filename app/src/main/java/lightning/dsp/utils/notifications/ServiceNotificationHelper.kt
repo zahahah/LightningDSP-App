@@ -61,13 +61,13 @@ object ServiceNotificationHelper: KoinComponent {
         StatusNotificationGroup.refresh(context)
     }
 
-    fun pushServiceNotificationLegacy(context: Context) {
+    fun pushServiceNotificationGlobal(context: Context) {
         context.getSystemService<NotificationManager>()
-            ?.notify(Notifications.ID_SERVICE_STATUS, createServiceNotificationLegacy(context))
+            ?.notify(Notifications.ID_SERVICE_STATUS, createServiceNotificationGlobal(context))
         StatusNotificationGroup.refresh(context)
     }
 
-    fun createServiceNotificationLegacy(context: Context): Notification {
+    fun createServiceNotificationGlobal(context: Context): Notification {
         val enabled = preferences.get<Boolean>(R.string.key_powered_on)
         return createServiceNotification(
             context,

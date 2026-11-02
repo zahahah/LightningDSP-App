@@ -5,8 +5,8 @@ internal object BackgroundAudioStartupPolicy {
     const val MAX_ATTEMPTS = 15
     const val RETRY_INTERVAL_MS = 2_000L
 
-    fun shouldOpenGlobalSession(legacyMode: Boolean, hasUsableGlobalSession: Boolean): Boolean =
-        legacyMode && !hasUsableGlobalSession
+    fun shouldOpenGlobalSession(globalMode: Boolean, hasUsableGlobalSession: Boolean): Boolean =
+        globalMode && !hasUsableGlobalSession
 
     fun shouldRetry(attempt: Int, unsupported: Boolean): Boolean =
         !unsupported && attempt + 1 < MAX_ATTEMPTS

@@ -5,8 +5,8 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class BackgroundAudioStartupPolicyTest {
-    @Test fun backgroundStartupDoesNotEnableLegacyOrReplaceAnExistingGlobalSession() {
-        assertTrue(BackgroundAudioStartupPolicy.shouldOpenGlobalSession(true, false))
+    @Test fun backgroundStartupDoesNotEnableGlobalOrReplaceAnExistingGlobalSession() {
+        assertTrue(BackgroundAudioStartupPolicy.shouldOpenGlobalSession(globalMode = true, hasUsableGlobalSession = false))
         assertFalse(BackgroundAudioStartupPolicy.shouldOpenGlobalSession(true, true))
         assertFalse(BackgroundAudioStartupPolicy.shouldOpenGlobalSession(false, false))
         assertFalse(BackgroundAudioStartupPolicy.shouldOpenGlobalSession(false, true))
@@ -49,7 +49,7 @@ class BackgroundAudioStartupPolicyTest {
         assertTrue(service.contains("app.rootSessionDatabase.hasUsableGlobalSession()"))
         assertTrue(service.contains("app.rootSessionDatabase.removeSession(0)"))
         assertTrue(service.contains("if(intent.action != ACTION_STOP &&"))
-        assertTrue(BackgroundAudioStartupPolicy.shouldOpenGlobalSession(true, false))
+        assertTrue(BackgroundAudioStartupPolicy.shouldOpenGlobalSession(globalMode = true, hasUsableGlobalSession = false))
         val background = service.substringAfter("private fun startBackgroundDiscovery()")
             .substringBefore("private fun initializeProcessingIfNeeded()")
         assertFalse(background.contains("clearSessions()"))

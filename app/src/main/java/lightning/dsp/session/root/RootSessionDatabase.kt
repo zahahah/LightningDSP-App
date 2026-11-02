@@ -92,10 +92,10 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
 
     fun addSessionByIntent(intent: Intent) {
         val sessionId = intent.getIntExtra(AudioEffect.EXTRA_AUDIO_SESSION, AudioEffect.ERROR)
-        if (sessionId < 0 || (app.isLegacyMode && sessionId > 0)) {
+        if (sessionId < 0 || (app.isGlobalMode && sessionId > 0)) {
             return
         }
-        // Legacy mode enabled, remove other sessions
+        // Global mode enabled, remove other sessions
         if (sessionId == 0)
             clearSessions()
 
@@ -112,7 +112,7 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
     fun removeSessionByIntent(intent: Intent) {
         val sessionId = intent.getIntExtra(AudioEffect.EXTRA_AUDIO_SESSION, AudioEffect.ERROR)
         val packageName = intent.getStringExtra(AudioEffect.EXTRA_PACKAGE_NAME)
-        if (app.isLegacyMode) {
+        if (app.isGlobalMode) {
             return
         }
 

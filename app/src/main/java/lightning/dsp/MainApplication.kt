@@ -65,10 +65,10 @@ open class MainApplication : Application(), SharedPreferences.OnSharedPreference
     lateinit var profileManager: ProfileManager
 
     val rootSessionDatabase by lazy { RootSessionDatabase(this) }
-    val isLegacyMode
+    val isGlobalMode
         get() = prefs.get<Boolean>(R.string.key_audioformat_processing)
     val isEnhancedProcessing
-        get() = !isLegacyMode &&
+        get() = !isGlobalMode &&
                 prefs.get<Boolean>(R.string.key_audioformat_enhanced_processing)
 
     private val applicationScope = CoroutineScope(SupervisorJob())
@@ -205,15 +205,15 @@ open class MainApplication : Application(), SharedPreferences.OnSharedPreference
         })
 
         try {
-            if (isRoot() && isLegacyMode)
-                RootAudioProcessorService.updateLegacyMode(applicationContext, true)
+            if (isRoot() && isGlobalMode)
+                RootAudioProcessorService.updateGlobalMode(applicationContext, true)
         }
         catch(ex: Exception) {
             /* Throws ForegroundServiceStartNotAllowedException on Android 13 if
              * the service cannot be started from this point and battery optimizations were not
              * disabled. BootCompletedReceiver handles auto-start after boot.
              */
-            Timber.e("Failed to launch service in legacy mode on startup")
+            Timber.e("Failed to launch service in Global mode on startup")
             Timber.i(ex)
         }
         super.onCreate()

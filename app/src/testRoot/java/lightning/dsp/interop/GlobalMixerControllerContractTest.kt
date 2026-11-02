@@ -26,7 +26,7 @@ class GlobalMixerControllerContractTest {
     }
     @Test fun withdrawalPrecedesReplacementAndTeardownFencesEveryLiveBaseline() {
         val s = controller
-        assertTrue(s.indexOf("remove(obsolete)") < s.indexOf("for (target in targets.values)"))
+        assertTrue(s.indexOf("remove(plan.obsolete)") < s.indexOf("for (target in plan.newTargets)"))
         val release = s.substringAfter("private suspend fun releaseLeaseIfSafe").substringBefore("private fun remove")
         assertTrue(release.contains("SupplementalLifecycle.releaseIfSafe("))
         assertTrue(release.contains("original = leaseBaseline"))
@@ -34,6 +34,17 @@ class GlobalMixerControllerContractTest {
         assertTrue(release.contains("endpoint.prepareLegacyState(generation)"))
         assertTrue(release.contains("release = LightningDspControlClient::releaseCoverageLease"))
         assertTrue(release.contains("owned.isNotEmpty()"))
+    }
+    @Test fun inactiveOwnedCoverageIsRetainedWithoutCreatingInactiveSessions() {
+        val s = controller
+        assertTrue(s.contains("val plan = GlobalMixerCoverage.reconcile(snapshot"))
+        assertTrue(s.contains("GlobalMixerCoverage.OwnedAttachment(it.session, it.effectId, it.engine.canControlEndpoint())"))
+        assertTrue(s.contains("poll = snapshot.activeSessions > 0 || owned.isNotEmpty()"))
+        assertTrue(s.contains("if (owned.size >= GlobalMixerCoverage.MAX_SUPPLEMENTAL_SESSIONS) break"))
+        val creation = s.substringAfter("for (target in plan.newTargets)")
+        assertTrue(creation.indexOf("if (target.id in owned") < creation.indexOf("LightningDspRemoteEngine(app, target.id"))
+        assertTrue(creation.contains("target !in before.targets"))
+        assertTrue(creation.contains("target !in fresh.targets"))
     }
     @Test fun inspectionUsesIoDispatcherAndBoundedConstantServiceDumps() {
         val s = controller
