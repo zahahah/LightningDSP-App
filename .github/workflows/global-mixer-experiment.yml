@@ -33,6 +33,11 @@ jobs:
             app/src/main/cpp/aaudio-compat/tests/hook_test.cpp \
             -o "$RUNNER_TEMP/ldsp-aaudio-hook-test"
           "$RUNNER_TEMP/ldsp-aaudio-hook-test"
+          clang++ -std=c++17 -Wall -Wextra -Werror -pthread \
+            -fsanitize=address,undefined -fno-omit-frame-pointer \
+            app/src/main/cpp/aaudio-compat/tests/got_rebind_test.cpp \
+            -o "$RUNNER_TEMP/ldsp-aaudio-got-test"
+          "$RUNNER_TEMP/ldsp-aaudio-got-test"
       - name: Test and compile all supported adapters, then assemble root release
         run: >-
           ./gradlew --no-daemon --max-workers=2
