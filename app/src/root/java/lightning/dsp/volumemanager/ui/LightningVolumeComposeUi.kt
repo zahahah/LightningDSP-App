@@ -163,8 +163,8 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 private val LightningBlue = Color(0xFF0277BD)
-private val LightAppDspEnabled = Color(0xFFBBDEFB)
-private val LightAppDspEnabledIcon = Color(0xFF0D47A1)
+private val LightAppDspEnabled = Color(0xFFDCEAF4)
+private val LightAppDspEnabledIcon = Color(0xFF456278)
 private val SystemVolumeBaseTrack = Color(0xFF8D969C)
 private val SystemVolumeProgressTrack = Color(0xFFD1D5D8)
 private val SystemVolumeContent = Color(0xFF263238)
@@ -1234,8 +1234,9 @@ private fun AppVolumeTrack(
                         lightControls -> LightAppDspEnabled
                         else -> LightningBlue
                     }
-                    val buttonBorder = if (dspEnabled) LightningBlue.copy(alpha = if (lightControls) 0.55f else 0.8f)
-                        else MaterialTheme.colorScheme.outlineVariant
+                    val buttonBorder = if (!dspEnabled) MaterialTheme.colorScheme.outlineVariant
+                        else if (lightControls) LightAppDspEnabledIcon.copy(alpha = 0.55f)
+                        else LightningBlue.copy(alpha = 0.8f)
                     Box(Modifier.size(32.dp).clip(CircleShape).background(buttonFill)
                         .border(1.dp, buttonBorder, CircleShape), contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.PowerSettingsNew,
