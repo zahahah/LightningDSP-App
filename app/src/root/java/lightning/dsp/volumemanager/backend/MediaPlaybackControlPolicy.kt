@@ -16,11 +16,37 @@ internal object MediaPlaybackControlPolicy {
     }
 }
 
+/** A short-lived, one-shot marker proving that a paused session followed our Pause button. */
+internal class ExplicitMediaPauseRequests<K>(private val confirmationWindowMillis: Long = 5_000L) {
+    private val requestedAt = mutableMapOf<K, Long>()
+
+    init { require(confirmationWindowMillis > 0) }
+
+    fun request(session: K, nowElapsedMillis: Long) {
+        requestedAt[session] = nowElapsedMillis
+    }
+
+    fun consumeIfRecent(session: K, nowElapsedMillis: Long): Boolean {
+        val requested = requestedAt.remove(session) ?: return false
+        return nowElapsedMillis >= requested && nowElapsedMillis - requested <= confirmationWindowMillis
+    }
+
+    fun remove(session: K) { requestedAt.remove(session) }
+
+    fun prune(nowElapsedMillis: Long) {
+        requestedAt.entries.removeAll { (_, requested) ->
+            nowElapsedMillis < requested || nowElapsedMillis - requested > confirmationWindowMillis
+        }
+    }
+
+    fun clear() = requestedAt.clear()
+}
+
 /** Monotonic retention for paused players; wall-clock changes cannot extend or shorten it. */
 internal class PausedMediaRetention(private val durationMillis: Long = 3 * 60 * 1000L) {
     private val deadlines = mutableMapOf<String, Long>()
 
-    fun retain(packageName: String, nowElapsedMillis: Long) {
+    fun retainAfterManagerPause(packageName: String, nowElapsedMillis: Long) {
         deadlines[packageName] = nowElapsedMillis + durationMillis
     }
 

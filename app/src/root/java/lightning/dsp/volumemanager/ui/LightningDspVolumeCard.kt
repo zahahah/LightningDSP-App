@@ -399,7 +399,10 @@ internal fun LightningDspVolumeCard(
 
         if (expanded) {
             Row(
-                modifier = Modifier.horizontalScroll(effectsScroll),
+                // The first round control is 58dp wide. A 3dp inset centers its 42dp
+                // power button under the floating card's icon center at 32dp.
+                modifier = Modifier.horizontalScroll(effectsScroll)
+                    .padding(start = if (floating) 3.dp else 0.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 DspRoundControl(

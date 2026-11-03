@@ -82,11 +82,11 @@ object LightningDspVolumeManager {
     private val mediaRetention = PausedMediaRetention()
     private val mediaControllers = linkedMapOf<String, MutableList<MediaController>>()
     private var currentMediaTokens: Set<MediaSession.Token> = emptySet()
-    private val mediaLastPlaying = mutableMapOf<String, Boolean>()
     private val mediaCallbackHandler = Handler(Looper.getMainLooper())
     private var mediaSessionManager: MediaSessionManager? = null
     private var mediaSessionListenerRegistered = false
     private var mediaExpiryWatch: ScheduledFuture<*>? = null
+    private val explicitMediaPauseRequests = ExplicitMediaPauseRequests<MediaSession.Token>()
     private val mediaSessionListener = MediaSessionManager.OnActiveSessionsChangedListener { controllers ->
         worker.execute { updateMediaControllers(controllers.orEmpty()) }
     }
@@ -159,8 +159,17 @@ object LightningDspVolumeManager {
             val state = controller.playbackState
             val controls = MediaPlaybackControlPolicy.controls(state?.state, state?.actions)
             runCatching {
-                if (controls.playing && controls.canPause) controller.transportControls.pause()
-                else if (!controls.playing && controls.canPlay) controller.transportControls.play()
+                if (controls.playing && controls.canPause) {
+                    explicitMediaPauseRequests.request(controller.sessionToken, SystemClock.elapsedRealtime())
+                    runCatching { controller.transportControls.pause() }
+                        .onFailure {
+                            explicitMediaPauseRequests.remove(controller.sessionToken)
+                            throw it
+                        }
+                } else if (!controls.playing && controls.canPlay) {
+                    explicitMediaPauseRequests.remove(controller.sessionToken)
+                    controller.transportControls.play()
+                }
             }.onFailure { Timber.w(it, "Media transport action failed") }
         }
     }
@@ -854,8 +863,8 @@ object LightningDspVolumeManager {
             mediaControllers.values.flatten().forEach { runCatching { it.unregisterCallback(mediaControllerCallback) } }
             mediaControllers.clear()
             currentMediaTokens = emptySet()
-            mediaLastPlaying.clear()
             mediaRetention.clear()
+            explicitMediaPauseRequests.clear()
             mediaExpiryWatch?.cancel(false)
             mediaExpiryWatch = null
             publish(force = true)
@@ -905,8 +914,13 @@ object LightningDspVolumeManager {
                     controller.registerCallback(mediaControllerCallback, mediaCallbackHandler)
             }
             old.filter { existing -> next.none { it.sessionToken == existing.sessionToken } }.forEach { removed ->
-                if (!mediaRetention.contains(packageName, now)) runCatching { removed.unregisterCallback(mediaControllerCallback) }
-                else if (next.isEmpty()) next.add(removed)
+                retainIfPausedByManager(packageName, removed, now)
+                val retainedForManagerPause = mediaRetention.contains(packageName, now)
+                if (!retainedForManagerPause || next.isNotEmpty()) {
+                    runCatching { removed.unregisterCallback(mediaControllerCallback) }
+                } else {
+                    next.add(removed)
+                }
             }
             if (next.isEmpty()) mediaControllers.remove(packageName) else mediaControllers[packageName] = next
         }
@@ -916,21 +930,27 @@ object LightningDspVolumeManager {
     private fun refreshMediaState() {
         if (!showMediaControls) return
         val now = SystemClock.elapsedRealtime()
+        explicitMediaPauseRequests.prune(now)
         mediaControllers.forEach { (packageName, controllers) ->
+            controllers.forEach { controller -> retainIfPausedByManager(packageName, controller, now) }
             val currentlyPlaying = controllers.any { controller ->
                 MediaPlaybackControlPolicy.controls(controller.playbackState?.state, controller.playbackState?.actions).playing
             }
-            val paused = controllers.any { it.playbackState?.state == android.media.session.PlaybackState.STATE_PAUSED }
-            if (mediaLastPlaying[packageName] == true && !currentlyPlaying && paused)
-                mediaRetention.retain(packageName, now)
             if (currentlyPlaying) mediaRetention.remove(packageName)
-            mediaLastPlaying[packageName] = currentlyPlaying
         }
         publish(force = true)
     }
 
+    private fun retainIfPausedByManager(packageName: String, controller: MediaController, now: Long): Boolean {
+        if (controller.playbackState?.state != android.media.session.PlaybackState.STATE_PAUSED ||
+            !explicitMediaPauseRequests.consumeIfRecent(controller.sessionToken, now)) return false
+        mediaRetention.retainAfterManagerPause(packageName, now)
+        return true
+    }
+
     private fun pruneExpiredMediaControllers() {
         val now = SystemClock.elapsedRealtime()
+        explicitMediaPauseRequests.prune(now)
         mediaControllers.keys.toList().forEach { packageName ->
             if (mediaRetention.contains(packageName, now)) return@forEach
             val sessions = mediaControllers[packageName].orEmpty()

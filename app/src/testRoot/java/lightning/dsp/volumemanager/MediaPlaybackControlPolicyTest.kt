@@ -3,6 +3,7 @@ package lightning.dsp.volumemanager
 import android.media.session.PlaybackState
 import lightning.dsp.volumemanager.backend.MediaPlaybackControlPolicy
 import lightning.dsp.volumemanager.backend.PausedMediaRetention
+import lightning.dsp.volumemanager.backend.ExplicitMediaPauseRequests
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -31,7 +32,7 @@ class MediaPlaybackControlPolicyTest {
 
     @Test fun pausedMediaRetentionExpiresAfterThreeMinutesUsingElapsedTime() {
         val retention = PausedMediaRetention()
-        retention.retain("player", 10_000L)
+        retention.retainAfterManagerPause("player", 10_000L)
         assertTrue(retention.contains("player", 189_999L))
         assertFalse(retention.contains("player", 190_000L))
         assertFalse(retention.contains("player", 190_001L))
@@ -39,11 +40,27 @@ class MediaPlaybackControlPolicyTest {
 
     @Test fun retentionCanBeCancelledWhenPlaybackResumesOrOptionIsDisabled() {
         val retention = PausedMediaRetention()
-        retention.retain("player", 1L)
+        retention.retainAfterManagerPause("player", 1L)
         retention.remove("player")
         assertFalse(retention.contains("player", 2L))
-        retention.retain("player", 2L)
+        retention.retainAfterManagerPause("player", 2L)
         retention.clear()
         assertFalse(retention.contains("player", 3L))
+    }
+
+    @Test fun onlyARecentPauseButtonRequestForTheSameSessionAuthorizesRetention() {
+        val requests = ExplicitMediaPauseRequests<String>()
+        assertFalse(requests.consumeIfRecent("session", 100L))
+        requests.request("session", 100L)
+        assertFalse(requests.consumeIfRecent("other-session", 101L))
+        assertTrue(requests.consumeIfRecent("session", 5_100L))
+        assertFalse(requests.consumeIfRecent("session", 5_101L))
+    }
+
+    @Test fun expiredPauseButtonRequestCannotRetainAnUnrelatedNaturalPause() {
+        val requests = ExplicitMediaPauseRequests<String>()
+        requests.request("session", 100L)
+        assertFalse(requests.consumeIfRecent("session", 5_101L))
+        assertFalse(requests.consumeIfRecent("session", 5_102L))
     }
 }

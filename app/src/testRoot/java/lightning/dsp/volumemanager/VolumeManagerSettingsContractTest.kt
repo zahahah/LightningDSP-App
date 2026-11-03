@@ -123,6 +123,26 @@ class VolumeManagerSettingsContractTest {
         assertTrue(dspCard.contains("monochrome && lightTheme -> FloatingLightBaseTrack to FloatingLightProgressTrack"))
     }
 
+    @Test fun floatingDspPowerControlIsCenteredUnderItsCardIcon() {
+        val card = ui("LightningDspVolumeCard")
+        assertTrue(card.contains("58dp wide. A 3dp inset centers its 42dp"))
+        assertTrue(card.contains(".padding(start = if (floating) 3.dp else 0.dp)"))
+    }
+
+    @Test fun threeMinuteMediaRetentionRequiresTheSameSessionPauseButtonRequest() {
+        val backend = backend()
+        val toggle = backend.substringAfter("fun toggleMediaPlayback(packageName: String)")
+            .substringBefore("// Root is the only exposed backend")
+        val confirmation = backend.substringAfter("private fun retainIfPausedByManager(")
+            .substringBefore("private fun pruneExpiredMediaControllers")
+        val refresh = backend.substringAfter("private fun refreshMediaState()")
+            .substringBefore("private fun retainIfPausedByManager(")
+        assertTrue(toggle.contains("explicitMediaPauseRequests.request(controller.sessionToken"))
+        assertTrue(confirmation.contains("consumeIfRecent(controller.sessionToken"))
+        assertTrue(confirmation.contains("retainAfterManagerPause(packageName, now)"))
+        assertFalse(refresh.contains("retainAfterManagerPause"))
+    }
+
     @Test fun dspCardUsesPanelEffectNamesWithOnlyTheThreeRequestedAliasesAndCenteredLabels() {
         val card = ui("LightningDspVolumeCard")
         val sharedTitles = listOf("compander", "eq", "geq", "crossfeed", "tube", "ddc", "liveprog", "convolver")
