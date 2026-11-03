@@ -71,6 +71,8 @@ class VolumeManagerSettingsContractTest {
         assertTrue(appTrack.contains(".border(1.dp, buttonBorder, CircleShape)"))
         assertTrue(appTrack.contains("lightControls) LightAppDspEnabled"))
         assertTrue(appTrack.contains("LightAppDspEnabledIcon"))
+        assertTrue(composeUi.contains("LightAppDspEnabled = Color(0xFFDCEAF4)"))
+        assertTrue(composeUi.contains("LightAppDspEnabledIcon = Color(0xFF456278)"))
         assertTrue(appTrack.contains("!dspEnabled -> MaterialTheme.colorScheme.surfaceVariant"))
         assertTrue(appTrack.contains("MaterialTheme.colorScheme.outlineVariant, CircleShape"))
         assertTrue(composeUi.contains("private val AppVolumeContent = Color(0xFF101820)"))
@@ -140,9 +142,11 @@ class VolumeManagerSettingsContractTest {
         val refresh = backend.substringAfter("private fun refreshMediaState()")
             .substringBefore("private fun retainIfPausedByManager(")
         assertTrue(toggle.contains("explicitMediaPauseRequests.request(controller.sessionToken"))
-        assertTrue(confirmation.contains("consumeIfRecent(controller.sessionToken"))
-        assertTrue(confirmation.contains("retainAfterManagerPause(packageName, now)"))
-        assertFalse(refresh.contains("retainAfterManagerPause"))
+        assertTrue(toggle.contains("mediaRetention.retainAfterPauseButton(packageName, requestedAt)"))
+        assertTrue(toggle.indexOf("mediaRetention.retainAfterPauseButton") < toggle.indexOf("controller.transportControls.pause()"))
+        assertTrue(confirmation.contains("consumeRequestTimeIfRecent(controller.sessionToken, now)"))
+        assertTrue(confirmation.contains("retainAfterPauseButton(packageName, requestedAt)"))
+        assertTrue(refresh.contains("clearRetentionAfterPlaybackResumes(now)"))
     }
 
     @Test fun dspCardUsesPanelEffectNamesWithOnlyTheThreeRequestedAliasesAndCenteredLabels() {

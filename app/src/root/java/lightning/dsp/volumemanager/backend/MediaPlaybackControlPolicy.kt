@@ -26,8 +26,18 @@ internal class ExplicitMediaPauseRequests<K>(private val confirmationWindowMilli
         requestedAt[session] = nowElapsedMillis
     }
 
-    fun consumeIfRecent(session: K, nowElapsedMillis: Long): Boolean {
-        val requested = requestedAt.remove(session) ?: return false
+    fun consumeIfRecent(session: K, nowElapsedMillis: Long): Boolean =
+        consumeRequestTimeIfRecent(session, nowElapsedMillis) != null
+
+    fun consumeRequestTimeIfRecent(session: K, nowElapsedMillis: Long): Long? {
+        val requested = requestedAt.remove(session) ?: return null
+        return requested.takeIf {
+            nowElapsedMillis >= it && nowElapsedMillis - it <= confirmationWindowMillis
+        }
+    }
+
+    fun isRecent(session: K, nowElapsedMillis: Long): Boolean {
+        val requested = requestedAt[session] ?: return false
         return nowElapsedMillis >= requested && nowElapsedMillis - requested <= confirmationWindowMillis
     }
 
@@ -46,8 +56,8 @@ internal class ExplicitMediaPauseRequests<K>(private val confirmationWindowMilli
 internal class PausedMediaRetention(private val durationMillis: Long = 3 * 60 * 1000L) {
     private val deadlines = mutableMapOf<String, Long>()
 
-    fun retainAfterManagerPause(packageName: String, nowElapsedMillis: Long) {
-        deadlines[packageName] = nowElapsedMillis + durationMillis
+    fun retainAfterPauseButton(packageName: String, requestedAtElapsedMillis: Long) {
+        deadlines[packageName] = requestedAtElapsedMillis + durationMillis
     }
 
     fun contains(packageName: String, nowElapsedMillis: Long): Boolean {

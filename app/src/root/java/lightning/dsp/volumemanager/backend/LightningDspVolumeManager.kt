@@ -160,10 +160,15 @@ object LightningDspVolumeManager {
             val controls = MediaPlaybackControlPolicy.controls(state?.state, state?.actions)
             runCatching {
                 if (controls.playing && controls.canPause) {
-                    explicitMediaPauseRequests.request(controller.sessionToken, SystemClock.elapsedRealtime())
+                    val requestedAt = SystemClock.elapsedRealtime()
+                    explicitMediaPauseRequests.request(controller.sessionToken, requestedAt)
+                    mediaRetention.retainAfterPauseButton(packageName, requestedAt)
+                    publish(force = true)
                     runCatching { controller.transportControls.pause() }
                         .onFailure {
                             explicitMediaPauseRequests.remove(controller.sessionToken)
+                            mediaRetention.remove(packageName)
+                            publish(force = true)
                             throw it
                         }
                 } else if (!controls.playing && controls.canPlay) {
@@ -933,24 +938,22 @@ object LightningDspVolumeManager {
         explicitMediaPauseRequests.prune(now)
         mediaControllers.forEach { (packageName, controllers) ->
             controllers.forEach { controller -> retainIfPausedByManager(packageName, controller, now) }
-            val currentlyPlaying = controllers.any { controller ->
-                MediaPlaybackControlPolicy.controls(controller.playbackState?.state, controller.playbackState?.actions).playing
-            }
-            if (currentlyPlaying) mediaRetention.remove(packageName)
         }
+        clearRetentionAfterPlaybackResumes(now)
         publish(force = true)
     }
 
     private fun retainIfPausedByManager(packageName: String, controller: MediaController, now: Long): Boolean {
-        if (controller.playbackState?.state != android.media.session.PlaybackState.STATE_PAUSED ||
-            !explicitMediaPauseRequests.consumeIfRecent(controller.sessionToken, now)) return false
-        mediaRetention.retainAfterManagerPause(packageName, now)
+        if (controller.playbackState?.state != android.media.session.PlaybackState.STATE_PAUSED) return false
+        val requestedAt = explicitMediaPauseRequests.consumeRequestTimeIfRecent(controller.sessionToken, now) ?: return false
+        mediaRetention.retainAfterPauseButton(packageName, requestedAt)
         return true
     }
 
     private fun pruneExpiredMediaControllers() {
         val now = SystemClock.elapsedRealtime()
         explicitMediaPauseRequests.prune(now)
+        clearRetentionAfterPlaybackResumes(now)
         mediaControllers.keys.toList().forEach { packageName ->
             if (mediaRetention.contains(packageName, now)) return@forEach
             val sessions = mediaControllers[packageName].orEmpty()
@@ -958,6 +961,18 @@ object LightningDspVolumeManager {
             stale.forEach { runCatching { it.unregisterCallback(mediaControllerCallback) } }
             val retained = sessions - stale.toSet()
             if (retained.isEmpty()) mediaControllers.remove(packageName) else mediaControllers[packageName] = retained.toMutableList()
+        }
+    }
+
+    private fun clearRetentionAfterPlaybackResumes(now: Long) {
+        mediaControllers.forEach { (packageName, controllers) ->
+            val pauseStillPending = controllers.any { controller ->
+                explicitMediaPauseRequests.isRecent(controller.sessionToken, now)
+            }
+            val currentlyPlaying = controllers.any { controller ->
+                MediaPlaybackControlPolicy.controls(controller.playbackState?.state, controller.playbackState?.actions).playing
+            }
+            if (currentlyPlaying && !pauseStillPending) mediaRetention.remove(packageName)
         }
     }
 
