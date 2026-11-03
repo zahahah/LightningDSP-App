@@ -68,6 +68,12 @@ internal class GlobalMixerFallbackController(
         val reservedInSessionDatabase: Boolean,
     )
 
+    private fun isAppDspEnabled(uid: Int): Boolean {
+        if (app.isGlobalMode) return true
+        val packageName = app.packageManager.getPackagesForUid(uid)?.singleOrNull() ?: return true
+        return app.rootSessionDatabase.isPackageDspEnabled(packageName)
+    }
+
     private val playbackCallback = object : AudioManager.AudioPlaybackCallback() {
         override fun onPlaybackConfigChanged(configs: MutableList<AudioPlaybackConfiguration>?) = requestCheck()
     }
@@ -158,15 +164,19 @@ internal class GlobalMixerFallbackController(
         }
         poll = snapshot.activeSessions > 0 || owned.isNotEmpty()
         val targets = snapshot.targets.filter {
-            it.uid != android.os.Process.myUid() && it.uid !in excludedUids
+            it.uid != android.os.Process.myUid() && it.uid !in excludedUids && isAppDspEnabled(it.uid)
         }.associateBy { it.id }
+        val disabledOwned = owned.filterValues { !isAppDspEnabled(it.session.uid) }.keys
+        remove(disabledOwned)
         // Withdraw before adding anything. A global chain reserves its actual output even
         // when the framework suspended it due to a positive-session effect.
         val plan = GlobalMixerCoverage.reconcile(snapshot, owned.values.map {
             GlobalMixerCoverage.OwnedAttachment(it.session, it.effectId,
                 it.engine.canControlEndpoint() && it.session.uid !in excludedUids)
         }, excludedUid = android.os.Process.myUid()).let { coverage ->
-            coverage.copy(newTargets = coverage.newTargets.filter { it.uid !in excludedUids })
+            coverage.copy(newTargets = coverage.newTargets.filter {
+                it.uid !in excludedUids && isAppDspEnabled(it.uid)
+            })
         }
         remove(plan.obsolete)
         if (targets.isEmpty()) {

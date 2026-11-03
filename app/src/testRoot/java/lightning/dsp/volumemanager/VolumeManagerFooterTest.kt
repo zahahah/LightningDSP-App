@@ -79,7 +79,8 @@ class VolumeManagerFooterTest {
 
     @Test fun bothAppGroupsRemainAvailableWithoutEditingAndProfilesAreScopedToPerAppControl() {
         assertTrue(ui.contains("val groups = if (!compact) listOf("))
-        assertTrue(ui.contains("Triple(\"Inactive\", inactiveApps, inactiveBounds)"))
+        assertTrue(ui.contains("if (!compact && inactiveApps.isNotEmpty())"))
+        assertTrue(ui.contains("if (inactiveExpanded) items(inactiveApps"))
         assertTrue(ui.contains("if (state.perAppEnabled) {\n            Box(Modifier.align(Alignment.CenterEnd)"))
         val picker = ui.substringAfter("private fun VolumeProfilePicker(").substringBefore("private fun ManagerStatus(")
         assertTrue(picker.contains("state.selectedProfileId"))

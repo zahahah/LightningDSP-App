@@ -34,6 +34,8 @@ import lightning.dsp.R
 import lightning.dsp.activity.BaseActivity
 import lightning.dsp.activity.MainActivity
 import lightning.dsp.volumemanager.backend.LightningDspVolumeManager
+import lightning.dsp.MainApplication
+import lightning.dsp.volumemanager.backend.SHOW_MEDIA_CONTROLS_KEY
 import lightning.dsp.volumemanager.focus.DisableAudioFocusOption
 
 /** Root-only, native LightningDSP entry point for the integrated per-app mixer. */
@@ -221,6 +223,29 @@ class LightningDspVolumeManagerActivity : BaseActivity() {
             isChecked = LightningDspVolumeManager.startupOnBoot
             setOnCheckedChangeListener { _, checked -> LightningDspVolumeManager.setStartupOnBoot(checked) }
         })
+        addSection(R.string.ldsp_vm_settings_app_controls)
+        controls.addView(MaterialSwitch(settingsContext).apply {
+            setText(R.string.ldsp_vm_media_play_pause)
+            isChecked = preferences.getBoolean(SHOW_MEDIA_CONTROLS_KEY, false)
+            setOnCheckedChangeListener { _, checked -> LightningDspVolumeManager.setShowMediaControls(checked) }
+        })
+        controls.addView(TextView(settingsContext).apply {
+            setText(R.string.ldsp_vm_media_play_pause_summary)
+            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodySmall)
+        })
+        if (!(application as MainApplication).isGlobalMode) {
+            controls.addView(MaterialSwitch(settingsContext).apply {
+                setText(R.string.ldsp_vm_app_dsp_power)
+                isChecked = preferences.getBoolean("show_session_dsp_controls", false)
+                setOnCheckedChangeListener { _, checked ->
+                    preferences.edit().putBoolean("show_session_dsp_controls", checked).apply()
+                }
+            })
+            controls.addView(TextView(settingsContext).apply {
+                setText(R.string.ldsp_vm_app_dsp_power_summary)
+                setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodySmall)
+            })
+        }
         var revertingAudioFocusSwitch = false
         val audioFocusStatus = TextView(settingsContext).apply {
             setText(R.string.ldsp_vm_audio_focus_checking)

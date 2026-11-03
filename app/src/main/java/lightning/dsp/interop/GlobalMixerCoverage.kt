@@ -57,7 +57,7 @@ internal object GlobalMixerCoverage {
             reason = "Topology changing; retaining only attachments confirmed in both samples")
     }
     private data class Track(val active: Boolean, val uid: Int, val session: Int, val port: Int,
-                             val normal: Boolean, val format: Int, val channels: Long, val stream: Int,
+                             val type: String, val normal: Boolean, val format: Int, val channels: Long, val stream: Int,
                              val controlFlags: Long, val paused: Boolean)
     private data class Output(val id: Int, val type: String, val standby: Boolean,
                               val tracks: List<Track>, val effects: List<Effect>)
@@ -141,6 +141,12 @@ internal object GlobalMixerCoverage {
             if (outputId in reserved) return@mapNotNull exclude("reserved output guards")
             if (output.type != "MIXER" || (descriptor.flags and PERFORMANCE_FLAGS.inv()) != 0L)
                 return@mapNotNull exclude("output type/flags guards")
+            // F<n> marks an actual AudioFlinger fast track (distinct from an output
+            // descriptor carrying FAST capability). Android 17's AudioFlinger rejects
+            // software session effects on a live fast session, so fail closed rather
+            // than creating an attachment that can appear enabled without processing.
+            if (rows.any { (_, t) -> t.type.matches(Regex("F\\d+")) })
+                return@mapNotNull exclude("fast-track session guards (software effects unavailable on fast path)")
             if (rows.any { (_, t) -> !t.normal || t.channels !in setOf(1L, 3L) || t.stream != 3 || t.format !in setOf(1, 3, 4, 5, 6) })
                 return@mapNotNull exclude("track type/flags/layout/format guards")
             val clients = descriptor.clients.filter { it.session == sid }
@@ -169,7 +175,7 @@ internal object GlobalMixerCoverage {
         val signature = "${global?.id ?: 0}:${global?.output ?: 0}:" + observed.filter {
             it.second.active || it.second.session in ownedSessions
         }.map { (out, t) ->
-            "$out:${t.uid}:${t.session}:${t.port}:${t.normal}:${t.format}:${t.channels}:${t.stream}:" +
+            "$out:${t.uid}:${t.session}:${t.port}:${t.type}:${t.normal}:${t.format}:${t.channels}:${t.stream}:" +
                 if (t.session in ownedSessions) "owned" else t.active
         }.sorted().joinToString("|") + ":outputs=" + outputs.sortedBy { it.id }.joinToString("|") {
             "${it.id}:${it.type}:${policy.single { p -> p.id == it.id }.flags}"
@@ -204,7 +210,8 @@ internal object GlobalMixerCoverage {
             val row = Regex("(?m)^\\s*(?:(\\S+)\\s+)?(\\d+)\\s+(yes|no)\\s+(\\d+)/\\s*(\\d+)\\s+(\\d+)\\s+(\\d+)\\s+\\S+\\s+0x[0-9a-fA-F]+\\s+([0-9a-fA-F]+)\\s+([0-9a-fA-F]+)\\s+\\d+\\s+(\\d+)\\b[^\\n]*$")
             val tracks = row.findAll(table).map {
                 Track(it.groupValues[3] == "yes", it.groupValues[5].toInt(), it.groupValues[6].toInt(),
-                    it.groupValues[7].toInt(), it.groupValues[1].isEmpty() && normalRow?.matches(it.value) == true,
+                    it.groupValues[7].toInt(), it.groupValues[1],
+                    it.groupValues[1].isEmpty() && normalRow?.matches(it.value) == true,
                     it.groupValues[8].toInt(16),
                     it.groupValues[9].toLong(16), it.groupValues[10].toInt(),
                     Regex("\\s([A-Za-z])\\s+0x([0-9a-fA-F]+)\\s").find(it.value)!!.groupValues[2].toLong(16),

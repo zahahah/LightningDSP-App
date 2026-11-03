@@ -13,6 +13,21 @@ class VolumeManagerSettingsContractTest {
     private fun ui(name: String) = File(app,
         "src/root/java/lightning/dsp/volumemanager/ui/$name.kt").readText()
 
+    @Test fun optionalMediaAndSessionDspControlsAreSessionAwareAndKeepThePanelInset() {
+        val activity = ui("LightningDspVolumeManagerActivity")
+        val composeUi = ui("LightningVolumeComposeUi")
+        val backend = backend()
+        assertTrue(activity.contains("SHOW_MEDIA_CONTROLS_KEY"))
+        assertTrue(activity.contains("if (!(application as MainApplication).isGlobalMode)"))
+        assertTrue(composeUi.contains("allowAppDspControls = sessionMode && showSessionDspButtons"))
+        assertTrue(composeUi.contains("if (app.mediaControlVisible)"))
+        assertTrue(composeUi.contains("it.active || (showMediaButtons && it.retainedPausedMedia)"))
+        assertTrue(composeUi.contains("val sideClearance = if (addedControls > 0) 48 else 32"))
+        assertTrue(backend.contains("private val mediaRetention = PausedMediaRetention()"))
+        assertTrue(backend.contains("SESSION_DSP_ENABLED_PREFIX + name"))
+        assertTrue(backend.contains("fun toggleMediaPlayback(packageName: String)"))
+    }
+
     @Test fun cardVisibilityHasOnePersistedSettingForFullAndFloatingPanels() {
         val activity = ui("LightningDspVolumeManagerActivity")
         val composeUi = ui("LightningVolumeComposeUi")
@@ -132,7 +147,14 @@ class VolumeManagerSettingsContractTest {
         assertFalse(appTrack.contains("state.perAppEnabled"))
         assertTrue(options.contains("Switch(checked = muted, enabled = controllable"))
         assertTrue(options.contains("Slider(value = pan, enabled = controllable"))
-        assertTrue(options.contains("onHiddenChange(!hidden)"))
+        assertTrue(options.contains("onHiddenFromManagerChange(!hiddenFromManager)"))
+        assertTrue(appTrack.contains("LightningDspVolumeManager.setAppMuted(app.packageName, muted)"))
+        assertTrue(appTrack.contains("Hide \${app.label} from floating panel"))
+        assertTrue(options.contains("Hide from manager"))
+        assertTrue(options.contains("Box {"))
+        assertTrue(composeUi.contains("Discard editing changes"))
+        assertTrue(composeUi.contains("if (editing && editDirty)"))
+        assertTrue(composeUi.contains("if (inactiveExpanded) items(inactiveApps"))
         assertTrue(composeUi.contains("hide_system_apps"))
         assertTrue(composeUi.contains("app.label.contains(query, ignoreCase = true)"))
         assertTrue(composeUi.contains("app.packageName.contains(query, ignoreCase = true)"))
@@ -153,7 +175,7 @@ class VolumeManagerSettingsContractTest {
         assertTrue(activity.contains("preferences.getBoolean(\"hide_system_apps\", false)"))
         assertTrue(activity.contains("putBoolean(\"hide_system_apps\", checked).apply()"))
         assertTrue(resources.contains("ldsp_vm_hide_system_apps"))
-        assertTrue(composeUi.contains("key == \"hide_system_apps\" -> hideSystemApps"))
+        assertTrue(composeUi.contains("if (key == \"hide_system_apps\") hideSystemApps"))
         assertTrue(composeUi.contains("(!hideSystemApps || !it.systemApp)"))
         assertTrue(systemControlsItem >= 0 && systemControlsItem < searchItem)
         assertTrue(composeUi.contains("Modifier.fillMaxWidth().height(56.dp),\n                                verticalAlignment = Alignment.CenterVertically"))

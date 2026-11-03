@@ -122,7 +122,15 @@ class GlobalMixerCoverageTest {
     @Test fun deepBufferAndGameAreEligible() {
         assertEquals(1, inspect(flags = "8", usage = "GAME").targets.size)
     }
-    @Test fun actualFastTrackIsExcluded() { assertTrue(inspect(listOf(Playback(type = "F"))).targets.isEmpty()) }
+    @Test fun actualFastTrackIsExcludedWithAnActionableReason() {
+        val snapshot = inspect(
+            listOf(Playback(type = "F1", policyFlags = "4")),
+            flags = "6",
+        )
+        assertTrue(snapshot.reason, snapshot.known)
+        assertTrue(snapshot.targets.isEmpty())
+        assertTrue(snapshot.reason, snapshot.reason.contains("fast-track session guards (software effects unavailable on fast path)=1"))
+    }
     @Test fun nonzeroTrackFlagsAreExcluded() { assertTrue(inspect(listOf(Playback(flags = "001"))).targets.isEmpty()) }
     @Test fun bitPerfectTrackIsExcluded() { assertTrue(inspect(listOf(Playback(bitPerfect = true))).targets.isEmpty()) }
     @Test fun noTargetDiagnosticsDistinguishTrackAndOutputGuardsWithoutIdentities() {

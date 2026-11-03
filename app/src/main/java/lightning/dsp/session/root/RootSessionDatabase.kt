@@ -11,6 +11,7 @@ import lightning.dsp.model.AudioSessionDumpEntry
 import lightning.dsp.model.IEffectSession
 import lightning.dsp.model.root.RemoteEffectSession
 import lightning.dsp.session.shared.BaseSessionDatabase
+import lightning.dsp.session.shared.SESSION_DSP_ENABLED_PREFIX
 import lightning.dsp.utils.extensions.ContextExtensions.getUidFromPackage
 import lightning.dsp.utils.extensions.ContextExtensions.toast
 import timber.log.Timber
@@ -40,10 +41,23 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
     var enabled: Boolean = true
         set(value) {
             field = value
-            sessionList.forEach { (_, session) ->
-                (session as RemoteEffectSession).effect?.enabled = value
+            sessionList.forEach { (id, session) ->
+                val appEnabled = id <= 0 || isPackageDspEnabled(session.packageName)
+                (session as RemoteEffectSession).effect?.enabled = value && appEnabled
             }
         }
+
+    fun isPackageDspEnabled(packageName: String): Boolean = app.isGlobalMode || context
+        .getSharedPreferences("lightningdsp_volume_panel", Context.MODE_PRIVATE)
+        .getBoolean(SESSION_DSP_ENABLED_PREFIX + packageName, true)
+
+    fun setPackageDspEnabled(packageName: String, enabled: Boolean) {
+        context.getSharedPreferences("lightningdsp_volume_panel", Context.MODE_PRIVATE)
+            .edit().putBoolean(SESSION_DSP_ENABLED_PREFIX + packageName, enabled).apply()
+        sessionList.filterValues { it.packageName == packageName }.forEach { (id, session) ->
+            if (id > 0) (session as? RemoteEffectSession)?.effect?.enabled = this.enabled && enabled
+        }
+    }
 
     /** A session record can outlive an audio HAL restart or a failed attachment. */
     fun hasUsableGlobalSession(): Boolean {
@@ -68,7 +82,7 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
             }
 
             effect.syncWithPreferences()
-            effect.enabled = enabled
+            effect.enabled = enabled && (id <= 0 || isPackageDspEnabled(packageName))
 
             val finalUid = if (uid >= 0)
                 uid
@@ -84,7 +98,9 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
 
     fun syncWithPreferences() {
         sessionList.values.toList().forEach { session ->
-            (session as? RemoteEffectSession)?.effect?.syncWithPreferences()
+            val engine = (session as? RemoteEffectSession)?.effect ?: return@forEach
+            engine.syncWithPreferences()
+            engine.enabled = enabled && (engine.sessionId <= 0 || isPackageDspEnabled(session.packageName))
         }
     }
 

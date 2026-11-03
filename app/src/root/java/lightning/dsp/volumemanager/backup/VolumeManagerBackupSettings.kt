@@ -20,7 +20,7 @@ internal object VolumeManagerBackupCodec {
     private val managerBooleans = setOf("enabled", "per_app_enabled", "startup_on_boot")
     private val panelBooleans = setOf(
         "show_dsp_card", "hide_system_apps", "group_system_streams", "hide_inactive_dsp_card",
-        "media_icon_hold_expand", "dsp_bar_monochrome",
+        "media_icon_hold_expand", "dsp_bar_monochrome", "show_media_controls", "show_session_dsp_controls",
         "stream_0", "stream_2", "stream_3", "stream_4", "stream_5",
     )
     private val panelStrings = setOf(
@@ -46,7 +46,8 @@ internal object VolumeManagerBackupCodec {
     }
 
     private fun panelKind(key: String): Kind? = when {
-        key in panelBooleans || dynamicPackage(key, "hidden_") -> Kind.BOOLEAN
+        key in panelBooleans || dynamicPackage(key, "hidden_") || dynamicPackage(key, "manager_hidden_") ||
+            dynamicPackage(key, "session_dsp_enabled:") -> Kind.BOOLEAN
         key in panelStrings -> Kind.STRING
         key == "floating_panel_theme" -> Kind.THEME
         key == "pinned_apps" -> Kind.PACKAGES

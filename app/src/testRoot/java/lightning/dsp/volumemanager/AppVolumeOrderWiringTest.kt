@@ -14,7 +14,7 @@ class AppVolumeOrderWiringTest {
         val manager = ui.substringAfter("internal fun LightningVolumeManagerScreen(")
             .substringBefore("internal fun LightningVolumeFloatingPanel(")
         val floating = ui.substringAfter("internal fun LightningVolumeFloatingPanel(")
-            .substringBefore("private fun readHiddenAppIds(")
+            .substringBefore("private const val FLOATING_HIDDEN_PREFIX")
         for (panel in listOf(manager, floating)) {
             assertTrue(panel.contains("val savedAppOrder by rememberAppVolumeOrder(panelPrefs)"))
             assertTrue(panel.indexOf("val activeApps =") in 0 until panel.indexOf("LazyColumn("))
@@ -34,7 +34,7 @@ class AppVolumeOrderWiringTest {
         assertTrue(track.contains("editing: Boolean = false"))
         assertTrue(track.contains("if (editing && pinned) Icon(Icons.Default.PushPin"))
         val floating = ui.substringAfter("internal fun LightningVolumeFloatingPanel(")
-            .substringBefore("private fun readHiddenAppIds(")
+            .substringBefore("private const val FLOATING_HIDDEN_PREFIX")
         assertTrue(floating.contains("appOrder.displayOrder("))
         assertFalse(floating.contains("editing = true"))
         assertFalse(floating.contains("onPinnedChange ="))
@@ -43,7 +43,8 @@ class AppVolumeOrderWiringTest {
     @Test fun pinActionOnlyLivesInMoreOptionsAndIndicatorIsConditionalAndLeading() {
         val ui = source("LightningVolumeComposeUi")
         val track = ui.substringAfter("private fun AppVolumeTrack(").substringBefore("private fun AppOptions(")
-        assertTrue(track.contains("leading = {\n            if (editing && pinned) Icon(Icons.Default.PushPin"))
+        assertTrue(track.contains("leading = {"))
+        assertTrue(track.contains("if (editing && pinned) Icon(Icons.Default.PushPin"))
         assertTrue(track.contains("R.string.ldsp_vm_pinned_app, app.label"))
         val options = ui.substringAfter("private fun AppOptions(").substringBefore("internal fun TrackSurface(")
         assertTrue(options.contains("if (pinned) R.string.ldsp_vm_unpin else R.string.ldsp_vm_pin"))

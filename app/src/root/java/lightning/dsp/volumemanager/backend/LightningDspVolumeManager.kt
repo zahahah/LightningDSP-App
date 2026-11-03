@@ -2,15 +2,27 @@ package lightning.dsp.volumemanager.backend
 
 import android.app.AppOpsManager
 import android.content.BroadcastReceiver
-import android.content.IntentFilter
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.SharedPreferences
 import android.content.pm.ApplicationInfo
 import android.media.AudioManager
+import android.media.session.MediaController
+import android.media.session.MediaSession
+import android.media.session.MediaSessionManager
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
+import androidx.core.app.NotificationManagerCompat
 import lightning.dsp.volumemanager.ui.LightningVolumeOverlay
+import lightning.dsp.MainApplication
+import me.timschneeberger.rootlessjamesdsp.service.NotificationListenerService
+import lightning.dsp.utils.Constants
+import lightning.dsp.utils.extensions.ContextExtensions.sendLocalBroadcast
+import lightning.dsp.session.shared.SESSION_DSP_ENABLED_PREFIX
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -26,6 +38,7 @@ enum class VolumeAccessMode { ROOT, SHIZUKU }
 object LightningDspVolumeManager {
     private lateinit var context: Context
     private lateinit var preferences: SharedPreferences
+    private lateinit var panelPreferences: SharedPreferences
     private val worker = Executors.newSingleThreadScheduledExecutor { task ->
         Thread(task, "LightningDSP-volume-control").apply { isDaemon = true }
     }
@@ -66,6 +79,29 @@ object LightningDspVolumeManager {
     @Volatile private var systemVolumeError: String? = null
     private val recentPlayback = RecentPlaybackHistory()
     private var recentPackages: List<String> = emptyList()
+    private val mediaRetention = PausedMediaRetention()
+    private val mediaControllers = linkedMapOf<String, MutableList<MediaController>>()
+    private var currentMediaTokens: Set<MediaSession.Token> = emptySet()
+    private val mediaLastPlaying = mutableMapOf<String, Boolean>()
+    private val mediaCallbackHandler = Handler(Looper.getMainLooper())
+    private var mediaSessionManager: MediaSessionManager? = null
+    private var mediaSessionListenerRegistered = false
+    private var mediaExpiryWatch: ScheduledFuture<*>? = null
+    private val mediaSessionListener = MediaSessionManager.OnActiveSessionsChangedListener { controllers ->
+        worker.execute { updateMediaControllers(controllers.orEmpty()) }
+    }
+    private val mediaControllerCallback = object : MediaController.Callback() {
+        override fun onPlaybackStateChanged(state: android.media.session.PlaybackState?) {
+            worker.execute { refreshMediaState() }
+        }
+        override fun onSessionDestroyed() {
+            worker.execute { refreshMediaSessions() }
+        }
+    }
+    private val panelPreferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == SHOW_MEDIA_CONTROLS_KEY || key == null) worker.execute { configureMediaControls() }
+        if (key == null || key.startsWith(SESSION_DSP_ENABLED_PREFIX)) worker.execute { publish(force = true) }
+    }
     private var systemVolumeOperationId = 0L
     private var generation = 0
     private var lastResponseAt = 0L
@@ -93,6 +129,41 @@ object LightningDspVolumeManager {
         }
     }
     val isEnabled: Boolean get() = ::preferences.isInitialized && preferences.getBoolean("enabled", false)
+    val showMediaControls: Boolean get() = ::panelPreferences.isInitialized &&
+        panelPreferences.getBoolean(SHOW_MEDIA_CONTROLS_KEY, false)
+
+    fun setShowMediaControls(enabled: Boolean) {
+        check(::panelPreferences.isInitialized)
+        panelPreferences.edit().putBoolean(SHOW_MEDIA_CONTROLS_KEY, enabled).apply()
+        worker.execute { configureMediaControls() }
+    }
+
+    fun setAppDspEnabled(packageName: String, enabled: Boolean) {
+        check(::panelPreferences.isInitialized)
+        panelPreferences.edit().putBoolean(SESSION_DSP_ENABLED_PREFIX + packageName, enabled).apply()
+        runCatching {
+            (context.applicationContext as MainApplication).rootSessionDatabase
+                .setPackageDspEnabled(packageName, enabled)
+        }
+        context.sendLocalBroadcast(Intent(Constants.ACTION_PREFERENCES_UPDATED))
+        worker.execute { publish(force = true) }
+    }
+
+    fun toggleMediaPlayback(packageName: String) {
+        worker.execute {
+            if (!showMediaControls) return@execute
+            val controller = mediaControllers[packageName]?.maxByOrNull { candidate ->
+                val state = candidate.playbackState
+                if (MediaPlaybackControlPolicy.controls(state?.state, state?.actions).playing) 1 else 0
+            } ?: return@execute
+            val state = controller.playbackState
+            val controls = MediaPlaybackControlPolicy.controls(state?.state, state?.actions)
+            runCatching {
+                if (controls.playing && controls.canPause) controller.transportControls.pause()
+                else if (!controls.playing && controls.canPlay) controller.transportControls.play()
+            }.onFailure { Timber.w(it, "Media transport action failed") }
+        }
+    }
 
     // Root is the only exposed backend in LightningDSP. Keep the Shizuku binding,
     // permission lifecycle and stored choice intact for a future opt-in surface.
@@ -170,6 +241,9 @@ object LightningDspVolumeManager {
         if (::preferences.isInitialized) return
         this.context = context.applicationContext
         preferences = this.context.getSharedPreferences("lightningdsp_volume_manager", Context.MODE_PRIVATE)
+        panelPreferences = this.context.getSharedPreferences("lightningdsp_volume_panel", Context.MODE_PRIVATE)
+        panelPreferences.registerOnSharedPreferenceChangeListener(panelPreferenceListener)
+        mediaSessionManager = this.context.getSystemService(MediaSessionManager::class.java)
         writeProfileSettings(VolumeProfiles.initialize(preferences.all))
         cleanupUncertain = preferences.getBoolean("cleanup_uncertain", false)
         ContextCompat.registerReceiver(this.context, object : BroadcastReceiver() {
@@ -192,6 +266,7 @@ object LightningDspVolumeManager {
             addAction(Intent.ACTION_PACKAGE_CHANGED)
             addDataScheme("package")
         }, ContextCompat.RECEIVER_NOT_EXPORTED)
+        worker.execute { configureMediaControls() }
         rikka.shizuku.Shizuku.addRequestPermissionResultListener { code, _ ->
             worker.execute {
                 if (code == 7392 && accessMode == VolumeAccessMode.SHIZUKU && isEnabled)
@@ -204,6 +279,7 @@ object LightningDspVolumeManager {
     /** Call from app startup or an authorized boot receiver, not from a static initializer. */
     fun resume() {
         check(::preferences.isInitialized)
+        worker.execute { configureMediaControls() }
         if (isEnabled) startService()
     }
 
@@ -739,13 +815,20 @@ object LightningDspVolumeManager {
     }
 
     private fun publish(force: Boolean = false) {
+        val media = mediaStatusByPackage()
+        val now = SystemClock.elapsedRealtime()
         val apps = applications.map { application ->
             val name = application.packageName
+            val mediaStatus = media[name]
             AppVolume(name, labels[name] ?: name,
                 application.uid, application.uid in activeUids,
                 preferences.getFloat("volume:$name", 1f), preferences.getBoolean("muted:$name", false),
                 preferences.getFloat("pan:$name", 0f), application.flags and ApplicationInfo.FLAG_SYSTEM != 0,
-                preferences.getBoolean("ignore_buttons:$name", false), uidCounts[application.uid] == 1, preferences.getBoolean("had_player:$name", false) || application.uid in seenUids)
+                preferences.getBoolean("ignore_buttons:$name", false), uidCounts[application.uid] == 1,
+                preferences.getBoolean("had_player:$name", false) || application.uid in seenUids,
+                mediaStatus?.visible == true, mediaStatus?.playing == true,
+                mediaRetention.contains(name, now),
+                panelPreferences.getBoolean(SESSION_DSP_ENABLED_PREFIX + name, true))
         }.sortedWith(compareByDescending<AppVolume> { it.active }.thenBy { it.label.lowercase() })
         val audio = context.getSystemService(AudioManager::class.java)
         val mediaVolume = runCatching { audio.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() /
@@ -753,12 +836,119 @@ object LightningDspVolumeManager {
         val next = VolumeManagerState(isEnabled, connected, error ?: overlayError, apps, mediaVolume,
             perAppEnabled, overlayReady, systemVolumeError, systemVolumeOperationId,
             VolumeProfiles.list(preferences.all), preferences.getString(VolumeProfiles.SELECTED, VolumeProfiles.DEFAULT_ID)!!,
-            recentPackages)
+            (recentPackages + mediaRetention.retained(now)).distinct())
         if (force || next != lastPublished) {
             lastPublished = next
             mutableState.postValue(next)
         }
     }
+
+    private fun configureMediaControls() {
+        if (!::panelPreferences.isInitialized) return
+        val hasNotificationAccess = NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
+        if (!showMediaControls || !hasNotificationAccess || mediaSessionManager == null) {
+            if (mediaSessionListenerRegistered) {
+                runCatching { mediaSessionManager?.removeOnActiveSessionsChangedListener(mediaSessionListener) }
+                mediaSessionListenerRegistered = false
+            }
+            mediaControllers.values.flatten().forEach { runCatching { it.unregisterCallback(mediaControllerCallback) } }
+            mediaControllers.clear()
+            currentMediaTokens = emptySet()
+            mediaLastPlaying.clear()
+            mediaRetention.clear()
+            mediaExpiryWatch?.cancel(false)
+            mediaExpiryWatch = null
+            publish(force = true)
+            return
+        }
+        if (!mediaSessionListenerRegistered) {
+            runCatching {
+                mediaSessionManager?.addOnActiveSessionsChangedListener(
+                    mediaSessionListener, ComponentName(context, NotificationListenerService::class.java), mediaCallbackHandler
+                )
+                mediaSessionListenerRegistered = mediaSessionManager != null
+            }.onFailure { Timber.w(it, "Cannot observe media sessions; play/pause controls remain unavailable") }
+        }
+        refreshMediaSessions()
+        if (mediaExpiryWatch == null) {
+            mediaExpiryWatch = worker.scheduleWithFixedDelay({
+                if (showMediaControls) {
+                    pruneExpiredMediaControllers()
+                    publish()
+                } else configureMediaControls()
+            }, 1, 1, TimeUnit.SECONDS)
+        }
+    }
+
+    private fun refreshMediaSessions() {
+        if (!showMediaControls) return
+        val controllers = runCatching {
+            mediaSessionManager?.getActiveSessions(ComponentName(context, NotificationListenerService::class.java)).orEmpty()
+        }.getOrElse {
+            Timber.w(it, "Cannot query media sessions; play/pause controls remain unavailable")
+            emptyList()
+        }
+        updateMediaControllers(controllers)
+    }
+
+    private fun updateMediaControllers(controllers: List<MediaController>) {
+        if (!showMediaControls) return
+        val incoming = controllers.groupBy { it.packageName }
+        currentMediaTokens = controllers.map { it.sessionToken }.toSet()
+        val now = SystemClock.elapsedRealtime()
+        val packages = (mediaControllers.keys + incoming.keys).toSet()
+        packages.forEach { packageName ->
+            val next = incoming[packageName].orEmpty().toMutableList()
+            val old = mediaControllers[packageName].orEmpty()
+            next.forEach { controller ->
+                if (old.none { it.sessionToken == controller.sessionToken })
+                    controller.registerCallback(mediaControllerCallback, mediaCallbackHandler)
+            }
+            old.filter { existing -> next.none { it.sessionToken == existing.sessionToken } }.forEach { removed ->
+                if (!mediaRetention.contains(packageName, now)) runCatching { removed.unregisterCallback(mediaControllerCallback) }
+                else if (next.isEmpty()) next.add(removed)
+            }
+            if (next.isEmpty()) mediaControllers.remove(packageName) else mediaControllers[packageName] = next
+        }
+        refreshMediaState()
+    }
+
+    private fun refreshMediaState() {
+        if (!showMediaControls) return
+        val now = SystemClock.elapsedRealtime()
+        mediaControllers.forEach { (packageName, controllers) ->
+            val currentlyPlaying = controllers.any { controller ->
+                MediaPlaybackControlPolicy.controls(controller.playbackState?.state, controller.playbackState?.actions).playing
+            }
+            val paused = controllers.any { it.playbackState?.state == android.media.session.PlaybackState.STATE_PAUSED }
+            if (mediaLastPlaying[packageName] == true && !currentlyPlaying && paused)
+                mediaRetention.retain(packageName, now)
+            if (currentlyPlaying) mediaRetention.remove(packageName)
+            mediaLastPlaying[packageName] = currentlyPlaying
+        }
+        publish(force = true)
+    }
+
+    private fun pruneExpiredMediaControllers() {
+        val now = SystemClock.elapsedRealtime()
+        mediaControllers.keys.toList().forEach { packageName ->
+            if (mediaRetention.contains(packageName, now)) return@forEach
+            val sessions = mediaControllers[packageName].orEmpty()
+            val stale = sessions.filter { it.sessionToken !in currentMediaTokens }
+            stale.forEach { runCatching { it.unregisterCallback(mediaControllerCallback) } }
+            val retained = sessions - stale.toSet()
+            if (retained.isEmpty()) mediaControllers.remove(packageName) else mediaControllers[packageName] = retained.toMutableList()
+        }
+    }
+
+    private fun mediaStatusByPackage(): Map<String, MediaPlaybackControlPolicy.Controls> =
+        if (!showMediaControls) emptyMap() else mediaControllers.mapNotNull { (packageName, controllers) ->
+            controllers.map { controller ->
+                MediaPlaybackControlPolicy.controls(controller.playbackState?.state, controller.playbackState?.actions)
+            }.filter { it.visible && (it.playing || mediaRetention.contains(packageName, SystemClock.elapsedRealtime())) }
+                .maxByOrNull { if (it.playing) 1 else 0 }
+                ?.let { packageName to it }
+        }.toMap()
 }
 
 /** Boot follows the enabled mixer by default, but never overrides an explicit opt-out. */
@@ -780,7 +970,11 @@ data class AppVolume(
     val systemApp: Boolean = false,
     val volumeButtonsIgnored: Boolean = false,
     val controllable: Boolean = true,
-    val hadPlayer: Boolean = false
+    val hadPlayer: Boolean = false,
+    val mediaControlVisible: Boolean = false,
+    val mediaPlaying: Boolean = false,
+    val retainedPausedMedia: Boolean = false,
+    val dspEnabled: Boolean = true
 )
 
 data class VolumeManagerState(
@@ -797,3 +991,5 @@ data class VolumeManagerState(
     val selectedProfileId: String = VolumeProfiles.DEFAULT_ID,
     val recentPackages: List<String> = emptyList()
 )
+
+internal const val SHOW_MEDIA_CONTROLS_KEY = "show_media_controls"

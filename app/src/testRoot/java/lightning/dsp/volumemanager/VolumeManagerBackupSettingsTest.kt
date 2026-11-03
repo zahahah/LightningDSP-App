@@ -28,7 +28,10 @@ class VolumeManagerBackupSettingsTest {
         val panel = mapOf(
             "show_dsp_card" to true, "hide_system_apps" to false, "group_system_streams" to true,
             "media_icon_hold_expand" to true, "dsp_bar_monochrome" to true,
+            "show_media_controls" to true, "show_session_dsp_controls" to true,
             "hide_inactive_dsp_card" to false, "hidden_com.missing.player" to true,
+            "manager_hidden_com.missing.player" to true,
+            "session_dsp_enabled:com.missing.player" to false,
             "stream_0" to false, "stream_2" to true, "stream_3" to true, "stream_4" to false,
             "stream_5" to true, "floating_panel_theme" to "dark",
             "order_streams" to "3|2|4|5|0", "order_apps" to "com.missing.player|android",
@@ -91,10 +94,13 @@ class VolumeManagerBackupSettingsTest {
         for (suffix in listOf("", "../com.app", "com/app", "com.app|com.other", "com..app", "plain", "com.app\nother")) {
             assertFalse(Codec.isManagerSetting("volume:$suffix"))
             assertFalse(Codec.isPanelSetting("hidden_$suffix"))
+            assertFalse(Codec.isPanelSetting("manager_hidden_$suffix"))
             rejects { Codec.filterPanel(mapOf("pinned_apps" to setOf(suffix))) }
         }
         assertTrue(Codec.isManagerSetting("volume:android"))
         assertTrue(Codec.isPanelSetting("hidden_com.example.player_2"))
+        assertTrue(Codec.isPanelSetting("manager_hidden_com.example.player_2"))
+        assertTrue(Codec.isPanelSetting("session_dsp_enabled:com.example.player_2"))
         rejects { Codec.decode(payload("panel.pinned_apps" to "com.app|")) }
     }
 

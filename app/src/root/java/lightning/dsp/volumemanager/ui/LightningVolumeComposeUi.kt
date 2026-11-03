@@ -65,6 +65,9 @@ import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Vibration
 import androidx.compose.material.icons.filled.Settings
@@ -149,6 +152,8 @@ import lightning.dsp.utils.extensions.ContextExtensions.sendLocalBroadcast
 import lightning.dsp.volumemanager.backend.AppVolume
 import lightning.dsp.volumemanager.backend.LightningDspVolumeManager
 import lightning.dsp.volumemanager.backend.VolumeManagerState
+import lightning.dsp.MainApplication
+import lightning.dsp.volumemanager.backend.SHOW_MEDIA_CONTROLS_KEY
 import androidx.core.content.ContextCompat
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -198,6 +203,9 @@ internal fun LightningVolumeManagerScreen(
 ) {
     val context = LocalContext.current
     var editing by rememberSaveable { mutableStateOf(false) }
+    var inactiveExpanded by rememberSaveable { mutableStateOf(false) }
+    var editSnapshot by remember { mutableStateOf<VolumeManagerEditSnapshot?>(null) }
+    var editedAppSettings by remember { mutableStateOf<Map<String, AppEditSettings>>(emptyMap()) }
     val listState = rememberLazyListState()
     val activeBounds = remember { VolumeReorderBounds() }
     val recentBounds = remember { VolumeReorderBounds() }
@@ -207,20 +215,37 @@ internal fun LightningVolumeManagerScreen(
     var searchExpanded by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     val panelPrefs = remember(context) { context.getSharedPreferences("lightningdsp_volume_panel", Context.MODE_PRIVATE) }
+    val audioPrefs = remember(context) { context.getSharedPreferences(Constants.PREF_APP, Context.MODE_PRIVATE) }
     val savedAppOrder by rememberAppVolumeOrder(panelPrefs)
     var showDspCard by remember { mutableStateOf(panelPrefs.getBoolean("show_dsp_card", true)) }
     var hideSystemApps by remember { mutableStateOf(panelPrefs.getBoolean("hide_system_apps", false)) }
-    var hiddenAppIds by remember(panelPrefs) { mutableStateOf(readHiddenAppIds(panelPrefs)) }
-    DisposableEffect(panelPrefs) {
+    var showMediaControls by remember { mutableStateOf(panelPrefs.getBoolean(SHOW_MEDIA_CONTROLS_KEY, false)) }
+    var showSessionDspControls by remember { mutableStateOf(panelPrefs.getBoolean("show_session_dsp_controls", false)) }
+    var sessionMode by remember { mutableStateOf(!(context.applicationContext as MainApplication).isGlobalMode) }
+    var hiddenAppIds by remember(panelPrefs) { mutableStateOf(readFloatingHiddenAppIds(panelPrefs)) }
+    var managerHiddenAppIds by remember(panelPrefs) { mutableStateOf(readManagerHiddenAppIds(panelPrefs)) }
+    DisposableEffect(panelPrefs, audioPrefs) {
+        migrateLegacyManagerHiddenApps(panelPrefs)
+        managerHiddenAppIds = readManagerHiddenAppIds(panelPrefs)
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            when {
-                key == "show_dsp_card" -> showDspCard = panelPrefs.getBoolean("show_dsp_card", true)
-                key == "hide_system_apps" -> hideSystemApps = panelPrefs.getBoolean("hide_system_apps", false)
-                key == null || key.startsWith("hidden_") -> hiddenAppIds = readHiddenAppIds(panelPrefs)
-            }
+            if (key == null || key.startsWith(FLOATING_HIDDEN_PREFIX)) hiddenAppIds = readFloatingHiddenAppIds(panelPrefs)
+            if (key == null || key.startsWith(MANAGER_HIDDEN_PREFIX)) managerHiddenAppIds = readManagerHiddenAppIds(panelPrefs)
+            if (key == "show_dsp_card") showDspCard = panelPrefs.getBoolean("show_dsp_card", true)
+            if (key == "hide_system_apps") hideSystemApps = panelPrefs.getBoolean("hide_system_apps", false)
+            if (key == SHOW_MEDIA_CONTROLS_KEY) showMediaControls = panelPrefs.getBoolean(SHOW_MEDIA_CONTROLS_KEY, false)
+            if (key == "show_session_dsp_controls") showSessionDspControls = panelPrefs.getBoolean("show_session_dsp_controls", false)
+            sessionMode = !(context.applicationContext as MainApplication).isGlobalMode
+        }
+        val audioModeListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == context.getString(R.string.key_audioformat_processing))
+                sessionMode = !(context.applicationContext as MainApplication).isGlobalMode
         }
         panelPrefs.registerOnSharedPreferenceChangeListener(listener)
-        onDispose { panelPrefs.unregisterOnSharedPreferenceChangeListener(listener) }
+        audioPrefs.registerOnSharedPreferenceChangeListener(audioModeListener)
+        onDispose {
+            panelPrefs.unregisterOnSharedPreferenceChangeListener(listener)
+            audioPrefs.unregisterOnSharedPreferenceChangeListener(audioModeListener)
+        }
     }
     val dark = androidx.compose.foundation.isSystemInDarkTheme()
     val scheme = if (android.os.Build.VERSION.SDK_INT >= 31) {
@@ -240,8 +265,8 @@ internal fun LightningVolumeManagerScreen(
                 app.packageName.contains(query, ignoreCase = true))
     }.map { it.packageName }
     val catalogApps = appOrder.displayOrder(filteredIds).mapNotNull(appById::get)
-    val hiddenApps = catalogApps.filter { it.packageName in hiddenAppIds }
-    val visibleApps = catalogApps.filterNot { it.packageName in hiddenAppIds }
+    val hiddenApps = catalogApps.filter { it.packageName in managerHiddenAppIds }
+    val visibleApps = catalogApps.filterNot { it.packageName in managerHiddenAppIds }
     val activeApps = visibleApps.filter { it.active }
     val recentIds = state.recentPackages.toSet()
     val recentApps = visibleApps.filter { !it.active && it.packageName in recentIds }
@@ -255,6 +280,50 @@ internal fun LightningVolumeManagerScreen(
         val current = AppVolumeOrderPreferences.read(panelPrefs).include(allAppIds)
         AppVolumeOrderPreferences.save(panelPrefs, current.withPinned(app, enabled))
     }
+    fun beginEditing() {
+        editSnapshot = VolumeManagerEditSnapshot(
+            order = AppVolumeOrderPreferences.read(panelPrefs).include(allAppIds),
+            showDspCard = panelPrefs.getBoolean("show_dsp_card", true),
+            hiddenFromPanel = readFloatingHiddenAppIds(panelPrefs),
+            hiddenFromManager = readManagerHiddenAppIds(panelPrefs),
+            appSettings = state.apps.associate { it.packageName to it.toEditSettings() },
+        )
+        editedAppSettings = emptyMap()
+        editing = true
+        showAll = true
+        searchQuery = ""
+        searchExpanded = false
+    }
+    fun cancelEditing() {
+        val snapshot = editSnapshot ?: return
+        AppVolumeOrderPreferences.save(panelPrefs, snapshot.order)
+        val editor = panelPrefs.edit().putBoolean("show_dsp_card", snapshot.showDspCard)
+        restorePackageFlags(editor, panelPrefs, FLOATING_HIDDEN_PREFIX, snapshot.hiddenFromPanel)
+        restorePackageFlags(editor, panelPrefs, MANAGER_HIDDEN_PREFIX, snapshot.hiddenFromManager)
+        editor.apply()
+        editedAppSettings.forEach { (packageName, _) ->
+            snapshot.appSettings[packageName]?.let { original ->
+                LightningDspVolumeManager.setAppVolume(packageName, original.volume)
+                LightningDspVolumeManager.setAppMuted(packageName, original.muted)
+                LightningDspVolumeManager.setAppPan(packageName, original.pan)
+                LightningDspVolumeManager.setAppVolumeButtonsIgnored(packageName, original.volumeButtonsIgnored)
+            }
+        }
+        editedAppSettings = emptyMap()
+        editSnapshot = null
+        editing = false
+    }
+    fun recordEditedSettings(packageName: String, settings: AppEditSettings) {
+        val original = editSnapshot?.appSettings?.get(packageName) ?: return
+        editedAppSettings = if (settings == original) editedAppSettings - packageName
+            else editedAppSettings + (packageName to settings)
+    }
+    val editDirty = editSnapshot?.let { snapshot ->
+        snapshot.order != AppVolumeOrderPreferences.read(panelPrefs).include(allAppIds) ||
+            snapshot.showDspCard != showDspCard ||
+            snapshot.hiddenFromPanel != hiddenAppIds ||
+            snapshot.hiddenFromManager != managerHiddenAppIds || editedAppSettings.isNotEmpty()
+    } == true
     MaterialTheme(colorScheme = lightningVolumeColorScheme(scheme, dark)) {
         Scaffold(
             topBar = {
@@ -275,11 +344,15 @@ internal fun LightningVolumeManagerScreen(
                     },
                     actions = {
                         if (!compact) {
+                            if (editing && editDirty) IconButton(onClick = { cancelEditing() }) {
+                                Icon(Icons.Default.Close, contentDescription = "Discard editing changes")
+                            }
                             IconButton(onClick = {
-                                val enteringEdit = !editing
-                                editing = enteringEdit
-                                showAll = enteringEdit
-                                if (enteringEdit) { searchQuery = ""; searchExpanded = false }
+                                if (editing) {
+                                    editedAppSettings = emptyMap()
+                                    editSnapshot = null
+                                    editing = false
+                                } else beginEditing()
                             }) {
                                 Icon(if (editing) Icons.Default.Check else Icons.Default.Tune,
                                     contentDescription = if (editing) "Finish editing volume controls" else "Edit volume controls")
@@ -394,14 +467,19 @@ internal fun LightningVolumeManagerScreen(
                         }
                     } else {
                         items(catalogApps, key = { "search:${it.packageName}" }) { app ->
-                            AppVolumeTrack(app, showOptions = true, pinned = app.packageName in appOrder.pinned)
+                            AppVolumeTrack(app, showOptions = true, pinned = app.packageName in appOrder.pinned,
+                                hiddenFromManager = app.packageName in managerHiddenAppIds,
+                                onHiddenFromManagerChange = { hidden ->
+                                    setPackageFlag(panelPrefs, MANAGER_HIDDEN_PREFIX, app.packageName, hidden)
+                                }, initiallyHiddenFromPanel = app.packageName in hiddenAppIds,
+                                allowAppDspControls = sessionMode && showSessionDspControls,
+                                onEditSettingsChange = if (editing) ::recordEditedSettings else null)
                         }
                     }
                 } else {
                     val groups = if (!compact) listOf(
                         Triple("Active", activeApps, activeBounds),
                         Triple("Recent", recentApps, recentBounds),
-                        Triple("Inactive", inactiveApps, inactiveBounds),
                     ) else listOf(Triple("Active", activeApps, activeBounds))
                     groups.forEach { (title, apps, bounds) ->
                         if (apps.isNotEmpty()) {
@@ -423,8 +501,54 @@ internal fun LightningVolumeManagerScreen(
                                 ) {
                                     AppVolumeTrack(app, showOptions = showAll || editing, editing = editing,
                                         pinned = app.packageName in appOrder.pinned,
+                                        hiddenFromManager = app.packageName in managerHiddenAppIds,
+                                        onHiddenFromManagerChange = { hidden ->
+                                            setPackageFlag(panelPrefs, MANAGER_HIDDEN_PREFIX, app.packageName, hidden)
+                                        },
+                                        initiallyHiddenFromPanel = app.packageName in hiddenAppIds,
+                                        allowAppDspControls = sessionMode && showSessionDspControls,
+                                        onEditSettingsChange = if (editing) ::recordEditedSettings else null,
                                         onPinnedChange = if (editing) { enabled -> setPinned(app.packageName, enabled) } else null)
                                 }
+                            }
+                        }
+                    }
+                    if (!compact && inactiveApps.isNotEmpty()) {
+                        item(key = "section_Inactive") {
+                            Row(
+                                Modifier.fillMaxWidth().clickable { inactiveExpanded = !inactiveExpanded }
+                                    .padding(start = 6.dp, top = 4.dp, bottom = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text("Inactive (${inactiveApps.size})", modifier = Modifier.weight(1f),
+                                    style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Icon(if (inactiveExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                    contentDescription = if (inactiveExpanded) "Collapse inactive apps" else "Expand inactive apps",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        if (inactiveExpanded) items(inactiveApps, key = { "Inactive:${it.packageName}" }) { app ->
+                            val peers = appOrder.movablePeers(inactiveApps.map { it.packageName }, activeIds, app.packageName)
+                            VolumeReorderItem(
+                                id = app.packageName, order = peers,
+                                bounds = inactiveBounds, listState = listState,
+                                editing = editing && peers.size > 1,
+                                placementModifier = Modifier.animateItem(
+                                    placementSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
+                                ),
+                                onMove = { from, to -> saveMove(inactiveApps, from, to) },
+                            ) {
+                                AppVolumeTrack(app, showOptions = showAll || editing, editing = editing,
+                                    pinned = app.packageName in appOrder.pinned,
+                                    hiddenFromManager = app.packageName in managerHiddenAppIds,
+                                    onHiddenFromManagerChange = { hidden ->
+                                        setPackageFlag(panelPrefs, MANAGER_HIDDEN_PREFIX, app.packageName, hidden)
+                                    },
+                                    initiallyHiddenFromPanel = app.packageName in hiddenAppIds,
+                                    allowAppDspControls = sessionMode && showSessionDspControls,
+                                    onEditSettingsChange = if (editing) ::recordEditedSettings else null,
+                                    onPinnedChange = if (editing) { enabled -> setPinned(app.packageName, enabled) } else null)
                             }
                         }
                     }
@@ -442,6 +566,13 @@ internal fun LightningVolumeManagerScreen(
                         items(hiddenApps, key = { "hidden:${it.packageName}" }) { app ->
                             AppVolumeTrack(app, showOptions = true, editing = editing,
                                 pinned = app.packageName in appOrder.pinned,
+                                hiddenFromManager = true,
+                                onHiddenFromManagerChange = { hidden ->
+                                    setPackageFlag(panelPrefs, MANAGER_HIDDEN_PREFIX, app.packageName, hidden)
+                                },
+                                initiallyHiddenFromPanel = app.packageName in hiddenAppIds,
+                                allowAppDspControls = sessionMode && showSessionDspControls,
+                                onEditSettingsChange = if (editing) ::recordEditedSettings else null,
                                 onPinnedChange = if (editing) { enabled -> setPinned(app.packageName, enabled) } else null)
                         }
                     }
@@ -551,34 +682,48 @@ internal fun LightningVolumeFloatingPanel(
     val panelPrefs = remember(context) {
         context.getSharedPreferences("lightningdsp_volume_panel", Context.MODE_PRIVATE)
     }
+    val audioPrefs = remember(context) { context.getSharedPreferences(Constants.PREF_APP, Context.MODE_PRIVATE) }
     val savedAppOrder by rememberAppVolumeOrder(panelPrefs)
     var showDspCard by remember { mutableStateOf(panelPrefs.getBoolean("show_dsp_card", true)) }
     var hideSystemApps by remember { mutableStateOf(panelPrefs.getBoolean("hide_system_apps", false)) }
-    var hiddenAppIds by remember(panelPrefs) { mutableStateOf(readHiddenAppIds(panelPrefs)) }
+    var showMediaButtons by remember { mutableStateOf(panelPrefs.getBoolean(SHOW_MEDIA_CONTROLS_KEY, false)) }
+    var showSessionDspButtons by remember { mutableStateOf(panelPrefs.getBoolean("show_session_dsp_controls", false)) }
+    var sessionMode by remember { mutableStateOf(!(context.applicationContext as MainApplication).isGlobalMode) }
+    var hiddenAppIds by remember(panelPrefs) { mutableStateOf(readFloatingHiddenAppIds(panelPrefs)) }
     var panelTheme by remember {
         mutableStateOf(LightningVolumePanelTheme.fromPreference(
             panelPrefs.getString(LightningVolumePanelTheme.PREFERENCE_KEY, null)
         ))
     }
-    DisposableEffect(panelPrefs) {
+    DisposableEffect(panelPrefs, audioPrefs) {
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == null || key.startsWith("hidden_")) hiddenAppIds = readHiddenAppIds(panelPrefs)
+            if (key == null || key.startsWith(FLOATING_HIDDEN_PREFIX)) hiddenAppIds = readFloatingHiddenAppIds(panelPrefs)
             when (key) {
                 "show_dsp_card" -> showDspCard = panelPrefs.getBoolean("show_dsp_card", true)
                 "hide_system_apps" -> hideSystemApps = panelPrefs.getBoolean("hide_system_apps", false)
+                SHOW_MEDIA_CONTROLS_KEY -> showMediaButtons = panelPrefs.getBoolean(SHOW_MEDIA_CONTROLS_KEY, false)
+                "show_session_dsp_controls" -> showSessionDspButtons = panelPrefs.getBoolean("show_session_dsp_controls", false)
                 LightningVolumePanelTheme.PREFERENCE_KEY -> panelTheme = LightningVolumePanelTheme.fromPreference(
                     panelPrefs.getString(LightningVolumePanelTheme.PREFERENCE_KEY, null)
                 )
             }
         }
+        val audioModeListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == context.getString(R.string.key_audioformat_processing))
+                sessionMode = !(context.applicationContext as MainApplication).isGlobalMode
+        }
         panelPrefs.registerOnSharedPreferenceChangeListener(listener)
-        onDispose { panelPrefs.unregisterOnSharedPreferenceChangeListener(listener) }
+        audioPrefs.registerOnSharedPreferenceChangeListener(audioModeListener)
+        onDispose {
+            panelPrefs.unregisterOnSharedPreferenceChangeListener(listener)
+            audioPrefs.unregisterOnSharedPreferenceChangeListener(audioModeListener)
+        }
     }
     val allApps = state.apps.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.label })
     val appOrder = savedAppOrder.include(allApps.map { it.packageName })
     val appById = allApps.associateBy { it.packageName }
     val activeIds = if (state.enabled && state.perAppEnabled) {
-        allApps.filter { it.active && it.packageName !in hiddenAppIds &&
+        allApps.filter { (it.active || (showMediaButtons && it.retainedPausedMedia)) && it.packageName !in hiddenAppIds &&
             (!hideSystemApps || !it.systemApp) }.map { it.packageName }
     } else emptyList()
     val activeApps = appOrder.displayOrder(activeIds).mapNotNull(appById::get)
@@ -587,7 +732,11 @@ internal fun LightningVolumeFloatingPanel(
         if (dark) androidx.compose.material3.dynamicDarkColorScheme(context)
         else androidx.compose.material3.dynamicLightColorScheme(context)
     } else if (dark) androidx.compose.material3.darkColorScheme() else androidx.compose.material3.lightColorScheme()
-    val maxWidth = (configuration.screenWidthDp - 32).coerceAtLeast(280).coerceAtMost(420)
+    val addedControls = (if (showMediaButtons) 1 else 0) + if (sessionMode && showSessionDspButtons) 1 else 0
+    val sideClearance = if (addedControls > 0) 48 else 32
+    val availableWidth = (configuration.screenWidthDp - sideClearance).coerceAtLeast(280)
+    val desiredWidth = 420 + addedControls * 44
+    val maxWidth = minOf(availableWidth, desiredWidth)
     val minWidth = minOf(320, maxWidth)
     val maxHeight = (configuration.screenHeightDp * 0.82f).roundToInt().coerceAtLeast(320)
 
@@ -613,16 +762,73 @@ internal fun LightningVolumeFloatingPanel(
                 }
                 items(activeApps, key = { it.packageName }) { app ->
                     AppVolumeTrack(app, showOptions = false, floatingLightTheme = !dark,
-                        pinned = app.packageName in appOrder.pinned)
+                        pinned = app.packageName in appOrder.pinned,
+                        allowAppDspControls = sessionMode && showSessionDspButtons)
                 }
             }
         }
     }
 }
 
-private fun readHiddenAppIds(preferences: android.content.SharedPreferences): Set<String> =
-    preferences.all.filter { (key, value) -> key.startsWith("hidden_") && value == true }
-        .keys.map { it.removePrefix("hidden_") }.toSet()
+private const val FLOATING_HIDDEN_PREFIX = "hidden_"
+private const val MANAGER_HIDDEN_PREFIX = "manager_hidden_"
+private const val HIDDEN_MANAGER_MIGRATION_KEY = "hide_manager_semantics_migrated_v1"
+
+private data class VolumeManagerEditSnapshot(
+    val order: AppVolumeOrder,
+    val showDspCard: Boolean,
+    val hiddenFromPanel: Set<String>,
+    val hiddenFromManager: Set<String>,
+    val appSettings: Map<String, AppEditSettings>,
+)
+
+private data class AppEditSettings(
+    val volume: Float,
+    val muted: Boolean,
+    val pan: Float,
+    val volumeButtonsIgnored: Boolean,
+)
+
+private fun AppVolume.toEditSettings() = AppEditSettings(volume, muted, pan, volumeButtonsIgnored)
+
+private fun readPackageFlags(preferences: android.content.SharedPreferences, prefix: String): Set<String> =
+    preferences.all.filter { (key, value) -> key.startsWith(prefix) && value == true }
+        .keys.map { it.removePrefix(prefix) }.filter(String::isNotBlank).toSet()
+
+private fun readFloatingHiddenAppIds(preferences: android.content.SharedPreferences): Set<String> =
+    readPackageFlags(preferences, FLOATING_HIDDEN_PREFIX)
+
+private fun readManagerHiddenAppIds(preferences: android.content.SharedPreferences): Set<String> =
+    readPackageFlags(preferences, MANAGER_HIDDEN_PREFIX)
+
+private fun setPackageFlag(
+    preferences: android.content.SharedPreferences, prefix: String, packageName: String, enabled: Boolean,
+) {
+    val editor = preferences.edit()
+    if (enabled) editor.putBoolean(prefix + packageName, true) else editor.remove(prefix + packageName)
+    editor.apply()
+}
+
+private fun restorePackageFlags(
+    editor: android.content.SharedPreferences.Editor,
+    preferences: android.content.SharedPreferences,
+    prefix: String,
+    values: Set<String>,
+) {
+    preferences.all.keys.filter { it.startsWith(prefix) }.forEach(editor::remove)
+    values.forEach { editor.putBoolean(prefix + it, true) }
+}
+
+/** Preserve existing Hide choices as manager-hidden while retaining floating-panel visibility. */
+private fun migrateLegacyManagerHiddenApps(preferences: android.content.SharedPreferences) {
+    if (preferences.getBoolean(HIDDEN_MANAGER_MIGRATION_KEY, false)) return
+    val legacyHidden = readFloatingHiddenAppIds(preferences)
+    val alreadyHidden = readManagerHiddenAppIds(preferences)
+    preferences.edit().apply {
+        (legacyHidden - alreadyHidden).forEach { putBoolean(MANAGER_HIDDEN_PREFIX + it, true) }
+        putBoolean(HIDDEN_MANAGER_MIGRATION_KEY, true)
+    }.apply()
+}
 
 @Composable
 private fun AppSearchField(query: String, onQueryChange: (String) -> Unit, onClose: () -> Unit) {
@@ -951,13 +1157,25 @@ private fun DoNotDisturbButton(currentFilter: Int) {
 @Composable
 private fun AppVolumeTrack(
     app: AppVolume, showOptions: Boolean, floatingLightTheme: Boolean = false, editing: Boolean = false,
-    pinned: Boolean = false, onPinnedChange: ((Boolean) -> Unit)? = null,
+    allowAppDspControls: Boolean = false,
+    pinned: Boolean = false,
+    hiddenFromManager: Boolean = false,
+    onHiddenFromManagerChange: ((Boolean) -> Unit)? = null,
+    initiallyHiddenFromPanel: Boolean? = null,
+    onEditSettingsChange: ((String, AppEditSettings) -> Unit)? = null,
+    onPinnedChange: ((Boolean) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val prefs = remember(context) { context.getSharedPreferences("lightningdsp_volume_panel", Context.MODE_PRIVATE) }
     var value by remember(app.packageName, app.volume) { mutableFloatStateOf(app.volume) }
-    var hidden by remember(app.packageName) { mutableStateOf(prefs.getBoolean("hidden_${app.packageName}", false)) }
-    var volumeKeysIgnored by remember(app.packageName) { mutableStateOf(app.volumeButtonsIgnored) }
+    var hiddenFromPanel by remember(app.packageName, initiallyHiddenFromPanel) {
+        mutableStateOf(initiallyHiddenFromPanel ?: prefs.getBoolean("hidden_${app.packageName}", false))
+    }
+    var muted by remember(app.packageName, app.muted) { mutableStateOf(app.muted) }
+    var volumeButtonsIgnored by remember(app.packageName, app.volumeButtonsIgnored) {
+        mutableStateOf(app.volumeButtonsIgnored)
+    }
+    var dspEnabled by remember(app.packageName, app.dspEnabled) { mutableStateOf(app.dspEnabled) }
     var appIcon by remember(app.packageName) { mutableStateOf<Drawable?>(null) }
     androidx.compose.runtime.LaunchedEffect(app.packageName) {
         appIcon = withContext(Dispatchers.IO) {
@@ -978,38 +1196,60 @@ private fun AppVolumeTrack(
         }, baseTrackColor = if (floatingLightTheme) FloatingLightBaseTrack else SystemVolumeBaseTrack, progressFillColor = if (floatingLightTheme) FloatingLightProgressTrack else SystemVolumeProgressTrack,
         trackContentColor = if (floatingLightTheme) FloatingIceWhite else AppVolumeContent, progressContentColor = if (floatingLightTheme) FloatingIceWhite else AppVolumeContent,
         leading = {
+            if (allowAppDspControls) {
+                IconButton(modifier = Modifier.size(40.dp), onClick = {
+                    dspEnabled = !dspEnabled
+                    LightningDspVolumeManager.setAppDspEnabled(app.packageName, dspEnabled)
+                }) {
+                    Icon(Icons.Default.PowerSettingsNew,
+                        contentDescription = if (dspEnabled) "Disable LightningDSP for ${app.label}" else "Enable LightningDSP for ${app.label}",
+                        modifier = Modifier.size(20.dp),
+                        tint = if (dspEnabled) LightningBlue else MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             if (editing && pinned) Icon(Icons.Default.PushPin,
                 contentDescription = stringResource(R.string.ldsp_vm_pinned_app, app.label),
                 modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }, trailing = {
+            if (app.mediaControlVisible) {
+                IconButton(modifier = Modifier.size(40.dp), onClick = {
+                    LightningDspVolumeManager.toggleMediaPlayback(app.packageName)
+                }) {
+                    Icon(if (app.mediaPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (app.mediaPlaying) "Pause ${app.label}" else "Play ${app.label}",
+                        modifier = Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             if (showOptions) {
                 VolumeManagerIconToggle(
-                    checked = !hidden,
-                    checkedDescription = "Hide ${app.label}",
+                    checked = !hiddenFromPanel,
+                    checkedDescription = "Hide ${app.label} from floating panel",
                     checkedIcon = Icons.Default.Visibility,
-                    uncheckedDescription = "Show ${app.label}",
+                    uncheckedDescription = "Show ${app.label} in floating panel",
                     uncheckedIcon = Icons.Default.VisibilityOff,
                     onCheckedChange = { visible ->
-                        hidden = !visible
-                        prefs.edit().putBoolean("hidden_${app.packageName}", hidden).apply()
+                        hiddenFromPanel = !visible
+                        setPackageFlag(prefs, FLOATING_HIDDEN_PREFIX, app.packageName, hiddenFromPanel)
                     }
                 )
                 VolumeManagerIconToggle(
-                    checked = !volumeKeysIgnored,
-                    checkedDescription = "Ignore hardware volume buttons for ${app.label}",
+                    checked = !muted,
+                    checkedDescription = "Mute ${app.label}",
                     checkedIcon = Icons.AutoMirrored.Filled.VolumeUp,
-                    uncheckedDescription = "Allow hardware volume buttons for ${app.label}",
+                    uncheckedDescription = "Unmute ${app.label}",
                     uncheckedIcon = Icons.AutoMirrored.Filled.VolumeOff,
-                    onCheckedChange = { allowKeys ->
-                        volumeKeysIgnored = !allowKeys
-                        LightningDspVolumeManager.setAppVolumeButtonsIgnored(app.packageName, volumeKeysIgnored)
+                    onCheckedChange = { unmuted ->
+                        muted = !unmuted
+                        LightningDspVolumeManager.setAppMuted(app.packageName, muted)
+                        onEditSettingsChange?.invoke(app.packageName,
+                            AppEditSettings(value, muted, app.pan, volumeButtonsIgnored))
                     }
                 )
-                AppOptions(app, controllable, hidden = hidden, pinned = pinned, onPinnedChange = onPinnedChange,
-                    onHiddenChange = { nextHidden ->
-                    hidden = nextHidden
-                    prefs.edit().putBoolean("hidden_${app.packageName}", nextHidden).apply()
-                })
+                AppOptions(app, controllable, hiddenFromManager = hiddenFromManager,
+                    onHiddenFromManagerChange = onHiddenFromManagerChange,
+                    pinned = pinned, onPinnedChange = onPinnedChange,
+                    initialSettings = AppEditSettings(value, muted, app.pan, volumeButtonsIgnored),
+                    onEditSettingsChange = onEditSettingsChange)
             }
         })
 }
@@ -1018,34 +1258,40 @@ private fun AppVolumeTrack(
 private fun AppOptions(
     app: AppVolume,
     controllable: Boolean,
-    hidden: Boolean,
-    onHiddenChange: (Boolean) -> Unit,
+    hiddenFromManager: Boolean,
+    onHiddenFromManagerChange: ((Boolean) -> Unit)?,
     pinned: Boolean,
     onPinnedChange: ((Boolean) -> Unit)?,
+    initialSettings: AppEditSettings,
+    onEditSettingsChange: ((String, AppEditSettings) -> Unit)?,
 ) {
     var menu by remember(app.packageName) { mutableStateOf(false) }
     var details by remember(app.packageName) { mutableStateOf(false) }
-    androidx.compose.material3.IconButton(onClick = { menu = true }) {
-        Icon(Icons.Default.MoreVert, contentDescription = "Options for ${app.label}")
-    }
-    DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
-        if (onPinnedChange != null) {
-            DropdownMenuItem(
-                text = { Text(stringResource(if (pinned) R.string.ldsp_vm_unpin else R.string.ldsp_vm_pin)) },
-                onClick = { onPinnedChange(!pinned); menu = false },
-            )
+    Box {
+        androidx.compose.material3.IconButton(onClick = { menu = true }) {
+            Icon(Icons.Default.MoreVert, contentDescription = "Options for ${app.label}")
         }
-        DropdownMenuItem(text = { Text(if (hidden) "Show app" else "Hide app") },
-            onClick = {
-                onHiddenChange(!hidden)
-                menu = false
-            })
-        DropdownMenuItem(text = { Text("More controls") }, onClick = { menu = false; details = true })
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            if (onPinnedChange != null) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(if (pinned) R.string.ldsp_vm_unpin else R.string.ldsp_vm_pin)) },
+                    onClick = { onPinnedChange(!pinned); menu = false },
+                )
+            }
+            if (onHiddenFromManagerChange != null) {
+                DropdownMenuItem(text = { Text(if (hiddenFromManager) "Show in manager" else "Hide from manager") },
+                    onClick = {
+                        onHiddenFromManagerChange(!hiddenFromManager)
+                        menu = false
+                    })
+            }
+            DropdownMenuItem(text = { Text("More controls") }, onClick = { menu = false; details = true })
+        }
     }
     if (details) {
-        var muted by remember(app.packageName) { mutableStateOf(app.muted) }
-        var ignored by remember(app.packageName) { mutableStateOf(app.volumeButtonsIgnored) }
-        var pan by remember(app.packageName) { mutableFloatStateOf(app.pan) }
+        var muted by remember(app.packageName) { mutableStateOf(initialSettings.muted) }
+        var ignored by remember(app.packageName) { mutableStateOf(initialSettings.volumeButtonsIgnored) }
+        var pan by remember(app.packageName) { mutableFloatStateOf(initialSettings.pan) }
         AlertDialog(
             onDismissRequest = { details = false },
             title = { Text(app.label) },
@@ -1055,17 +1301,23 @@ private fun AppOptions(
                         Text("Mute", Modifier.weight(1f))
                         Switch(checked = muted, enabled = controllable, onCheckedChange = {
                             muted = it; LightningDspVolumeManager.setAppMuted(app.packageName, it)
+                            onEditSettingsChange?.invoke(app.packageName, initialSettings.copy(muted = it, pan = pan, volumeButtonsIgnored = ignored))
                         })
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Ignore volume buttons", Modifier.weight(1f))
                         Switch(checked = ignored, onCheckedChange = {
                             ignored = it; LightningDspVolumeManager.setAppVolumeButtonsIgnored(app.packageName, it)
+                            onEditSettingsChange?.invoke(app.packageName, initialSettings.copy(muted = muted, pan = pan, volumeButtonsIgnored = it))
                         })
                     }
                     Text("Stereo balance  ${if (pan < 0) "L ${(-pan * 100).roundToInt()}%" else if (pan > 0) "R ${(pan * 100).roundToInt()}%" else "Center"}")
                     androidx.compose.material3.Slider(value = pan, enabled = controllable,
-                        onValueChange = { pan = it; LightningDspVolumeManager.setAppPan(app.packageName, it) },
+                        onValueChange = {
+                            pan = it
+                            LightningDspVolumeManager.setAppPan(app.packageName, it)
+                            onEditSettingsChange?.invoke(app.packageName, initialSettings.copy(muted = muted, pan = it, volumeButtonsIgnored = ignored))
+                        },
                         valueRange = -1f..1f)
                 }
             },
@@ -1074,6 +1326,8 @@ private fun AppOptions(
                 LightningDspVolumeManager.setAppVolume(app.packageName, 1f)
                 LightningDspVolumeManager.setAppMuted(app.packageName, false)
                 LightningDspVolumeManager.setAppPan(app.packageName, 0f)
+                onEditSettingsChange?.invoke(app.packageName,
+                    initialSettings.copy(volume = 1f, muted = false, pan = 0f, volumeButtonsIgnored = ignored))
                 muted = false; pan = 0f; details = false
             }) { Text("Reset") } }
         )
