@@ -18,8 +18,12 @@ class VolumeManagerSettingsContractTest {
         val composeUi = ui("LightningVolumeComposeUi")
         val backend = backend()
         assertTrue(activity.contains("SHOW_MEDIA_CONTROLS_KEY"))
-        assertTrue(activity.contains("if (!(application as MainApplication).isGlobalMode)"))
-        assertTrue(composeUi.contains("allowAppDspControls = sessionMode && showSessionDspButtons"))
+        assertTrue(activity.contains("isEnabled = sessionMode"))
+        assertTrue(activity.contains("NotificationListenerAccessGrant.grant"))
+        assertTrue(activity.contains("always_show_session_dsp_controls"))
+        assertTrue(composeUi.contains("allowAppDspControls = showAppDspButtons"))
+        assertTrue(composeUi.contains("SessionDspButtonVisibilityPolicy.shouldShow"))
+        assertTrue(composeUi.contains("onDspIconClick = { appDspButtonsRevealed = !appDspButtonsRevealed }"))
         assertTrue(composeUi.contains("if (app.mediaControlVisible)"))
         assertTrue(composeUi.contains("it.active || (showMediaButtons && it.retainedPausedMedia)"))
         assertTrue(composeUi.contains("val sideClearance = if (addedControls > 0) 48 else 32"))
@@ -63,6 +67,10 @@ class VolumeManagerSettingsContractTest {
         assertTrue(appTrack.contains("progressFillColor = if (floatingLightTheme) FloatingLightProgressTrack else SystemVolumeProgressTrack"))
         assertTrue(appTrack.contains("trackContentColor = if (floatingLightTheme) FloatingIceWhite else AppVolumeContent"))
         assertTrue(appTrack.contains("progressContentColor = if (floatingLightTheme) FloatingIceWhite else AppVolumeContent"))
+        assertTrue(appTrack.contains("lightControls = floatingLightTheme || MaterialTheme.colorScheme.background.luminance() > 0.5f"))
+        assertTrue(appTrack.contains(".border(1.dp, buttonBorder, CircleShape)"))
+        assertTrue(appTrack.contains("lightControls) Color.White"))
+        assertTrue(appTrack.contains("MaterialTheme.colorScheme.outlineVariant, CircleShape"))
         assertTrue(composeUi.contains("private val AppVolumeContent = Color(0xFF101820)"))
         assertTrue(composeUi.contains("fontWeight = FontWeight.SemiBold"))
         assertFalse(appTrack.contains("0xFF607D8B"))
@@ -70,6 +78,15 @@ class VolumeManagerSettingsContractTest {
         assertTrue(dspCard.contains("else -> DspBlue"))
         assertTrue(dspCard.contains(".size(42.dp).clip(CircleShape)"))
         assertTrue(dspCard.contains("DspRoundControl("))
+    }
+
+    @Test fun experimentBuildPublishesOnlyRootUniversalApk() {
+        val repository = sequenceOf(File("."), File(".."))
+            .first { File(it, ".github/workflows/build.yml").isFile }
+        val workflow = File(repository, ".github/workflows/build.yml").readText()
+        assertTrue(workflow.contains("fromJSON('[\"Root\"]')"))
+        assertTrue(workflow.contains("name: \"\${{ matrix.flavor }}LightningDSP-universal-preview_apk\""))
+        assertTrue(workflow.contains("if: github.ref != 'refs/heads/global-output-experiment'"))
     }
 
     @Test fun systemSlidersUseLightFillDarkBaseAndDarkIconsWhileFloatingPanelHasNoAllAppsEmptyState() {
@@ -98,7 +115,7 @@ class VolumeManagerSettingsContractTest {
         assertTrue(composeUi.contains("FloatingLightProgressTrack = Color(0xFF4B535B)"))
         assertTrue(composeUi.contains("FloatingLightBaseTrack = Color(0xFF727C85)"))
         assertTrue(composeUi.contains("FloatingIceWhite = Color(0xFFF0F5F7)"))
-        assertTrue(composeUi.contains("DspCard(onOpenEffect = onClose, floating = true, floatingLightTheme = !dark)"))
+        assertTrue(composeUi.contains("DspCard(onOpenEffect = onClose, floating = true, floatingLightTheme = !dark,"))
         assertTrue(composeUi.contains("AppVolumeTrack(app, showOptions = false, floatingLightTheme = !dark,"))
         assertTrue(dspCard.contains("end = if (floating) 0.dp else 14.dp"))
         assertTrue(dspCard.contains("floating -> Color(0xFFA6B6C4)"))

@@ -142,7 +142,12 @@ private val dspEffects = listOf(
 /** Compact LightningDSP control card, styled after the reference's circular DSP controls. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun LightningDspVolumeCard(onOpenEffect: (() -> Unit)?, floating: Boolean = false, floatingLightTheme: Boolean = false) {
+internal fun LightningDspVolumeCard(
+    onOpenEffect: (() -> Unit)?,
+    floating: Boolean = false,
+    floatingLightTheme: Boolean = false,
+    onDspIconClick: (() -> Unit)? = null,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val appPreferences = remember(context) { PreferenceCache.getPreferences(context, Constants.PREF_APP) }
@@ -300,6 +305,12 @@ internal fun LightningDspVolumeCard(onOpenEffect: (() -> Unit)?, floating: Boole
         context.startActivity(Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))
     }
+    fun toggleExpanded() {
+        flushPendingValue()
+        selectedParameter = null
+        expanded = !expanded
+        onDspIconClick?.invoke()
+    }
     val latestOpenHome = rememberUpdatedState<() -> Unit> { openHome() }
 
     val powered = appPreferences.getBoolean(context.getString(R.string.key_powered_on), true)
@@ -329,13 +340,13 @@ internal fun LightningDspVolumeCard(onOpenEffect: (() -> Unit)?, floating: Boole
                         waitForUpOrCancellation() != null
                     }
                     when (released) {
-                        true -> { flushPendingValue(); selectedParameter = null; expanded = !expanded }
+                        true -> toggleExpanded()
                         null -> { flushPendingValue(); latestOpenHome.value(); waitForUpOrCancellation() }
                         false -> Unit
                     }
                 }
             } else Modifier.combinedClickable(
-                onClick = { flushPendingValue(); selectedParameter = null; expanded = !expanded },
+                onClick = { toggleExpanded() },
                 onLongClick = { flushPendingValue(); selectedParameter = null; expanded = true },
             )
             Box(
@@ -347,7 +358,7 @@ internal fun LightningDspVolumeCard(onOpenEffect: (() -> Unit)?, floating: Boole
                         stateDescription = if (expanded) "Expanded" else "Collapsed"
                         if (floating) {
                             onClick(label = "Toggle LightningDSP effects") {
-                                flushPendingValue(); selectedParameter = null; expanded = !expanded; true
+                                toggleExpanded(); true
                             }
                             onLongClick(label = "Open LightningDSP") {
                                 flushPendingValue(); latestOpenHome.value(); true

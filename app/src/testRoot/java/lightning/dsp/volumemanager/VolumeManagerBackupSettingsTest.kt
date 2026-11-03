@@ -29,6 +29,7 @@ class VolumeManagerBackupSettingsTest {
             "show_dsp_card" to true, "hide_system_apps" to false, "group_system_streams" to true,
             "media_icon_hold_expand" to true, "dsp_bar_monochrome" to true,
             "show_media_controls" to true, "show_session_dsp_controls" to true,
+            "always_show_session_dsp_controls" to false,
             "hide_inactive_dsp_card" to false, "hidden_com.missing.player" to true,
             "manager_hidden_com.missing.player" to true,
             "session_dsp_enabled:com.missing.player" to false,

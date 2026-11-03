@@ -1,15 +1,18 @@
 package lightning.dsp.volumemanager.ui
 
 import android.content.Intent
+import android.content.ComponentName
 import android.net.Uri
 import android.os.Bundle
 import android.os.Process
 import androidx.lifecycle.lifecycleScope
+import androidx.core.app.NotificationManagerCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import lightning.dsp.flavor.RootShellImpl
 import lightning.dsp.volumemanager.backend.OverlayPermissionGrant
+import lightning.dsp.volumemanager.backend.NotificationListenerAccessGrant
 import android.provider.Settings
 import android.view.Gravity
 import android.view.View
@@ -37,6 +40,7 @@ import lightning.dsp.volumemanager.backend.LightningDspVolumeManager
 import lightning.dsp.MainApplication
 import lightning.dsp.volumemanager.backend.SHOW_MEDIA_CONTROLS_KEY
 import lightning.dsp.volumemanager.focus.DisableAudioFocusOption
+import me.timschneeberger.rootlessjamesdsp.service.NotificationListenerService
 
 /** Root-only, native LightningDSP entry point for the integrated per-app mixer. */
 class LightningDspVolumeManagerActivity : BaseActivity() {
@@ -224,28 +228,89 @@ class LightningDspVolumeManagerActivity : BaseActivity() {
             setOnCheckedChangeListener { _, checked -> LightningDspVolumeManager.setStartupOnBoot(checked) }
         })
         addSection(R.string.ldsp_vm_settings_app_controls)
+        var mediaPermissionPending = false
         controls.addView(MaterialSwitch(settingsContext).apply {
             setText(R.string.ldsp_vm_media_play_pause)
             isChecked = preferences.getBoolean(SHOW_MEDIA_CONTROLS_KEY, false)
-            setOnCheckedChangeListener { _, checked -> LightningDspVolumeManager.setShowMediaControls(checked) }
+            setOnCheckedChangeListener { _, checked ->
+                if (!checked) {
+                    LightningDspVolumeManager.setShowMediaControls(false)
+                    return@setOnCheckedChangeListener
+                }
+                if (mediaPermissionPending) return@setOnCheckedChangeListener
+                mediaPermissionPending = true
+                isEnabled = false
+                lifecycleScope.launch {
+                    try {
+                        val accessGranted = withContext(Dispatchers.IO) {
+                            NotificationListenerAccessGrant.grant(
+                                Process.myUid() / 100000,
+                                { NotificationManagerCompat.getEnabledListenerPackages(this@LightningDspVolumeManagerActivity)
+                                    .contains(packageName) },
+                                { RootShellImpl.hasRootShell() },
+                                { RootShellImpl.cmd(it) },
+                            )
+                        }
+                        if (accessGranted) {
+                            LightningDspVolumeManager.setShowMediaControls(true)
+                        } else {
+                            isChecked = false
+                            Toast.makeText(this@LightningDspVolumeManagerActivity,
+                                R.string.ldsp_vm_media_play_pause_access_failed, Toast.LENGTH_LONG).show()
+                            openPermissionSettings(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                                .putExtra(Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
+                                    ComponentName(packageName, NotificationListenerService::class.java.name).flattenToString()))
+                        }
+                    } finally {
+                        mediaPermissionPending = false
+                        isEnabled = true
+                    }
+                }
+            }
         })
         controls.addView(TextView(settingsContext).apply {
             setText(R.string.ldsp_vm_media_play_pause_summary)
             setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodySmall)
         })
-        if (!(application as MainApplication).isGlobalMode) {
-            controls.addView(MaterialSwitch(settingsContext).apply {
-                setText(R.string.ldsp_vm_app_dsp_power)
-                isChecked = preferences.getBoolean("show_session_dsp_controls", false)
-                setOnCheckedChangeListener { _, checked ->
-                    preferences.edit().putBoolean("show_session_dsp_controls", checked).apply()
-                }
-            })
-            controls.addView(TextView(settingsContext).apply {
-                setText(R.string.ldsp_vm_app_dsp_power_summary)
-                setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodySmall)
-            })
+        val sessionMode = !(application as MainApplication).isGlobalMode
+        val appDspSwitch = MaterialSwitch(settingsContext).apply {
+            setText(R.string.ldsp_vm_app_dsp_power)
+            isChecked = preferences.getBoolean("show_session_dsp_controls", false)
+            isEnabled = sessionMode
         }
+        val appDspSummary = TextView(settingsContext).apply {
+            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodySmall)
+        }
+        val alwaysShowAppDspSwitch = MaterialSwitch(settingsContext).apply {
+            setText(R.string.ldsp_vm_app_dsp_power_always)
+            isChecked = preferences.getBoolean("always_show_session_dsp_controls", true)
+        }
+        val alwaysShowAppDspSummary = TextView(settingsContext).apply {
+            setText(R.string.ldsp_vm_app_dsp_power_always_summary)
+            setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodySmall)
+        }
+        fun refreshAppDspSettingVisibility() {
+            appDspSummary.setText(when {
+                !sessionMode -> R.string.ldsp_vm_app_dsp_power_global_summary
+                appDspSwitch.isChecked -> R.string.ldsp_vm_app_dsp_power_enabled_summary
+                else -> R.string.ldsp_vm_app_dsp_power_summary
+            })
+            val showAlwaysSetting = sessionMode && appDspSwitch.isChecked
+            alwaysShowAppDspSwitch.visibility = if (showAlwaysSetting) View.VISIBLE else View.GONE
+            alwaysShowAppDspSummary.visibility = if (showAlwaysSetting) View.VISIBLE else View.GONE
+        }
+        appDspSwitch.setOnCheckedChangeListener { _, checked ->
+            preferences.edit().putBoolean("show_session_dsp_controls", checked).apply()
+            refreshAppDspSettingVisibility()
+        }
+        alwaysShowAppDspSwitch.setOnCheckedChangeListener { _, checked ->
+            preferences.edit().putBoolean("always_show_session_dsp_controls", checked).apply()
+        }
+        controls.addView(appDspSwitch)
+        controls.addView(appDspSummary)
+        controls.addView(alwaysShowAppDspSwitch)
+        controls.addView(alwaysShowAppDspSummary)
+        refreshAppDspSettingVisibility()
         var revertingAudioFocusSwitch = false
         val audioFocusStatus = TextView(settingsContext).apply {
             setText(R.string.ldsp_vm_audio_focus_checking)

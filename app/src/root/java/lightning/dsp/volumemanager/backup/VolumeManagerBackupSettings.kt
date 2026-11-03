@@ -21,6 +21,7 @@ internal object VolumeManagerBackupCodec {
     private val panelBooleans = setOf(
         "show_dsp_card", "hide_system_apps", "group_system_streams", "hide_inactive_dsp_card",
         "media_icon_hold_expand", "dsp_bar_monochrome", "show_media_controls", "show_session_dsp_controls",
+        "always_show_session_dsp_controls",
         "stream_0", "stream_2", "stream_3", "stream_4", "stream_5",
     )
     private val panelStrings = setOf(

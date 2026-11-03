@@ -14,6 +14,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.verticalScroll
@@ -50,6 +51,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
@@ -110,6 +112,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
@@ -154,6 +157,7 @@ import lightning.dsp.volumemanager.backend.LightningDspVolumeManager
 import lightning.dsp.volumemanager.backend.VolumeManagerState
 import lightning.dsp.MainApplication
 import lightning.dsp.volumemanager.backend.SHOW_MEDIA_CONTROLS_KEY
+import lightning.dsp.volumemanager.backend.SessionDspButtonVisibilityPolicy
 import androidx.core.content.ContextCompat
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -221,6 +225,8 @@ internal fun LightningVolumeManagerScreen(
     var hideSystemApps by remember { mutableStateOf(panelPrefs.getBoolean("hide_system_apps", false)) }
     var showMediaControls by remember { mutableStateOf(panelPrefs.getBoolean(SHOW_MEDIA_CONTROLS_KEY, false)) }
     var showSessionDspControls by remember { mutableStateOf(panelPrefs.getBoolean("show_session_dsp_controls", false)) }
+    var alwaysShowSessionDspControls by remember { mutableStateOf(panelPrefs.getBoolean("always_show_session_dsp_controls", true)) }
+    var appDspButtonsRevealed by rememberSaveable { mutableStateOf(false) }
     var sessionMode by remember { mutableStateOf(!(context.applicationContext as MainApplication).isGlobalMode) }
     var hiddenAppIds by remember(panelPrefs) { mutableStateOf(readFloatingHiddenAppIds(panelPrefs)) }
     var managerHiddenAppIds by remember(panelPrefs) { mutableStateOf(readManagerHiddenAppIds(panelPrefs)) }
@@ -234,6 +240,7 @@ internal fun LightningVolumeManagerScreen(
             if (key == "hide_system_apps") hideSystemApps = panelPrefs.getBoolean("hide_system_apps", false)
             if (key == SHOW_MEDIA_CONTROLS_KEY) showMediaControls = panelPrefs.getBoolean(SHOW_MEDIA_CONTROLS_KEY, false)
             if (key == "show_session_dsp_controls") showSessionDspControls = panelPrefs.getBoolean("show_session_dsp_controls", false)
+            if (key == "always_show_session_dsp_controls") alwaysShowSessionDspControls = panelPrefs.getBoolean("always_show_session_dsp_controls", true)
             sessionMode = !(context.applicationContext as MainApplication).isGlobalMode
         }
         val audioModeListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
@@ -324,6 +331,9 @@ internal fun LightningVolumeManagerScreen(
             snapshot.hiddenFromPanel != hiddenAppIds ||
             snapshot.hiddenFromManager != managerHiddenAppIds || editedAppSettings.isNotEmpty()
     } == true
+    val showAppDspButtons = SessionDspButtonVisibilityPolicy.shouldShow(
+        sessionMode, showSessionDspControls, alwaysShowSessionDspControls, appDspButtonsRevealed
+    )
     MaterialTheme(colorScheme = lightningVolumeColorScheme(scheme, dark)) {
         Scaffold(
             topBar = {
@@ -407,7 +417,8 @@ internal fun LightningVolumeManagerScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.weight(1f)) {
                             if (showDspCard && (!compact || LightningDspVolumeManager.isEnabled)) {
-                                DspCard(onOpenEffect = onOpenEffect)
+                                DspCard(onOpenEffect = onOpenEffect,
+                                    onDspIconClick = { appDspButtonsRevealed = !appDspButtonsRevealed })
                             } else if (editing) {
                                 Text("LightningDSP", modifier = Modifier.padding(14.dp))
                             }
@@ -472,7 +483,7 @@ internal fun LightningVolumeManagerScreen(
                                 onHiddenFromManagerChange = { hidden ->
                                     setPackageFlag(panelPrefs, MANAGER_HIDDEN_PREFIX, app.packageName, hidden)
                                 }, initiallyHiddenFromPanel = app.packageName in hiddenAppIds,
-                                allowAppDspControls = sessionMode && showSessionDspControls,
+                                allowAppDspControls = showAppDspButtons,
                                 onEditSettingsChange = if (editing) ::recordEditedSettings else null)
                         }
                     }
@@ -506,7 +517,7 @@ internal fun LightningVolumeManagerScreen(
                                             setPackageFlag(panelPrefs, MANAGER_HIDDEN_PREFIX, app.packageName, hidden)
                                         },
                                         initiallyHiddenFromPanel = app.packageName in hiddenAppIds,
-                                        allowAppDspControls = sessionMode && showSessionDspControls,
+                                        allowAppDspControls = showAppDspButtons,
                                         onEditSettingsChange = if (editing) ::recordEditedSettings else null,
                                         onPinnedChange = if (editing) { enabled -> setPinned(app.packageName, enabled) } else null)
                                 }
@@ -546,7 +557,7 @@ internal fun LightningVolumeManagerScreen(
                                         setPackageFlag(panelPrefs, MANAGER_HIDDEN_PREFIX, app.packageName, hidden)
                                     },
                                     initiallyHiddenFromPanel = app.packageName in hiddenAppIds,
-                                    allowAppDspControls = sessionMode && showSessionDspControls,
+                                    allowAppDspControls = showAppDspButtons,
                                     onEditSettingsChange = if (editing) ::recordEditedSettings else null,
                                     onPinnedChange = if (editing) { enabled -> setPinned(app.packageName, enabled) } else null)
                             }
@@ -571,7 +582,7 @@ internal fun LightningVolumeManagerScreen(
                                     setPackageFlag(panelPrefs, MANAGER_HIDDEN_PREFIX, app.packageName, hidden)
                                 },
                                 initiallyHiddenFromPanel = app.packageName in hiddenAppIds,
-                                allowAppDspControls = sessionMode && showSessionDspControls,
+                                allowAppDspControls = showAppDspButtons,
                                 onEditSettingsChange = if (editing) ::recordEditedSettings else null,
                                 onPinnedChange = if (editing) { enabled -> setPinned(app.packageName, enabled) } else null)
                         }
@@ -688,6 +699,8 @@ internal fun LightningVolumeFloatingPanel(
     var hideSystemApps by remember { mutableStateOf(panelPrefs.getBoolean("hide_system_apps", false)) }
     var showMediaButtons by remember { mutableStateOf(panelPrefs.getBoolean(SHOW_MEDIA_CONTROLS_KEY, false)) }
     var showSessionDspButtons by remember { mutableStateOf(panelPrefs.getBoolean("show_session_dsp_controls", false)) }
+    var alwaysShowSessionDspButtons by remember { mutableStateOf(panelPrefs.getBoolean("always_show_session_dsp_controls", true)) }
+    var appDspButtonsRevealed by rememberSaveable { mutableStateOf(false) }
     var sessionMode by remember { mutableStateOf(!(context.applicationContext as MainApplication).isGlobalMode) }
     var hiddenAppIds by remember(panelPrefs) { mutableStateOf(readFloatingHiddenAppIds(panelPrefs)) }
     var panelTheme by remember {
@@ -703,6 +716,7 @@ internal fun LightningVolumeFloatingPanel(
                 "hide_system_apps" -> hideSystemApps = panelPrefs.getBoolean("hide_system_apps", false)
                 SHOW_MEDIA_CONTROLS_KEY -> showMediaButtons = panelPrefs.getBoolean(SHOW_MEDIA_CONTROLS_KEY, false)
                 "show_session_dsp_controls" -> showSessionDspButtons = panelPrefs.getBoolean("show_session_dsp_controls", false)
+                "always_show_session_dsp_controls" -> alwaysShowSessionDspButtons = panelPrefs.getBoolean("always_show_session_dsp_controls", true)
                 LightningVolumePanelTheme.PREFERENCE_KEY -> panelTheme = LightningVolumePanelTheme.fromPreference(
                     panelPrefs.getString(LightningVolumePanelTheme.PREFERENCE_KEY, null)
                 )
@@ -727,12 +741,15 @@ internal fun LightningVolumeFloatingPanel(
             (!hideSystemApps || !it.systemApp) }.map { it.packageName }
     } else emptyList()
     val activeApps = appOrder.displayOrder(activeIds).mapNotNull(appById::get)
+    val showAppDspButtons = SessionDspButtonVisibilityPolicy.shouldShow(
+        sessionMode, showSessionDspButtons, alwaysShowSessionDspButtons, appDspButtonsRevealed
+    )
     val dark = panelTheme.isDark(androidx.compose.foundation.isSystemInDarkTheme())
     val scheme = if (android.os.Build.VERSION.SDK_INT >= 31) {
         if (dark) androidx.compose.material3.dynamicDarkColorScheme(context)
         else androidx.compose.material3.dynamicLightColorScheme(context)
     } else if (dark) androidx.compose.material3.darkColorScheme() else androidx.compose.material3.lightColorScheme()
-    val addedControls = (if (showMediaButtons) 1 else 0) + if (sessionMode && showSessionDspButtons) 1 else 0
+    val addedControls = (if (showMediaButtons) 1 else 0) + if (showAppDspButtons) 1 else 0
     val sideClearance = if (addedControls > 0) 48 else 32
     val availableWidth = (configuration.screenWidthDp - sideClearance).coerceAtLeast(280)
     val desiredWidth = 420 + addedControls * 44
@@ -755,7 +772,10 @@ internal fun LightningVolumeFloatingPanel(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 if (showDspCard && state.enabled) {
-                    item(key = "dsp_card") { DspCard(onOpenEffect = onClose, floating = true, floatingLightTheme = !dark) }
+                    item(key = "dsp_card") {
+                        DspCard(onOpenEffect = onClose, floating = true, floatingLightTheme = !dark,
+                            onDspIconClick = { appDspButtonsRevealed = !appDspButtonsRevealed })
+                    }
                 }
                 item(key = "system_controls") {
                     SystemVolumeControls(context, compact = true, showVisibilityOptions = false, floatingLightTheme = !dark, floatingPanel = true)
@@ -763,7 +783,7 @@ internal fun LightningVolumeFloatingPanel(
                 items(activeApps, key = { it.packageName }) { app ->
                     AppVolumeTrack(app, showOptions = false, floatingLightTheme = !dark,
                         pinned = app.packageName in appOrder.pinned,
-                        allowAppDspControls = sessionMode && showSessionDspButtons)
+                        allowAppDspControls = showAppDspButtons)
                 }
             }
         }
@@ -950,8 +970,13 @@ private fun SettingRow(title: String, subtitle: String, checked: Boolean, onChec
 }
 
 @Composable
-private fun DspCard(onOpenEffect: (() -> Unit)?, floating: Boolean = false, floatingLightTheme: Boolean = false) {
-    LightningDspVolumeCard(onOpenEffect, floating, floatingLightTheme)
+private fun DspCard(
+    onOpenEffect: (() -> Unit)?,
+    floating: Boolean = false,
+    floatingLightTheme: Boolean = false,
+    onDspIconClick: (() -> Unit)? = null,
+) {
+    LightningDspVolumeCard(onOpenEffect, floating, floatingLightTheme, onDspIconClick)
 }
 
 /** The same compact track rows are used on the manager screen and in the floating panel. */
@@ -1176,6 +1201,7 @@ private fun AppVolumeTrack(
         mutableStateOf(app.volumeButtonsIgnored)
     }
     var dspEnabled by remember(app.packageName, app.dspEnabled) { mutableStateOf(app.dspEnabled) }
+    val lightControls = floatingLightTheme || MaterialTheme.colorScheme.background.luminance() > 0.5f
     var appIcon by remember(app.packageName) { mutableStateOf<Drawable?>(null) }
     androidx.compose.runtime.LaunchedEffect(app.packageName) {
         appIcon = withContext(Dispatchers.IO) {
@@ -1201,10 +1227,21 @@ private fun AppVolumeTrack(
                     dspEnabled = !dspEnabled
                     LightningDspVolumeManager.setAppDspEnabled(app.packageName, dspEnabled)
                 }) {
-                    Icon(Icons.Default.PowerSettingsNew,
-                        contentDescription = if (dspEnabled) "Disable LightningDSP for ${app.label}" else "Enable LightningDSP for ${app.label}",
-                        modifier = Modifier.size(20.dp),
-                        tint = if (dspEnabled) LightningBlue else MaterialTheme.colorScheme.onSurfaceVariant)
+                    val buttonFill = when {
+                        !dspEnabled -> MaterialTheme.colorScheme.surfaceVariant
+                        lightControls -> Color.White
+                        else -> LightningBlue
+                    }
+                    val buttonBorder = if (dspEnabled) LightningBlue.copy(alpha = if (lightControls) 0.55f else 0.8f)
+                        else MaterialTheme.colorScheme.outlineVariant
+                    Box(Modifier.size(32.dp).clip(CircleShape).background(buttonFill)
+                        .border(1.dp, buttonBorder, CircleShape), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.PowerSettingsNew,
+                            contentDescription = if (dspEnabled) "Disable LightningDSP for ${app.label}" else "Enable LightningDSP for ${app.label}",
+                            modifier = Modifier.size(19.dp),
+                            tint = if (dspEnabled && lightControls) LightningBlue
+                                else if (dspEnabled) Color.White else MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
             if (editing && pinned) Icon(Icons.Default.PushPin,
@@ -1215,9 +1252,15 @@ private fun AppVolumeTrack(
                 IconButton(modifier = Modifier.size(40.dp), onClick = {
                     LightningDspVolumeManager.toggleMediaPlayback(app.packageName)
                 }) {
-                    Icon(if (app.mediaPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (app.mediaPlaying) "Pause ${app.label}" else "Play ${app.label}",
-                        modifier = Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    val mediaFill = if (lightControls) Color.White else MaterialTheme.colorScheme.surfaceVariant
+                    Box(Modifier.size(32.dp).clip(CircleShape).background(mediaFill)
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape),
+                        contentAlignment = Alignment.Center) {
+                        Icon(if (app.mediaPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (app.mediaPlaying) "Pause ${app.label}" else "Play ${app.label}",
+                            modifier = Modifier.size(21.dp),
+                            tint = if (lightControls) Color(0xFF263238) else MaterialTheme.colorScheme.onSurface)
+                    }
                 }
             }
             if (showOptions) {
