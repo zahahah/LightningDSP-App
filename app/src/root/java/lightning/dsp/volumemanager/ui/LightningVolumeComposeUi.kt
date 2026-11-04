@@ -163,7 +163,7 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 private val LightningBlue = Color(0xFF0277BD)
-private val LightAppDspEnabled = Color(0xFFDCEAF4)
+private val LightAppDspEnabled = Color(0xFFC7E3F7)
 private val LightAppDspEnabledIcon = Color(0xFF456278)
 private val SystemVolumeBaseTrack = Color(0xFF8D969C)
 private val SystemVolumeProgressTrack = Color(0xFFD1D5D8)

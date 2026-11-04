@@ -8,6 +8,7 @@
 #include <android/log.h>
 #include <jni.h>
 #include <sys/system_properties.h>
+#include "opensl_compat.h"
 #endif
 #include <array>
 #include <atomic>
@@ -16,6 +17,7 @@
 #include <mutex>
 #include <unistd.h>
 #include <cstdio>
+#include <type_traits>
 #if defined(__aarch64__) || defined(LDSP_AAUDIO_COMPAT_HOST_TEST)
 #include "got_rebind.h"
 #ifndef LDSP_AAUDIO_COMPAT_HOST_TEST
@@ -198,14 +200,32 @@ int inspectLibrary(dl_phdr_info* info, size_t, void* opaque) {
         {"AAudioStreamBuilder_openStream", reinterpret_cast<uintptr_t>(originalOpen), reinterpret_cast<uintptr_t>(openStream)},
         {"AAudioStreamBuilder_delete", reinterpret_cast<uintptr_t>(originalDelete), reinterpret_cast<uintptr_t>(deleteBuilder)},
     }};
-    ldsp::got::Plan plan;
-    if (!ldsp::got::prepare({info->dlpi_addr, info->dlpi_phdr, info->dlpi_phnum}, targets, static_cast<size_t>(pageSize), plan)) return 1;
-    int protection = 0;
-    lookup.reason = "unexpected page protection";
-    if (pageProtection(plan.page, plan.pageSize, protection) && protection == plan.expectedProtection) {
-        lookup.result = ldsp::got::apply(plan, protection, protectPage, nullptr);
+    const auto applyImports = [&](const auto& imports, const char* backend) {
+        constexpr size_t count = std::tuple_size<std::decay_t<decltype(imports)>>::value;
+        ldsp::got::BasicPlan<count> plan;
+        if (!ldsp::got::prepare({info->dlpi_addr, info->dlpi_phdr, info->dlpi_phnum}, imports,
+                static_cast<size_t>(pageSize), plan)) return;
+        int protection = 0;
+        if (!pageProtection(plan.page, plan.pageSize, protection) || protection != plan.expectedProtection) {
+            lookup.reason = "unexpected import page protection";
+            return;
+        }
+        const auto result = ldsp::got::apply(plan, protection, protectPage, nullptr);
+        if (result == ldsp::got::Result::Unsafe || result == ldsp::got::Result::Applied ||
+                result == ldsp::got::Result::AlreadyApplied || lookup.result == ldsp::got::Result::Rejected)
+            lookup.result = result;
         lookup.reason = "import transaction rejected or rolled back";
-    }
+        if (result == ldsp::got::Result::Applied)
+            __android_log_print(ANDROID_LOG_INFO, "LightningDSP_AAudio", "%s imports ready pid=%d", backend, getpid());
+    };
+    applyImports(targets, "AAudio");
+    if (lookup.result == ldsp::got::Result::Unsafe) return 1;
+    // Independent one-symbol transaction, also considered in mixed-backend DSOs.
+    const std::array<ldsp::got::Target, 1> openSlTargets{{
+        {"slCreateEngine", reinterpret_cast<uintptr_t>(ldsp::opensl::originalCreate),
+            reinterpret_cast<uintptr_t>(ldsp::opensl::createEngine)}
+    }};
+    applyImports(openSlTargets, "OpenSL");
     return 1;
 }
 #endif
@@ -249,6 +269,15 @@ LoadedCallback native_init(const NativeApi* api) {
     originalPerformance = AAudioStreamBuilder_setPerformanceMode;
     originalOpen = AAudioStreamBuilder_openStream;
     originalDelete = AAudioStreamBuilder_delete;
+#ifndef LDSP_AAUDIO_COMPAT_HOST_TEST
+    ldsp::opensl::originalCreate = slCreateEngine;
+    ldsp::opensl::requested = [] { return requested() && !unsafeFailure.load(std::memory_order_acquire); };
+    ldsp::opensl::report = [](const char* message, SLresult result) {
+        static std::atomic<unsigned> reports{0};
+        if (reports.fetch_add(1, std::memory_order_relaxed) >= 12) return;
+        __android_log_print(ANDROID_LOG_INFO, "LightningDSP_OpenSL", "%s result=%u pid=%d", message, result, getpid());
+    };
+#endif
     observerReady.store(true, std::memory_order_release);
     return libraryLoaded;
 #else

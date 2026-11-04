@@ -20,13 +20,15 @@ constexpr size_t kMaxSymbols = 262144;
 struct Target { const char* name; uintptr_t original; uintptr_t replacement; };
 struct Image { uintptr_t base; const Elf64_Phdr* headers; size_t count; };
 struct Slot { uintptr_t* address = nullptr; uintptr_t original = 0; uintptr_t replacement = 0; };
-struct Plan {
-    std::array<Slot, kTargets> slots{};
+template<size_t Count> struct BasicPlan {
+    static_assert(Count > 0 && Count <= kTargets, "bounded import transaction");
+    std::array<Slot, Count> slots{};
     uintptr_t page = 0;
     size_t pageSize = 0;
     int expectedProtection = 0;
     bool alreadyApplied = false;
 };
+using Plan = BasicPlan<kTargets>;
 struct Segment { uintptr_t begin=0,end=0; uint32_t flags=0; };
 struct Layout {
     std::array<Segment,kMaxSegments> segments{};
@@ -88,10 +90,11 @@ inline bool symbolCount(const Layout& l,uintptr_t hash,uintptr_t gnu,size_t& cou
 }
 
 // Parse loader-provided ELF64 metadata. All subsequent reads are bounded by PT_LOAD.
-inline bool prepare(const Image& image,const std::array<Target,kTargets>& targets,size_t pageSize,Plan& out) {
+template<size_t Count>
+inline bool prepare(const Image& image,const std::array<Target,Count>& targets,size_t pageSize,BasicPlan<Count>& out) {
     out={};
     if(!image.headers||!image.count||image.count>128||pageSize<4096||(pageSize&(pageSize-1))) return false;
-    for(size_t i=0;i<kTargets;++i) {
+    for(size_t i=0;i<Count;++i) {
         const auto& t=targets[i]; if(!t.name||!t.original||!t.replacement||t.original==t.replacement) return false;
         for(size_t j=0;j<i;++j) if(!std::strcmp(t.name,targets[j].name)||t.original==targets[j].original||t.replacement==targets[j].replacement) return false;
     }
@@ -147,14 +150,14 @@ inline bool prepare(const Image& image,const std::array<Target,kTargets>& target
     if(gnu&&!l.pointer(image.base,gnu,gnup)) return false;
     size_t symbolTotal;
     if(!symbolCount(l,hashp,gnup,symbolTotal)||!l.contains(syms,symbolTotal*sizeof(Elf64_Sym))) return false;
-    std::array<bool,kTargets> seen{}; bool anyOriginal=false,anyReplacement=false;
+    std::array<bool,Count> seen{}; bool anyOriginal=false,anyReplacement=false;
     for(size_t i=0;i<pltSize/sizeof(Elf64_Rela);++i) {
         Elf64_Rela r; if(!l.read(relocs+i*sizeof(r),r)||ELF64_R_TYPE(r.r_info)!=R_AARCH64_JUMP_SLOT||r.r_addend) return false;
         const auto index=ELF64_R_SYM(r.r_info); Elf64_Sym s;
         if(index>=symbolTotal||!l.read(syms+index*sizeof(s),s)||s.st_name>=strSize) return false;
         const char* name=reinterpret_cast<const char*>(strings+s.st_name);
         if(!std::memchr(name,0,strSize-s.st_name)) return false;
-        for(size_t t=0;t<kTargets;++t) if(!std::strcmp(name,targets[t].name)) {
+        for(size_t t=0;t<Count;++t) if(!std::strcmp(name,targets[t].name)) {
             if(seen[t]||s.st_shndx!=SHN_UNDEF||s.st_value||ELF64_ST_TYPE(s.st_info)!=STT_FUNC||
                 ELF64_ST_BIND(s.st_info)!=STB_GLOBAL||(s.st_other & 3)!=STV_DEFAULT) return false;
             uintptr_t slot;
@@ -169,7 +172,7 @@ inline bool prepare(const Image& image,const std::array<Target,kTargets>& target
             if(relro&&page>=l.relroBegin&&page<l.relroEnd) prot=PROT_READ;
             if(!out.page) {out.page=page;out.pageSize=pageSize;out.expectedProtection=prot;}
             if(out.page!=page||out.expectedProtection!=prot) return false;
-            for(size_t j=0;j<kTargets;++j) if(seen[j]&&out.slots[j].address==reinterpret_cast<uintptr_t*>(slot)) return false;
+            for(size_t j=0;j<Count;++j) if(seen[j]&&out.slots[j].address==reinterpret_cast<uintptr_t*>(slot)) return false;
             const auto value=__atomic_load_n(reinterpret_cast<uintptr_t*>(slot),__ATOMIC_ACQUIRE);
             if(value==targets[t].original) anyOriginal=true;
             else if(value==targets[t].replacement) anyReplacement=true;
@@ -184,7 +187,8 @@ inline bool prepare(const Image& image,const std::array<Target,kTargets>& target
 
 enum class Result { Applied, AlreadyApplied, Rejected, RolledBack, Unsafe };
 using Protect = bool (*)(void*,uintptr_t,size_t,int);
-inline Result apply(const Plan& plan,int actualProtection,Protect protect,void* context) {
+template<size_t Count>
+inline Result apply(const BasicPlan<Count>& plan,int actualProtection,Protect protect,void* context) {
     if(!protect||!plan.page||plan.pageSize < 4096 || (plan.pageSize & (plan.pageSize - 1)) ||
         plan.page % plan.pageSize || plan.page > UINTPTR_MAX - plan.pageSize || actualProtection!=plan.expectedProtection||
         (actualProtection!=PROT_READ&&actualProtection!=(PROT_READ|PROT_WRITE))) return Result::Rejected;
@@ -199,7 +203,7 @@ inline Result apply(const Plan& plan,int actualProtection,Protect protect,void* 
     if(plan.alreadyApplied) return Result::AlreadyApplied;
     if(!writable&&!protect(context,plan.page,plan.pageSize,PROT_READ|PROT_WRITE)) return Result::Rejected;
     size_t changed=0;
-    for(;changed<kTargets;++changed) {
+    for(;changed<Count;++changed) {
         auto& s=plan.slots[changed]; uintptr_t expected=s.original;
         if(!__atomic_compare_exchange_n(s.address,&expected,s.replacement,false,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE)) break;
     }
@@ -209,7 +213,7 @@ inline Result apply(const Plan& plan,int actualProtection,Protect protect,void* 
             if(!__atomic_compare_exchange_n(s.address,&expected,s.original,false,__ATOMIC_ACQ_REL,__ATOMIC_ACQUIRE)) ok=false;}
         return ok;
     };
-    if(changed!=kTargets) {
+    if(changed!=Count) {
         const bool rolled=rollback();const bool restored=writable||protect(context,plan.page,plan.pageSize,actualProtection);
         return rolled&&restored?Result::RolledBack:Result::Unsafe;
     }

@@ -15,7 +15,7 @@ metadata, SysV/GNU hashes, imported symbol identity, slot/page uniqueness, prior
 import modifications, RELRO, writable data, protection failures, CAS conflicts,
 rollback, and builder direction/performance observation guards.
 
-The implementation changes only five AAudio import slots in an eligible user
+The AAudio implementation changes five import slots in an eligible user
 library. It cannot observe dlsym calls or calls originating from other libraries;
 missing direction/performance setter observations therefore remain unchanged.
 All five eager-resolved imports must exist on one nonexecutable data page. Other
@@ -29,3 +29,59 @@ process. No executable page is made writable.
 
 Host tests do not prove emulator stability, latency, audibility, or compatibility
 with every Vector/LSPosed release. Device verification is still required.
+
+## OpenSL ES player compatibility
+
+The same opt-in can independently rebind `slCreateEngine` in an eligible ARM64
+app DSO. This is a one-slot transaction with the same ELF, imported-function
+identity, page protection, CAS, rollback and unsafe-failure checks. It does not
+require artificial AAudio imports and can coexist with a complete AAudio plan.
+
+Engine object and engine interfaces are process-local proxies. Every original
+method receives its genuine `self`; no platform vtable is modified. The object
+callback bridge presents the caller's proxy identity and original context.
+Storage for at most 32 engine proxies and 1024 callback registrations is never
+freed or reused, preventing late object callbacks from observing a recycled
+context. At the engine cap, new engines pass through unchanged; at the callback
+cap, registration reports `SL_RESULT_RESOURCE_ERROR`. No lock is held across a
+platform or user callback. Players, output mixes and recorders remain genuine
+platform objects, including their PCM and buffer-queue callback identities.
+
+For mono/stereo PCM buffer-queue sources targeting an output mix, player creation
+adds Android configuration as an optional interface when it is not already
+requested. Before returning a successfully created, still-unrealized player, it
+requests `SL_ANDROID_PERFORMANCE_NONE`. An amended creation failure with a null
+object gets exactly one retry with the caller's original arguments. A nonnull
+partial object is returned with the platform failure, never destroyed or retried
+by the hook. Missing configuration or a failed setter leaves the original player
+usable without claiming processing success. Recorders, URI/MIME sources,
+multichannel sources and unsupported descriptors are not modified.
+
+Opt-out is checked on every player creation, including through engines proxied
+while enabled. Since the player and configuration interface remain genuine, an
+app's explicit performance setter after creation can override this request.
+Calls through `dlsym`, non-app DSOs and independently executed subprocesses are
+not promised coverage. This experimental addition requests compatible playback;
+it does not itself attach DSP, prove FAST was avoided or guarantee audibility.
+
+The OpenSL host test uses the public SLES declarations from an installed Android
+NDK, after the host's standard include paths (no copied platform implementation):
+
+```sh
+# Set this to your installed NDK's sysroot/usr/include directory.
+NDK_INCLUDE=/path/to/ndk/toolchains/llvm/prebuilt/HOST/sysroot/usr/include
+clang++ -std=c++17 -Wall -Wextra -Werror -fsanitize=address,undefined \
+  -idirafter "$NDK_INCLUDE" app/src/main/cpp/aaudio-compat/tests/opensl_test.cpp \
+  -o /tmp/ldsp-opensl-test
+/tmp/ldsp-opensl-test
+```
+
+Mocks verify supported/unsupported source gating, optional-interface preservation,
+clean-null versus dirty creation fallback, missing configuration, live opt-out,
+real player/configuration identity and explicit later override, engine `self`
+forwarding, callback identity/context, callbacks during destruction, and bounded
+proxy exhaustion. They do not emulate the Android framework's thread scheduling
+or prove every possible concurrently reentrant engine callback. The platform's
+normal object-lifetime and caller synchronization requirements still apply.
+
+Android reference: https://developer.android.com/ndk/guides/audio/opensl/opensl-prog-notes

@@ -36,6 +36,20 @@ struct Fixture {
 struct Protection { int calls=0; int fail=0; uintptr_t* corrupt=nullptr; };
 bool protect(void* opaque,uintptr_t page,size_t size,int mode){auto& p=*static_cast<Protection*>(opaque);++p.calls;if(p.calls==p.fail)return false;const bool ok=mprotect(reinterpret_cast<void*>(page),size,mode)==0;if(ok&&p.calls==1&&p.corrupt)*p.corrupt=0xdead;return ok;}
 int main(){
+    // OpenSL's independent one-symbol plan uses the same fail-closed ELF gate.
+    for(size_t targetPage : {size_t{4096}, size_t{16384}}) {
+        Fixture f; BasicPlan<1> p;
+        const std::array<Target,1> one{{f.targets[0]}};
+        assert(prepare({reinterpret_cast<uintptr_t>(f.bytes),f.ph,3},one,targetPage,p));
+        assert(p.slots[0].address == f.slots && p.pageSize == targetPage);
+    }
+    {Fixture f;BasicPlan<1> p; const std::array<Target,1> one{{f.targets[0]}};
+        assert(prepare({reinterpret_cast<uintptr_t>(f.bytes),f.ph,3},one,f.page,p));
+        assert(mprotect(f.slots,f.page,PROT_READ)==0); Protection state;
+        assert(apply(p,PROT_READ,protect,&state)==Result::Applied);
+        assert(f.slots[0]==f.targets[0].replacement && f.slots[1]==f.targets[1].original);
+    }
+
     {Fixture f;Plan p;assert(f.plan(p));assert(mprotect(f.slots,f.page,PROT_READ)==0);Protection state;assert(apply(p,PROT_READ,protect,&state)==Result::Applied);assert(state.calls==2);for(size_t i=0;i<5;++i)assert(f.slots[i]==f.targets[i].replacement);assert(f.plan(p)&&p.alreadyApplied);assert(apply(p,PROT_READ,protect,&state)==Result::AlreadyApplied);}
     {Fixture f;Plan p;assert(f.plan(p));assert(apply(p,PROT_READ|PROT_EXEC,protect,nullptr)==Result::Rejected);}
     {Fixture f;Plan p;assert(f.plan(p));assert(mprotect(f.slots,f.page,PROT_READ)==0);Protection state;state.fail=1;assert(apply(p,PROT_READ,protect,&state)==Result::Rejected);}
