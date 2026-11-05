@@ -15,8 +15,9 @@ metadata, SysV/GNU hashes, imported symbol identity, slot/page uniqueness, prior
 import modifications, RELRO, writable data, protection failures, CAS conflicts,
 rollback, and builder direction/performance observation guards.
 
-The AAudio implementation changes five import slots in an eligible user
-library. It cannot observe dlsym calls or calls originating from other libraries;
+The direct AAudio implementation changes five import slots in an eligible user
+library. Except for the restricted Oboe resolver described below, it cannot observe
+dlsym calls or calls originating from other libraries;
 missing direction/performance setter observations therefore remain unchanged.
 All five eager-resolved imports must exist on one nonexecutable data page. Other
 layouts and non-ARM64 ABIs intentionally do nothing. Prior GOT modifications are
@@ -85,3 +86,19 @@ or prove every possible concurrently reentrant engine callback. The platform's
 normal object-lifetime and caller synchronization requirements still apply.
 
 Android reference: https://developer.android.com/ndk/guides/audio/opensl/opensl-prog-notes
+
+## Oboe dynamic AAudio lookup
+
+For an eligible app-local `liboboe.so`, the opt-in compatibility hook can
+rebind its `dlsym` import. It substitutes the existing AAudio construction
+wrappers only when both the requested symbol and the resolved address match the
+expected platform function. Other results, errors and explicit opt-out are
+preserved. Caller-relative `RTLD_DEFAULT` and `RTLD_NEXT` lookups are forwarded
+with a mandatory tail call to preserve the original caller address. No system
+library or global resolver is patched.
+
+The host test checks matching and nonmatching symbols, real `dlerror` behavior,
+opt-out and special-handle forwarding. An Android ARM64 build must also verify
+that the special-handle path compiles to a tail branch. These checks do not prove
+that a particular Oboe binary resolves its functions after the hook is installed,
+that its stream avoids FAST, or that DSP is audible; device testing is required.

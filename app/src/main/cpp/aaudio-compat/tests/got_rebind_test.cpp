@@ -49,6 +49,21 @@ int main(){
         assert(apply(p,PROT_READ,protect,&state)==Result::Applied);
         assert(f.slots[0]==f.targets[0].replacement && f.slots[1]==f.targets[1].original);
     }
+    // Oboe's dynamic resolver is an independent one-slot transaction; no
+    // synthetic AAudio imports are required and other hooks are not replaced.
+    {Fixture f;BasicPlan<1> p;
+        std::strcpy(reinterpret_cast<char*>(f.bytes+0x700+f.sym[1].st_name), "dlsym");
+        const std::array<Target,1> resolver{{{"dlsym",f.targets[0].original,f.targets[0].replacement}}};
+        f.slots[0]=0xdead;
+        assert(!prepare({reinterpret_cast<uintptr_t>(f.bytes),f.ph,3},resolver,f.page,p));
+        f.slots[0]=f.targets[0].original;
+        assert(prepare({reinterpret_cast<uintptr_t>(f.bytes),f.ph,3},resolver,f.page,p));
+        assert(mprotect(f.slots,f.page,PROT_READ)==0);Protection state;
+        assert(apply(p,PROT_READ,protect,&state)==Result::Applied);
+        assert(f.slots[0]==resolver[0].replacement);
+        for(size_t i=1;i<5;++i)assert(f.slots[i]==f.targets[i].original);
+        assert(prepare({reinterpret_cast<uintptr_t>(f.bytes),f.ph,3},resolver,f.page,p)&&p.alreadyApplied);
+    }
 
     {Fixture f;Plan p;assert(f.plan(p));assert(mprotect(f.slots,f.page,PROT_READ)==0);Protection state;assert(apply(p,PROT_READ,protect,&state)==Result::Applied);assert(state.calls==2);for(size_t i=0;i<5;++i)assert(f.slots[i]==f.targets[i].replacement);assert(f.plan(p)&&p.alreadyApplied);assert(apply(p,PROT_READ,protect,&state)==Result::AlreadyApplied);}
     {Fixture f;Plan p;assert(f.plan(p));assert(apply(p,PROT_READ|PROT_EXEC,protect,nullptr)==Result::Rejected);}

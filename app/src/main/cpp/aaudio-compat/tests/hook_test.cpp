@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <vector>
+#include <string>
 
 static const char* property = "";
 static std::vector<int> openedModes;
@@ -37,6 +38,14 @@ extern "C" void AAudioStreamBuilder_setPerformanceMode(AAudioStreamBuilder* b, i
 extern "C" int AAudioStreamBuilder_openStream(AAudioStreamBuilder* b, AAudioStream** out) { return fakeOpen(b, out); }
 extern "C" int AAudioStreamBuilder_delete(AAudioStreamBuilder* b) { return fakeDelete(b); }
 static int hookCount = 0;
+static void* resolvedSymbol = nullptr;
+static void* lastHandle = nullptr;
+static const char* lastSymbol = nullptr;
+static unsigned resolutionCount = 0;
+static void* fakeResolve(void* handle, const char* symbol) {
+    ++resolutionCount; lastHandle = handle; lastSymbol = symbol;
+    return resolvedSymbol;
+}
 static int fakeHook(void* function, void*, void** backup) {
     ++hookCount;
     *backup = function;
@@ -57,6 +66,112 @@ int main() {
     property = "1";
     assert(native_init(&valid) != nullptr); assert(observerReady.load()); assert(!ready.load()); assert(hookCount == 0);
     ready.store(true);
+    // Oboe's explicit-handle queries are resolved exactly once before mapping.
+    originalResolve = fakeResolve;
+    void* concreteHandle = reinterpret_cast<void*>(0x1234);
+    const std::array<const char*, 5> names{{"AAudio_createStreamBuilder", "AAudioStreamBuilder_setDirection",
+        "AAudioStreamBuilder_setPerformanceMode", "AAudioStreamBuilder_openStream", "AAudioStreamBuilder_delete"}};
+    const std::array<void*, 5> originals{{reinterpret_cast<void*>(originalCreate), reinterpret_cast<void*>(originalDirection),
+        reinterpret_cast<void*>(originalPerformance), reinterpret_cast<void*>(originalOpen), reinterpret_cast<void*>(originalDelete)}};
+    const std::array<void*, 5> replacements{{reinterpret_cast<void*>(createBuilder), reinterpret_cast<void*>(setDirection),
+        reinterpret_cast<void*>(setPerformance), reinterpret_cast<void*>(openStream), reinterpret_cast<void*>(deleteBuilder)}};
+    for (size_t i = 0; i < names.size(); ++i) {
+        resolvedSymbol = originals[i];
+        const auto before = resolutionCount;
+        assert(resolveOboeSymbol(concreteHandle, names[i]) == replacements[i]);
+        assert(resolutionCount == before + 1 && lastHandle == concreteHandle && lastSymbol == names[i]);
+        // Same name but another implementation must remain untouched.
+        resolvedSymbol = reinterpret_cast<void*>(0x4567);
+        assert(resolveOboeSymbol(concreteHandle, names[i]) == resolvedSymbol);
+        resolvedSymbol = originals[i];
+        assert(resolveOboeSymbol(concreteHandle, "unrelated_symbol") == resolvedSymbol);
+        assert(resolveOboeSymbol(RTLD_DEFAULT, names[i]) == resolvedSymbol);
+        assert(lastHandle == RTLD_DEFAULT);
+        assert(resolveOboeSymbol(RTLD_NEXT, names[i]) == resolvedSymbol);
+        assert(lastHandle == RTLD_NEXT);
+        property = "0"; assert(resolveOboeSymbol(concreteHandle, names[i]) == resolvedSymbol); property = "1";
+        ready.store(false); assert(resolveOboeSymbol(concreteHandle, names[i]) == replacements[i]); ready.store(true);
+        observerReady.store(false); assert(resolveOboeSymbol(concreteHandle, names[i]) == resolvedSymbol); observerReady.store(true);
+        unsafeFailure.store(true); assert(resolveOboeSymbol(concreteHandle, names[i]) == resolvedSymbol); unsafeFailure.store(false);
+    }
+    // Interleaving: Oboe resolves and caches its pointers after GOT publication
+    // but before the load callback publishes ready. Cached wrappers must survive
+    // that window without modifying construction until compatibility is ready.
+    ready.store(false);
+    resolvedSymbol = originals[0];
+    auto cachedCreate = reinterpret_cast<decltype(originalCreate)>(resolveOboeSymbol(concreteHandle, names[0]));
+    resolvedSymbol = originals[1];
+    auto cachedDirection = reinterpret_cast<decltype(originalDirection)>(resolveOboeSymbol(concreteHandle, names[1]));
+    resolvedSymbol = originals[2];
+    auto cachedPerformance = reinterpret_cast<decltype(originalPerformance)>(resolveOboeSymbol(concreteHandle, names[2]));
+    resolvedSymbol = originals[3];
+    auto cachedOpen = reinterpret_cast<decltype(originalOpen)>(resolveOboeSymbol(concreteHandle, names[3]));
+    resolvedSymbol = originals[4];
+    auto cachedDelete = reinterpret_cast<decltype(originalDelete)>(resolveOboeSymbol(concreteHandle, names[4]));
+    AAudioStreamBuilder* earlyBuilder = nullptr;
+    assert(cachedCreate(&earlyBuilder) == AAUDIO_OK && findBuilder(earlyBuilder) == nullptr);
+    cachedDirection(earlyBuilder, AAUDIO_DIRECTION_OUTPUT);
+    cachedPerformance(earlyBuilder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
+    openedModes.clear(); AAudioStream* earlyStream = nullptr;
+    assert(cachedOpen(earlyBuilder, &earlyStream) == AAUDIO_OK && openedModes == std::vector<int>{12});
+    assert(cachedDelete(earlyBuilder) == AAUDIO_OK);
+    ready.store(true);
+    AAudioStreamBuilder* lateBuilder = nullptr;
+    assert(cachedCreate(&lateBuilder) == AAUDIO_OK && findBuilder(lateBuilder));
+    cachedDirection(lateBuilder, AAUDIO_DIRECTION_OUTPUT);
+    cachedPerformance(lateBuilder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
+    openedModes.clear();
+    assert(cachedOpen(lateBuilder, &earlyStream) == AAUDIO_OK && openedModes == std::vector<int>{10});
+    property = "0"; openedModes.clear();
+    assert(cachedOpen(lateBuilder, &earlyStream) == AAUDIO_OK && openedModes == std::vector<int>{12});
+    property = "1";
+    // Unsafe publication disables readiness; previously cached wrappers retain
+    // their forwarding behavior and cannot re-enable processing by themselves.
+    unsafeFailure.store(true); openedModes.clear();
+    assert(cachedOpen(lateBuilder, &earlyStream) == AAUDIO_OK && openedModes == std::vector<int>{12});
+    AAudioStreamBuilder* unsafeBuilder = nullptr;
+    assert(cachedCreate(&unsafeBuilder) == AAUDIO_OK && findBuilder(unsafeBuilder) == nullptr);
+    assert(cachedDelete(unsafeBuilder) == AAUDIO_OK);
+    ready.store(false); openedModes.clear();
+    assert(cachedOpen(lateBuilder, &earlyStream) == AAUDIO_OK && openedModes == std::vector<int>{12});
+    unsafeFailure.store(false); ready.store(true);
+    assert(cachedDelete(lateBuilder) == AAUDIO_OK);
+    resolvedSymbol = nullptr;
+    assert(resolveOboeSymbol(concreteHandle, names[0]) == nullptr);
+    assert(resolveOboeSymbol(concreteHandle, nullptr) == nullptr);
+    assert(eligibleOboeLibrary("/data/app/example/lib/arm64/liboboe.so"));
+    assert(eligibleOboeLibrary("/data/app/example/base.apk!/lib/arm64-v8a/liboboe.so"));
+    for (const char* path : {"/system/lib64/liboboe.so", "/data/app/example/liboboe.so.bak",
+            "/data/app/example/libother.so", "/data/app/com.lightning.dsp-abc/liboboe.so"})
+        assert(!eligibleOboeLibrary(path));
+    assert(!eligibleOboeLibrary(nullptr));
+    // Actual resolver integration: preserve success, failures, and an unread
+    // linker error instead of clearing or consuming it during address checks.
+    originalResolve = dlsym;
+#if defined(__APPLE__)
+    void* process = dlopen("/usr/lib/libSystem.B.dylib", RTLD_NOW);
+#else
+    void* process = dlopen("libc.so.6", RTLD_NOW);
+#endif
+    assert(process && process != RTLD_DEFAULT && process != RTLD_NEXT);
+    dlerror();
+    void* mallocSymbol = dlsym(process, "malloc");
+    assert(mallocSymbol && dlerror() == nullptr);
+    assert(resolveOboeSymbol(process, "malloc") == mallocSymbol && dlerror() == nullptr);
+    constexpr const char* missingSymbol = "ldsp_deliberately_missing_oboe_test_symbol";
+    assert(resolveOboeSymbol(process, missingSymbol) == nullptr);
+    const char* missingError = dlerror();
+    assert(missingError && std::strstr(missingError, missingSymbol));
+    assert(dlerror() == nullptr);
+    dlsym(process, missingSymbol);
+    dlsym(process, "malloc");
+    const char* baselineError = dlerror();
+    const std::string baseline = baselineError ? baselineError : "";
+    dlsym(process, missingSymbol);
+    resolveOboeSymbol(process, "malloc");
+    const char* wrappedError = dlerror();
+    assert(baseline == (wrappedError ? wrappedError : ""));
+    dlclose(process);
     AAudioStreamBuilder* builder = nullptr; assert(createBuilder(&builder) == 0);
     setPerformance(builder, 12);
     expect(builder, {12}); // No observed direction: fail closed.

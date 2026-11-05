@@ -18,6 +18,7 @@
 #include <unistd.h>
 #include <cstdio>
 #include <type_traits>
+#include <dlfcn.h>
 #if defined(__aarch64__) || defined(LDSP_AAUDIO_COMPAT_HOST_TEST)
 #include "got_rebind.h"
 #ifndef LDSP_AAUDIO_COMPAT_HOST_TEST
@@ -50,6 +51,8 @@ decltype(&AAudioStreamBuilder_setDirection) originalDirection = nullptr;
 decltype(&AAudioStreamBuilder_setPerformanceMode) originalPerformance = nullptr;
 decltype(&AAudioStreamBuilder_openStream) originalOpen = nullptr;
 decltype(&AAudioStreamBuilder_delete) originalDelete = nullptr;
+using SymbolResolver = void* (*)(void*, const char*);
+[[maybe_unused]] SymbolResolver originalResolve = nullptr;
 
 bool requested() {
     char value[PROP_VALUE_MAX]{};
@@ -61,7 +64,8 @@ BuilderState* findBuilder(AAudioStreamBuilder* builder) {
 }
 [[maybe_unused]] aaudio_result_t createBuilder(AAudioStreamBuilder** result) {
     const auto status = originalCreate(result);
-    if (status == AAUDIO_OK && result && *result && ready.load(std::memory_order_acquire)) {
+    if (status == AAUDIO_OK && result && *result && ready.load(std::memory_order_acquire) &&
+        !unsafeFailure.load(std::memory_order_acquire)) {
         std::lock_guard<std::mutex> lock(buildersMutex);
         // A destroy call through an unhooked DSO may leave a stale record. A new
         // builder at that address must never inherit the old setter observations.
@@ -101,7 +105,7 @@ BuilderState* findBuilder(AAudioStreamBuilder* builder) {
         "open enter pid=%d tracked=%d direction=%d mode=%d ready=%d", getpid(),
         state.builder != nullptr, static_cast<int>(state.direction), static_cast<int>(state.performance),
         ready.load(std::memory_order_acquire));
-    if (!stream || !ready.load(std::memory_order_acquire) || !optIn ||
+    if (!stream || !ready.load(std::memory_order_acquire) || unsafeFailure.load(std::memory_order_acquire) || !optIn ||
         !state.builder || !state.directionObserved || !state.performanceObserved || state.direction != AAUDIO_DIRECTION_OUTPUT ||
         state.performance != AAUDIO_PERFORMANCE_MODE_LOW_LATENCY) {
         const auto status = originalOpen(builder, stream);
@@ -128,6 +132,36 @@ BuilderState* findBuilder(AAudioStreamBuilder* builder) {
     return status;
 }
 
+// Oboe resolves AAudio through an explicit dlopen handle instead of ELF imports.
+// Rebind only its app-local dlsym slot. Never intercept libdl itself. The special
+// handles use caller-relative lookup in Bionic, so a guaranteed tail call must
+// preserve the original return address rather than calling from our namespace.
+[[maybe_unused]] void* resolveOboeSymbol(void* handle, const char* symbol) {
+    if (handle == RTLD_DEFAULT || handle == RTLD_NEXT) {
+        [[clang::musttail]] return originalResolve(handle, symbol);
+    }
+    // Resolve first and keep the linker's dlerror state intact. Concrete handles
+    // use handle-relative lookup; do not perform extra linker queries or logging.
+    void* resolved = originalResolve(handle, symbol);
+    // The GOT slot becomes visible before libraryLoaded publishes ready. Oboe
+    // caches the returned pointers, so use the initialized observer gate here;
+    // create/open wrappers still pass through until ready is published.
+    if (!resolved || !symbol || !requested() || !observerReady.load(std::memory_order_acquire) ||
+        unsafeFailure.load(std::memory_order_acquire)) return resolved;
+    struct Mapping { const char* name; void* original; void* replacement; };
+    const std::array<Mapping, 5> mappings{{
+        {"AAudio_createStreamBuilder", reinterpret_cast<void*>(originalCreate), reinterpret_cast<void*>(createBuilder)},
+        {"AAudioStreamBuilder_setDirection", reinterpret_cast<void*>(originalDirection), reinterpret_cast<void*>(setDirection)},
+        {"AAudioStreamBuilder_setPerformanceMode", reinterpret_cast<void*>(originalPerformance), reinterpret_cast<void*>(setPerformance)},
+        {"AAudioStreamBuilder_openStream", reinterpret_cast<void*>(originalOpen), reinterpret_cast<void*>(openStream)},
+        {"AAudioStreamBuilder_delete", reinterpret_cast<void*>(originalDelete), reinterpret_cast<void*>(deleteBuilder)},
+    }};
+    for (const auto& mapping : mappings) {
+        if (resolved == mapping.original && !std::strcmp(symbol, mapping.name)) return mapping.replacement;
+    }
+    return resolved;
+}
+
 [[maybe_unused]] bool allowedProcess() {
 #ifdef LDSP_AAUDIO_COMPAT_HOST_TEST
     return true;
@@ -150,6 +184,11 @@ bool eligibleLibrary(const char* path) {
         !std::strncmp(path, "/mnt/expand/", 12);
     const size_t length = std::strlen(path);
     return appPath && length > 3 && !std::strcmp(path + length - 3, ".so");
+}
+[[maybe_unused]] bool eligibleOboeLibrary(const char* path) {
+    if (!eligibleLibrary(path)) return false;
+    const char* basename = std::strrchr(path, '/');
+    return basename && !std::strcmp(basename + 1, "liboboe.so");
 }
 #ifndef LDSP_AAUDIO_COMPAT_HOST_TEST
 std::mutex rebindMutex;
@@ -226,6 +265,13 @@ int inspectLibrary(dl_phdr_info* info, size_t, void* opaque) {
             reinterpret_cast<uintptr_t>(ldsp::opensl::createEngine)}
     }};
     applyImports(openSlTargets, "OpenSL");
+    if (lookup.result == ldsp::got::Result::Unsafe) return 1;
+    if (eligibleOboeLibrary(info->dlpi_name)) {
+        const std::array<ldsp::got::Target, 1> resolverTargets{{
+            {"dlsym", reinterpret_cast<uintptr_t>(originalResolve), reinterpret_cast<uintptr_t>(resolveOboeSymbol)}
+        }};
+        applyImports(resolverTargets, "Oboe dynamic AAudio");
+    }
     return 1;
 }
 #endif
@@ -269,6 +315,7 @@ LoadedCallback native_init(const NativeApi* api) {
     originalPerformance = AAudioStreamBuilder_setPerformanceMode;
     originalOpen = AAudioStreamBuilder_openStream;
     originalDelete = AAudioStreamBuilder_delete;
+    originalResolve = dlsym;
 #ifndef LDSP_AAUDIO_COMPAT_HOST_TEST
     ldsp::opensl::originalCreate = slCreateEngine;
     ldsp::opensl::requested = [] { return requested() && !unsafeFailure.load(std::memory_order_acquire); };

@@ -43,23 +43,18 @@ class SwitchPreferenceGroup(context: Context, attrs: AttributeSet) : PreferenceG
     override fun onBindViewHolder(holder: PreferenceViewHolder) {
         super.onBindViewHolder(holder)
 
+        cancelHeaderAnimation()
         itemView = holder.itemView
-        itemView?.background = ContextCompat.getDrawable(context, R.drawable.shape_rounded_highlight)
-        itemView?.background?.alpha = 0
-
-        bgAnimation = ValueAnimator.ofInt(TRANSITION_MIN, TRANSITION_MAX).apply {
-            duration = 200 // milliseconds
-            addUpdateListener { animator ->
-                itemView?.background?.alpha = animator.animatedValueAs<Int>() ?: 0
-            }
+        itemView?.background = ContextCompat.getDrawable(context, R.drawable.shape_rounded_highlight)?.mutate()?.apply {
+            alpha = if (this@SwitchPreferenceGroup.state) TRANSITION_MAX else TRANSITION_MIN
         }
 
         setChildrenVisibility(state)
-        animateHeaderState(state)
         setIsIconVisible(isIconVisible)
 
         switch = (holder.findViewById(R.id.switchWidget) as MaterialSwitch).apply {
-            // Apply initial state
+            // A recycled holder may still have a listener from an earlier bind.
+            setOnCheckedChangeListener(null)
             isChecked = state
             isVisible = isSelectable
 
@@ -73,6 +68,13 @@ class SwitchPreferenceGroup(context: Context, attrs: AttributeSet) : PreferenceG
                 switch?.toggle()
             }
         }
+    }
+
+    override fun onDetached() {
+        cancelHeaderAnimation()
+        switch = null
+        itemView = null
+        super.onDetached()
     }
 
     override fun onPrepareAddPreference(preference: Preference): Boolean {
@@ -102,12 +104,26 @@ class SwitchPreferenceGroup(context: Context, attrs: AttributeSet) : PreferenceG
         }
     }
 
+    private fun cancelHeaderAnimation() {
+        bgAnimation?.apply {
+            cancel()
+            removeAllUpdateListeners()
+        }
+        bgAnimation = null
+    }
+
     private fun animateHeaderState(selected: Boolean) {
-        val current = bgAnimation?.animatedValueAs<Int>() ?: 0
-        if(selected && current < TRANSITION_MAX)
-            bgAnimation?.start()
-        else if(!selected && current > TRANSITION_MIN)
-            bgAnimation?.reverse()
+        cancelHeaderAnimation()
+        val background = itemView?.background ?: return
+        val target = if (selected) TRANSITION_MAX else TRANSITION_MIN
+        if (background.alpha == target) return
+        bgAnimation = ValueAnimator.ofInt(background.alpha, target).apply {
+            duration = 200 // milliseconds
+            addUpdateListener { animator ->
+                background.alpha = animator.animatedValueAs<Int>() ?: target
+            }
+            start()
+        }
     }
 
     private fun setChildrenVisibility(visible: Boolean) {

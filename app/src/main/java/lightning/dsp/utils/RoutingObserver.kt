@@ -23,6 +23,12 @@ import org.koin.core.component.inject
 import timber.log.Timber
 import kotlin.properties.Delegates
 
+/** Route metadata only: volume and MediaRouter callback objects are not device changes. */
+internal data class RoutingDeviceIdentity(
+    val productName: String,
+    val address: String,
+    val group: String,
+)
 
 class RoutingObserver(val context: Context) : MediaRouter.Callback(), KoinComponent,
     SharedPreferences.OnSharedPreferenceChangeListener {
@@ -43,7 +49,7 @@ class RoutingObserver(val context: Context) : MediaRouter.Callback(), KoinCompon
     }
 
     var currentDevice by Delegates.observable<Device?>(null) { _, old, new ->
-        if (old != new)
+        if (old?.routeIdentity != new?.routeIdentity)
             callbacks.forEach { it.onRoutingDeviceChanged(new) }
     }
 
@@ -196,6 +202,9 @@ class RoutingObserver(val context: Context) : MediaRouter.Callback(), KoinCompon
         private val address: String,
         val group: DeviceGroup,
     ) {
+        internal val routeIdentity = RoutingDeviceIdentity(
+            productName, address, group.name,
+        )
         init {
             // Log unexpected events
             if(!group.usesSingleProfile() && !hasProductName()) {
