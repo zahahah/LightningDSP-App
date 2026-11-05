@@ -49,6 +49,8 @@ object LightningDspVolumeManager {
     @Volatile private var commandSession: VolumePipeSession? = null
     private var serviceOwner: Any? = null
     private var restartPending = false
+    private val connectionRecovery = VolumeConnectionRecovery()
+    private var reconnectWatch: ScheduledFuture<*>? = null
     private var cleanupUncertain = false
     private var cleanupRecoveryWatch: ScheduledFuture<*>? = null
     private var cleanupInspector: Process? = null
@@ -187,6 +189,7 @@ object LightningDspVolumeManager {
     fun setAccessMode(mode: VolumeAccessMode) {
         preferences.edit().putString("access_mode", mode.name).apply()
         worker.execute {
+            cancelReconnect(resetBudget = true)
             val owner = serviceOwner
             closeProcess()
             restartPending = isEnabled && owner != null
@@ -560,6 +563,7 @@ object LightningDspVolumeManager {
     internal fun attach(owner: Any, requireCurrentOwner: Boolean = false) {
         worker.execute {
             if (requireCurrentOwner && serviceOwner !== owner) return@execute
+            if (!requireCurrentOwner) cancelReconnect(resetBudget = true)
             serviceOwner = owner
             if (!isEnabled) return@execute
             if (cleanupUncertain && !recoverCleanup()) {
@@ -601,12 +605,13 @@ object LightningDspVolumeManager {
                             generation++
                             process = null; session = null; commandSession = null
                             connected = false; activeUids = emptySet()
+                            connectionRecovery.disconnected()
                             heartbeatWatch?.cancel(false); heartbeatWatch = null
                             publish()
                             if (restartPending && isEnabled && !cleanupUncertain) {
                                 restartPending = false
                                 serviceOwner?.let { attach(it, requireCurrentOwner = true) }
-                            }
+                            } else scheduleReconnect()
                         }
                     }
                 }, onWriteFailure = { failure -> worker.execute {
@@ -630,7 +635,8 @@ object LightningDspVolumeManager {
                                 }
                                 worker.execute {
                                     if (epoch != generation || process !== child) return@execute
-                                    lastResponseAt = SystemClock.elapsedRealtime()
+                                    lastResponseAt = SystemClock.uptimeMillis()
+                                    if (connected) connectionRecovery.healthyResponse(lastResponseAt)
                                     if (response.optBoolean("engine_ready")) {
                                         if (!isEnabled || serviceOwner == null) return@execute
                                         // Record possible side effects durably before permitting any.
@@ -659,6 +665,8 @@ object LightningDspVolumeManager {
                                     }
                                     val players = response.optJSONArray("players")
                                     connected = players != null
+                                    if (connected) connectionRecovery.healthyResponse(lastResponseAt)
+                                    else connectionRecovery.disconnected()
                                     error = if (response.isNull("error")) null else response.optString("error").ifEmpty { null }
                                     if (players != null) {
                                         val observed = (0 until players.length()).map { players.getJSONObject(it).getInt("uid") }.toSet()
@@ -693,12 +701,12 @@ object LightningDspVolumeManager {
                     }
                 }, "LightningDSP-volume-playback").apply { isDaemon = true; start() }
                 sendSettings()
-                lastResponseAt = SystemClock.elapsedRealtime()
+                lastResponseAt = SystemClock.uptimeMillis()
                 heartbeatWatch = worker.scheduleWithFixedDelay({
                     // Renewal must not depend on root snapshot/heartbeat suppression.
                     if (epoch == generation && process != null) sendSettings()
                     val timeout = if (connected) 15_000 else 30_000
-                    if (epoch == generation && process != null && SystemClock.elapsedRealtime() - lastResponseAt >= timeout) {
+                    if (epoch == generation && process != null && SystemClock.uptimeMillis() - lastResponseAt >= timeout) {
                         closeProcess()
                         error = error ?: "Privileged playback access timed out"
                         publish()
@@ -718,6 +726,9 @@ object LightningDspVolumeManager {
                     "Cannot obtain ${accessMode.name.lowercase()} playback access: ${exception.message ?: exception.javaClass.simpleName}"
                 }
                 publish()
+                if (process == null) {
+                    if (cleanupUncertain) scheduleCleanupRecovery() else scheduleReconnect()
+                }
             }
         }
     }
@@ -727,6 +738,7 @@ object LightningDspVolumeManager {
             if (owner != null && serviceOwner !== owner) { return@execute }
             serviceOwner = null
             restartPending = false
+            cancelReconnect(resetBudget = true)
             cleanupRecoveryWatch?.cancel(false)
             cleanupRecoveryWatch = null
             closeProcess()
@@ -794,13 +806,32 @@ object LightningDspVolumeManager {
                 cleanupRecoveryWatch?.cancel(false); cleanupRecoveryWatch = null
             } else if (process == null && recoverCleanup()) {
                 publish()
-                serviceOwner?.let { attach(it, requireCurrentOwner = true) }
+                scheduleReconnect()
             }
         }, 2, 2, TimeUnit.SECONDS)
     }
 
+    private fun cancelReconnect(resetBudget: Boolean) {
+        reconnectWatch?.cancel(false)
+        reconnectWatch = null
+        if (resetBudget) connectionRecovery.reset()
+    }
+
+    private fun scheduleReconnect() {
+        if (reconnectWatch != null || process != null) return
+        val owner = serviceOwner
+        val delay = connectionRecovery.nextDelayMillis(isEnabled, owner != null, !cleanupUncertain) ?: return
+        Timber.i("Volume Manager playback connection retry scheduled in %d ms", delay)
+        reconnectWatch = worker.schedule({
+            reconnectWatch = null
+            if (isEnabled && serviceOwner === owner && process == null && !cleanupUncertain)
+                owner?.let { attach(it, requireCurrentOwner = true) }
+        }, delay, TimeUnit.MILLISECONDS)
+    }
+
     private fun closeProcess() {
         generation++
+        connectionRecovery.disconnected()
         heartbeatWatch?.cancel(false)
         heartbeatWatch = null
         commandSession = null

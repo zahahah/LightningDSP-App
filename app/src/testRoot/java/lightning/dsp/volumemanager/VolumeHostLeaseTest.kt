@@ -19,4 +19,16 @@ class VolumeHostLeaseTest {
         assertFalse(lease.expired(31_000))
         assertTrue(lease.expired(31_001))
     }
+
+    @Test fun suspendedWallTimeDoesNotExpireAnAwakeTimeLease() {
+        val lease = VolumeHostLease(1_000)
+        // Two hours of deep sleep advance elapsedRealtime but not uptime.
+        val elapsedAfterSleep = 7_201_000L
+        val uptimeAfterSleep = 1_000L
+        assertTrue(elapsedAfterSleep > uptimeAfterSleep)
+        assertFalse(lease.expired(uptimeAfterSleep))
+        lease.renew(uptimeAfterSleep + 5_000)
+        assertFalse(lease.expired(uptimeAfterSleep + 30_000))
+        assertTrue(lease.expired(uptimeAfterSleep + 35_001))
+    }
 }

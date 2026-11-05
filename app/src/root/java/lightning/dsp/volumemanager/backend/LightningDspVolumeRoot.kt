@@ -77,13 +77,14 @@ object LightningDspVolumeRoot {
         val rejectedOperations = LinkedBlockingQueue<Long>(32)
         val stopRequested = AtomicBoolean(false)
         val refreshRequested = AtomicBoolean(false)
-        val hostLease = VolumeHostLease(SystemClock.elapsedRealtime())
+        // Neither side can renew a pipe during deep sleep. Count awake time only.
+        val hostLease = VolumeHostLease(SystemClock.uptimeMillis())
         val input = source.bufferedReader()
         val reader = Thread {
             try {
                 while (true) {
                     val line = input.readLine() ?: break
-                    hostLease.renew(SystemClock.elapsedRealtime())
+                    hostLease.renew(SystemClock.uptimeMillis())
                     val json = runCatching { JSONObject(line) }.getOrNull() ?: continue
                     when {
                         json.optBoolean("stop") -> stopRequested.set(true)
@@ -149,7 +150,7 @@ object LightningDspVolumeRoot {
             while (true) {
                 // A disappeared host must not leave a forgotten child attenuating audio.
                 // Recovery scans/callbacks do not renew this private-pipe ownership lease.
-                if (hostLease.expired(SystemClock.elapsedRealtime())) break
+                if (hostLease.expired(SystemClock.uptimeMillis())) break
                 wakeups.poll(500, TimeUnit.MILLISECONDS)
                 if (stopRequested.get()) break
                 var settingsChanged = false
