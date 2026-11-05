@@ -26,4 +26,20 @@ class AudioCompatibilityLoadGateTest {
         assertTrue(init.contains("return libraryLoaded;"))
         assertFalse("libaaudio entry points must not be inline patched", source.contains("api->hook("))
     }
+
+    @Test fun childLaunchAdapterPreservesTheScopedOptInAndNormalXposedChain() {
+        val source = File(app, "src/root/java/lightning/dsp/interop/AudioCompatibilityHook.java").readText()
+        val entry = source.substringAfter("@Override public void handleLoadPackage(")
+        assertTrue(entry.indexOf("if (!requested()) {") < entry.indexOf("installLaunchHook();"))
+        assertTrue(entry.indexOf("info.appInfo.flags & ApplicationInfo.FLAG_SYSTEM") < entry.indexOf("installLaunchHook();"))
+        assertTrue(source.contains("findAndHookMethod(\"java.lang.ProcessImpl\", null, \"start\","))
+        assertTrue(source.contains("String[].class, Map.class, String.class, ProcessBuilder.Redirect[].class,"))
+        assertTrue(source.contains("boolean.class, new XC_MethodHook(Integer.MIN_VALUE)"))
+        assertTrue(source.contains("() -> new ProcessBuilder().environment()"))
+        assertTrue(source.contains("param.args[1] = adapted"))
+        assertFalse(source.contains("param.args ="))
+        assertFalse(source.contains("afterHookedMethod"))
+        assertFalse(source.contains("invokeOriginalMethod"))
+        assertFalse(source.contains("XC_MethodReplacement"))
+    }
 }

@@ -253,10 +253,12 @@ internal object GlobalMixerCoverage {
         // Anchor at the actual Flags column, then consume each known column. Latency
         // may carry a separate status token; Android's spatial counters follow it.
         // Never search for a convenient pair of booleans elsewhere in the row.
+        // Only FrmCnt may carry 'r' (app-reduced buffer size), not a fast-track
+        // marker. Keep the 'e' error suffix and unknown/shifted suffixes excluded.
         val layout = "^\\s*\\d+\\s+(?:yes|no)\\s+\\d+/\\s*\\d+\\s+\\d+\\s+\\d+\\s+\\S+" +
             "\\s+0x[0-9a-fA-F]+\\s+[0-9a-fA-F]+\\s+[0-9a-fA-F]+\\s+\\d+\\s+\\d+" +
             "\\s+[0-9a-fA-F]+\\s+\\d+" + "\\s+$number".repeat(5) +
-            "\\s+(?:true|false)\\s+[0-9a-fA-F]+\\s+\\d+\\s+\\d+\\s+[A-Za-z]\\s+\\d+\\s+\\d+" +
+            "\\s+(?:true|false)\\s+[0-9a-fA-F]+\\s+\\d+r?\\s+\\d+\\s+[A-Za-z]\\s+\\d+\\s+\\d+" +
             (if (bitPerfect) "\\s+false" else "") + "\\s+(?:true|false)" +
             "\\s+(?:\\d+(?:\\.\\d+)?(?:\\s+[A-Za-z])?|new)" +
             (if (extended) "(?:\\s+\\d+){5}" else "") + "\\s*$"

@@ -146,3 +146,23 @@ process state, incomplete evidence and failed persistence keep activation blocke
 A legacy empty receipt has no retrospective process evidence; it still requires a
 positive cleanup receipt or a verified full kernel reboot. Never erase the guard to
 hide the warning, and never export this runtime journal in portable backups.
+
+## DirectAudio subprocess compatibility experiment
+
+When the existing compatibility opt-in is enabled in a user app selected in
+Vector/LSPosed, a supported `ProcessImpl.start` call may receive a copied launch
+environment with an existing `BANNER_AUDIO_DIRECT_PERF=1` changed to `0`.
+The original environment, command, redirects and working directory are not
+modified; no injection or new permission is used. Environments with capture
+requested or unknown microphone state are not changed. The hook is fail-open if
+the platform method is unavailable. This is support for the documented
+DirectAudio environment contract, not arbitrary subprocesses. Existing child
+processes retain their launch environment until restarted; runtime DirectAudio
+configuration may override it. The host's latency and underrun behavior and the
+actual AudioEffect attachment require device validation.
+
+Normal AudioFlinger rows can carry the AOSP `r` marker in the frame-count
+column for an application-reduced buffer. This marker does not make a normal
+track FAST. Actual `F<n>` tracks remain ineligible for session fallback.
+
+Reference: https://github.com/The412Banner/directaudio/blob/8cc1227bf1b929521e6b2df2509d8b309c4c4f25/directaudio.c

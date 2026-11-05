@@ -10,6 +10,7 @@ class GlobalMixerCoverageTest {
                                 val channels: String = "00000003", val flags: String = "000", val policyFlags: String = "0", val policyChannels: String = "3", val attributeFlags: String = "0",
                                 val bitPerfect: Boolean = false, val suffix: String = "false false 129.05 t 0 0 0 0 1",
                                 val extended: Boolean = true, val active: Boolean = true,
+                                val frameCount: String = "12376",
                                 val state: String = if (active) "A" else "P")
     private fun effect(id: Int, session: Int, suspended: Boolean = false) = """
         Effect ID $id:
@@ -24,7 +25,7 @@ class GlobalMixerCoverageTest {
         append("    Type Id Active Client(pid/uid) Session Port Id S Flags Format Chn mask SRate ST Usg CT G db L dB R dB VS dB PortVol dB PortMuted Server FrmCnt FrmRdy F Underruns Flushed BitPerfect InternalMute Latency\n")
         if (tracks.firstOrNull()?.extended != false) append(" Spat Meta Sce Silent Top\n")
         tracks.forEachIndexed { index, t ->
-            append("    ${t.type} ${index + 1} ${if (t.active) "yes" else "no"} 9716/ ${t.uid} ${t.session} ${t.port} ${t.state} 0x${t.flags} ${t.format} ${t.channels} 44100 3 1 2 -inf 0 0 0 -inf false 0000 12376 12376 A 0 0 ${if (t.bitPerfect) t.suffix.replaceFirst("false", "true") else t.suffix}\n")
+            append("    ${t.type} ${index + 1} ${if (t.active) "yes" else "no"} 9716/ ${t.uid} ${t.session} ${t.port} ${t.state} 0x${t.flags} ${t.format} ${t.channels} 44100 3 1 2 -inf 0 0 0 -inf false 0000 ${t.frameCount} 12376 A 0 0 ${if (t.bitPerfect) t.suffix.replaceFirst("false", "true") else t.suffix}\n")
         }
         append("  ${effects.size} Effect Chains\n")
         effects.forEach { append("  1 effects for session 0\n$it\n") }
@@ -64,6 +65,32 @@ class GlobalMixerCoverageTest {
         assertTrue(snapshot.reason, snapshot.known)
         assertEquals(listOf(361), snapshot.targets.map { it.id })
         assertEquals(13, snapshot.globalOutput)
+    }
+    @Test fun reducedBufferNormalTrackRemainsEligible() {
+        val snapshot = inspect(listOf(Playback(frameCount = "1764r")))
+        assertTrue(snapshot.reason, snapshot.known)
+        assertEquals(listOf(361), snapshot.targets.map { it.id })
+    }
+    @Test fun sessionModeRecognizesReducedBufferNormalTrack() {
+        val snapshot = inspectSessionMode(listOf(Playback(frameCount = "1764r")))
+        assertTrue(snapshot.reason, snapshot.known)
+        assertEquals(listOf(361), snapshot.targets.map { it.id })
+    }
+    @Test fun reducedBufferMarkerDoesNotTurnActualFastTrackIntoNormalPlayback() {
+        val snapshot = inspect(listOf(Playback(type = "F2", frameCount = "576r", policyFlags = "4")), flags = "6")
+        assertTrue(snapshot.reason, snapshot.known)
+        assertTrue(snapshot.targets.isEmpty())
+        assertTrue(snapshot.reason, snapshot.reason.contains("fast-track session guards"))
+    }
+    @Test fun invalidBufferSuffixesAndReducedMarkerInWrongColumnRemainExcluded() {
+        listOf("1764e", "1764R", "1764rr", "1764x", "1764 r").forEach { frameCount ->
+            val snapshot = inspect(listOf(Playback(frameCount = frameCount)))
+            assertTrue(snapshot.reason, snapshot.known)
+            assertTrue("frameCount=$frameCount", snapshot.targets.isEmpty())
+        }
+        val shifted = inspect(transformFlinger = { it.replace("0000 12376 12376 A", "0000 12376 12376r A") })
+        assertTrue(shifted.reason, shifted.known)
+        assertTrue(shifted.targets.isEmpty())
     }
     @Test fun sessionModeDiscoversUncoveredPlaybackWithoutCreatingGlobalSessionZero() {
         val snapshot = inspectSessionMode()
