@@ -262,6 +262,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
                 } else {
                     sessionDumpManager?.destroy()
                     sessionDumpManager = null
+                    app.rootSessionDatabase.clearPlaybackActivity()
                     if (app.isGlobalMode) {
                         // Stop ordinary per-app engines without tearing down a
                         // healthy session-zero baseline. The supplemental
@@ -287,6 +288,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
                 else {
                     sessionDumpManager?.destroy()
                     sessionDumpManager = null
+                    app.rootSessionDatabase.clearPlaybackActivity()
                     app.rootSessionDatabase.setExcludedUids(arrayOf())
                     if (app.isGlobalMode) {
                         app.rootSessionDatabase.sessionList.keys.filter { it > 0 }.toList()
@@ -336,12 +338,18 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
         val manager = RootSessionDumpManager(this)
         sessionDumpManager = manager
         manager.setOnSessionDump { dump ->
-            if (SessionDumpAdmission.allows(!isServiceDisposing && sessionDumpManager === manager, app.isEnhancedProcessing))
-                app.rootSessionDatabase.update(dump)
+            if (SessionDumpAdmission.allows(!isServiceDisposing && sessionDumpManager === manager, app.isEnhancedProcessing)) {
+                if (dump == null) app.rootSessionDatabase.clearPlaybackActivity()
+                else app.rootSessionDatabase.update(dump)
+                manager.requestPlaybackActivityConfirmation(app.rootSessionDatabase.needsPlaybackActivityConfirmation)
+            }
         }
         manager.setOnDumpMethodChanged {
-            if (SessionDumpAdmission.allows(!isServiceDisposing && sessionDumpManager === manager, app.isEnhancedProcessing))
+            if (SessionDumpAdmission.allows(!isServiceDisposing && sessionDumpManager === manager, app.isEnhancedProcessing)) {
+                manager.requestPlaybackActivityConfirmation(false)
+                app.rootSessionDatabase.clearPlaybackActivity()
                 app.rootSessionDatabase.clearSessions()
+            }
         }
         manager.pollOnce(false)
     }

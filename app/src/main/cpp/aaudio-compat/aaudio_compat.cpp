@@ -133,10 +133,11 @@ BuilderState* findBuilder(AAudioStreamBuilder* builder) {
 }
 
 // Oboe resolves AAudio through an explicit dlopen handle instead of ELF imports.
-// Rebind only its app-local dlsym slot. Never intercept libdl itself. The special
-// handles use caller-relative lookup in Bionic, so a guaranteed tail call must
-// preserve the original return address rather than calling from our namespace.
-[[maybe_unused]] void* resolveOboeSymbol(void* handle, const char* symbol) {
+// Some apps statically link Oboe into their own audio backend DSO, so rebind its
+// app-local dlsym slot there as well as in liboboe.so. Never intercept libdl
+// itself. The special handles use caller-relative lookup in Bionic, so a
+// guaranteed tail call must preserve the original return address.
+[[maybe_unused]] void* resolveAppAudioSymbol(void* handle, const char* symbol) {
     if (handle == RTLD_DEFAULT || handle == RTLD_NEXT) {
         [[clang::musttail]] return originalResolve(handle, symbol);
     }
@@ -185,10 +186,16 @@ bool eligibleLibrary(const char* path) {
     const size_t length = std::strlen(path);
     return appPath && length > 3 && !std::strcmp(path + length - 3, ".so");
 }
-[[maybe_unused]] bool eligibleOboeLibrary(const char* path) {
+[[maybe_unused]] bool eligibleDynamicAAudioLibrary(const char* path) {
     if (!eligibleLibrary(path)) return false;
     const char* basename = std::strrchr(path, '/');
-    return basename && !std::strcmp(basename + 1, "liboboe.so");
+    if (!basename) return false;
+    const char* name = basename + 1;
+    // JL Mod's TinySoundFont and Sonivox MIDI backends use Oboe to open
+    // low-latency AAudio streams. Their Android.mk builds may place Oboe's
+    // dynamic AAudio loader in these app-local DSOs rather than liboboe.so.
+    return !std::strcmp(name, "liboboe.so") || !std::strcmp(name, "libmmapi_tsf.so") ||
+        !std::strcmp(name, "libmmapi_eas.so");
 }
 #ifndef LDSP_AAUDIO_COMPAT_HOST_TEST
 std::mutex rebindMutex;
@@ -266,11 +273,11 @@ int inspectLibrary(dl_phdr_info* info, size_t, void* opaque) {
     }};
     applyImports(openSlTargets, "OpenSL");
     if (lookup.result == ldsp::got::Result::Unsafe) return 1;
-    if (eligibleOboeLibrary(info->dlpi_name)) {
+    if (eligibleDynamicAAudioLibrary(info->dlpi_name)) {
         const std::array<ldsp::got::Target, 1> resolverTargets{{
-            {"dlsym", reinterpret_cast<uintptr_t>(originalResolve), reinterpret_cast<uintptr_t>(resolveOboeSymbol)}
+            {"dlsym", reinterpret_cast<uintptr_t>(originalResolve), reinterpret_cast<uintptr_t>(resolveAppAudioSymbol)}
         }};
-        applyImports(resolverTargets, "Oboe dynamic AAudio");
+        applyImports(resolverTargets, "dynamic AAudio backend");
     }
     return 1;
 }

@@ -78,36 +78,36 @@ int main() {
     for (size_t i = 0; i < names.size(); ++i) {
         resolvedSymbol = originals[i];
         const auto before = resolutionCount;
-        assert(resolveOboeSymbol(concreteHandle, names[i]) == replacements[i]);
+        assert(resolveAppAudioSymbol(concreteHandle, names[i]) == replacements[i]);
         assert(resolutionCount == before + 1 && lastHandle == concreteHandle && lastSymbol == names[i]);
         // Same name but another implementation must remain untouched.
         resolvedSymbol = reinterpret_cast<void*>(0x4567);
-        assert(resolveOboeSymbol(concreteHandle, names[i]) == resolvedSymbol);
+        assert(resolveAppAudioSymbol(concreteHandle, names[i]) == resolvedSymbol);
         resolvedSymbol = originals[i];
-        assert(resolveOboeSymbol(concreteHandle, "unrelated_symbol") == resolvedSymbol);
-        assert(resolveOboeSymbol(RTLD_DEFAULT, names[i]) == resolvedSymbol);
+        assert(resolveAppAudioSymbol(concreteHandle, "unrelated_symbol") == resolvedSymbol);
+        assert(resolveAppAudioSymbol(RTLD_DEFAULT, names[i]) == resolvedSymbol);
         assert(lastHandle == RTLD_DEFAULT);
-        assert(resolveOboeSymbol(RTLD_NEXT, names[i]) == resolvedSymbol);
+        assert(resolveAppAudioSymbol(RTLD_NEXT, names[i]) == resolvedSymbol);
         assert(lastHandle == RTLD_NEXT);
-        property = "0"; assert(resolveOboeSymbol(concreteHandle, names[i]) == resolvedSymbol); property = "1";
-        ready.store(false); assert(resolveOboeSymbol(concreteHandle, names[i]) == replacements[i]); ready.store(true);
-        observerReady.store(false); assert(resolveOboeSymbol(concreteHandle, names[i]) == resolvedSymbol); observerReady.store(true);
-        unsafeFailure.store(true); assert(resolveOboeSymbol(concreteHandle, names[i]) == resolvedSymbol); unsafeFailure.store(false);
+        property = "0"; assert(resolveAppAudioSymbol(concreteHandle, names[i]) == resolvedSymbol); property = "1";
+        ready.store(false); assert(resolveAppAudioSymbol(concreteHandle, names[i]) == replacements[i]); ready.store(true);
+        observerReady.store(false); assert(resolveAppAudioSymbol(concreteHandle, names[i]) == resolvedSymbol); observerReady.store(true);
+        unsafeFailure.store(true); assert(resolveAppAudioSymbol(concreteHandle, names[i]) == resolvedSymbol); unsafeFailure.store(false);
     }
     // Interleaving: Oboe resolves and caches its pointers after GOT publication
     // but before the load callback publishes ready. Cached wrappers must survive
     // that window without modifying construction until compatibility is ready.
     ready.store(false);
     resolvedSymbol = originals[0];
-    auto cachedCreate = reinterpret_cast<decltype(originalCreate)>(resolveOboeSymbol(concreteHandle, names[0]));
+    auto cachedCreate = reinterpret_cast<decltype(originalCreate)>(resolveAppAudioSymbol(concreteHandle, names[0]));
     resolvedSymbol = originals[1];
-    auto cachedDirection = reinterpret_cast<decltype(originalDirection)>(resolveOboeSymbol(concreteHandle, names[1]));
+    auto cachedDirection = reinterpret_cast<decltype(originalDirection)>(resolveAppAudioSymbol(concreteHandle, names[1]));
     resolvedSymbol = originals[2];
-    auto cachedPerformance = reinterpret_cast<decltype(originalPerformance)>(resolveOboeSymbol(concreteHandle, names[2]));
+    auto cachedPerformance = reinterpret_cast<decltype(originalPerformance)>(resolveAppAudioSymbol(concreteHandle, names[2]));
     resolvedSymbol = originals[3];
-    auto cachedOpen = reinterpret_cast<decltype(originalOpen)>(resolveOboeSymbol(concreteHandle, names[3]));
+    auto cachedOpen = reinterpret_cast<decltype(originalOpen)>(resolveAppAudioSymbol(concreteHandle, names[3]));
     resolvedSymbol = originals[4];
-    auto cachedDelete = reinterpret_cast<decltype(originalDelete)>(resolveOboeSymbol(concreteHandle, names[4]));
+    auto cachedDelete = reinterpret_cast<decltype(originalDelete)>(resolveAppAudioSymbol(concreteHandle, names[4]));
     AAudioStreamBuilder* earlyBuilder = nullptr;
     assert(cachedCreate(&earlyBuilder) == AAUDIO_OK && findBuilder(earlyBuilder) == nullptr);
     cachedDirection(earlyBuilder, AAUDIO_DIRECTION_OUTPUT);
@@ -137,14 +137,17 @@ int main() {
     unsafeFailure.store(false); ready.store(true);
     assert(cachedDelete(lateBuilder) == AAUDIO_OK);
     resolvedSymbol = nullptr;
-    assert(resolveOboeSymbol(concreteHandle, names[0]) == nullptr);
-    assert(resolveOboeSymbol(concreteHandle, nullptr) == nullptr);
-    assert(eligibleOboeLibrary("/data/app/example/lib/arm64/liboboe.so"));
-    assert(eligibleOboeLibrary("/data/app/example/base.apk!/lib/arm64-v8a/liboboe.so"));
-    for (const char* path : {"/system/lib64/liboboe.so", "/data/app/example/liboboe.so.bak",
-            "/data/app/example/libother.so", "/data/app/com.lightning.dsp-abc/liboboe.so"})
-        assert(!eligibleOboeLibrary(path));
-    assert(!eligibleOboeLibrary(nullptr));
+    assert(resolveAppAudioSymbol(concreteHandle, names[0]) == nullptr);
+    assert(resolveAppAudioSymbol(concreteHandle, nullptr) == nullptr);
+    assert(eligibleDynamicAAudioLibrary("/data/app/example/lib/arm64/liboboe.so"));
+    assert(eligibleDynamicAAudioLibrary("/data/app/example/base.apk!/lib/arm64-v8a/liboboe.so"));
+    assert(eligibleDynamicAAudioLibrary("/data/app/example/lib/arm64/libmmapi_tsf.so"));
+    assert(eligibleDynamicAAudioLibrary("/data/app/example/base.apk!/lib/arm64-v8a/libmmapi_eas.so"));
+    for (const char* path : {"/system/lib64/liboboe.so", "/system/lib64/libmmapi_tsf.so",
+            "/data/app/example/liboboe.so.bak", "/data/app/example/libother.so",
+            "/data/app/com.lightning.dsp-abc/liboboe.so", "/data/app/com.lightning.dsp-abc/libmmapi_tsf.so"})
+        assert(!eligibleDynamicAAudioLibrary(path));
+    assert(!eligibleDynamicAAudioLibrary(nullptr));
     // Actual resolver integration: preserve success, failures, and an unread
     // linker error instead of clearing or consuming it during address checks.
     originalResolve = dlsym;
@@ -157,9 +160,9 @@ int main() {
     dlerror();
     void* mallocSymbol = dlsym(process, "malloc");
     assert(mallocSymbol && dlerror() == nullptr);
-    assert(resolveOboeSymbol(process, "malloc") == mallocSymbol && dlerror() == nullptr);
+    assert(resolveAppAudioSymbol(process, "malloc") == mallocSymbol && dlerror() == nullptr);
     constexpr const char* missingSymbol = "ldsp_deliberately_missing_oboe_test_symbol";
-    assert(resolveOboeSymbol(process, missingSymbol) == nullptr);
+    assert(resolveAppAudioSymbol(process, missingSymbol) == nullptr);
     const char* missingError = dlerror();
     assert(missingError && std::strstr(missingError, missingSymbol));
     assert(dlerror() == nullptr);
@@ -168,7 +171,7 @@ int main() {
     const char* baselineError = dlerror();
     const std::string baseline = baselineError ? baselineError : "";
     dlsym(process, missingSymbol);
-    resolveOboeSymbol(process, "malloc");
+    resolveAppAudioSymbol(process, "malloc");
     const char* wrappedError = dlerror();
     assert(baseline == (wrappedError ? wrappedError : ""));
     dlclose(process);

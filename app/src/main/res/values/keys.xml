@@ -40,6 +40,8 @@
     <string name="key_audioformat_encoding" translatable="false">audioformat_encoding</string>
     <string name="key_audioformat_buffersize" translatable="false">audioformat_buffersize</string>
     <string name="key_audioformat_processing" translatable="false">audioformat_processing</string>
+    <string name="key_audioformat_processing_global_option" translatable="false">audioformat_processing_global_option</string>
+    <string name="key_audioformat_processing_session_option" translatable="false">audioformat_processing_session_option</string>
     <string name="key_audioformat_all_mixers" translatable="false">audioformat_all_mixers</string>
     <string name="key_audioformat_enhanced_processing" translatable="false">audioformat_enhanced_processing</string>
     <string name="key_audioformat_aaudio_compat" translatable="false">audioformat_aaudio_compat</string>

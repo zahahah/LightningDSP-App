@@ -35,7 +35,12 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
 
     private val encoding by lazy { findPreference<ListPreference>(getString(R.string.key_audioformat_encoding)) }
     private val bufferSize by lazy { findPreference<MaterialSeekbarPreference>(getString(R.string.key_audioformat_buffersize)) }
-    private val globalMode by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_processing)) }
+    private val globalMode by lazy {
+        findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_processing_global_option))
+    }
+    private val sessionMode by lazy {
+        findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_processing_session_option))
+    }
     private val allMixers by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_all_mixers)) }
     private val enhancedMode by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_enhanced_processing)) }
     private val audioCompat by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_aaudio_compat)) }
@@ -123,13 +128,12 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
         // Rootless: Hide audio processing category
         globalMode?.parent?.isVisible = isRoot()
         globalMode?.setOnPreferenceChangeListener { _, newValue ->
-            val globalEnabled = newValue as Boolean
-            updateProcessingMode(globalEnabled)
-            if (!globalEnabled)
-                requireContext().requestIgnoreBatteryOptimizations()
-
-            RootAudioProcessorService.updateGlobalMode(requireContext(), globalEnabled)
-            true
+            setProcessingMode(newValue as Boolean)
+            false
+        }
+        sessionMode?.setOnPreferenceChangeListener { _, newValue ->
+            setProcessingMode(!(newValue as Boolean))
+            false
         }
         enhancedMode?.setOnPreferenceChangeListener { _, newValue ->
             if (newValue as Boolean) {
@@ -201,8 +205,8 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
     }
 
     private fun updateProcessingMode(globalEnabled: Boolean) {
-        globalMode?.title = getString(if (globalEnabled)
-            R.string.audio_format_processing_global else R.string.audio_format_processing_session)
+        globalMode?.isChecked = globalEnabled
+        sessionMode?.isChecked = !globalEnabled
         enhancedMode?.isVisible = isRoot() && !globalEnabled
         enhancedModeInfo?.isVisible = isRoot() && !globalEnabled
         if (isRoot() && !globalEnabled) enhancedMode?.apply {
@@ -220,6 +224,16 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
             isVisible = isRoot()
             isEnabled = isRoot()
         }
+    }
+
+    private fun setProcessingMode(globalEnabled: Boolean) {
+        val previousMode = preferences.get<Boolean>(R.string.key_audioformat_processing)
+        if (previousMode != globalEnabled) {
+            preferences.set(R.string.key_audioformat_processing, globalEnabled)
+            if (!globalEnabled) requireContext().requestIgnoreBatteryOptimizations()
+            RootAudioProcessorService.updateGlobalMode(requireContext(), globalEnabled)
+        }
+        updateProcessingMode(globalEnabled)
     }
 
     companion object {

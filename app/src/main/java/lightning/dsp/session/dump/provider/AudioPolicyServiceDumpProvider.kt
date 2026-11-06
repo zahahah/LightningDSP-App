@@ -6,12 +6,14 @@ import lightning.dsp.model.AudioSessionDumpEntry
 import lightning.dsp.session.dump.data.AudioPolicyServiceDump
 import lightning.dsp.session.dump.data.ISessionInfoDump
 import lightning.dsp.session.dump.utils.DumpUtils
+import lightning.dsp.session.dump.utils.AudioPolicyPlaybackActivity
 import lightning.dsp.utils.extensions.ContextExtensions.getPackageNameFromUid
 import lightning.dsp.utils.isRootless
 import timber.log.Timber
 import java.util.Locale
 
 class AudioPolicyServiceDumpProvider : ISessionDumpProvider {
+    @Volatile private var activityUnavailableReported = false
 
     override fun dump(context: Context): ISessionInfoDump? {
         val dump = DumpUtils.dumpAll(context, TARGET_SERVICE)
@@ -29,6 +31,7 @@ class AudioPolicyServiceDumpProvider : ISessionDumpProvider {
         val captureAllowedRegex = """allowPlaybackCapture=(\S+)(?:\s*,).+packageName=(\S+)""".toRegex()
 
         val sessions = hashMapOf<Int, AudioSessionDumpEntry>()
+        val activity = AudioPolicyPlaybackActivity.parse(dump)
 
         var matches = sessionRegex.findAll(dump)
         if(matches.count() <= 0)
@@ -49,7 +52,8 @@ class AudioPolicyServiceDumpProvider : ISessionDumpProvider {
                 }
 
                 val pkg = context.getPackageNameFromUid(uid) ?: uid.toString()
-                sessions[sid] = AudioSessionDumpEntry(uid, pkg, usage, content)
+                sessions[sid] = AudioSessionDumpEntry(uid, pkg, usage, content,
+                    activity[AudioPolicyPlaybackActivity.Identity(sid, uid)])
                 Timber.v("Found session id $sid (uid $uid; usage $usage; content $content; pkg $pkg)")
 
             } catch (ex: NumberFormatException) {
@@ -57,6 +61,13 @@ class AudioPolicyServiceDumpProvider : ISessionDumpProvider {
                 Timber.e(ex)
             }
         }
+
+        if (sessions.isNotEmpty() && activity.values.none { it != null }) {
+            if (!activityUnavailableReported) {
+                activityUnavailableReported = true
+                Timber.w("AudioPolicy playback activity unavailable or incomplete; paused-session suspension bypassed")
+            }
+        } else if (activity.values.any { it != null }) activityUnavailableReported = false
 
         // Parse capture allow log
         val captureAllowLog = hashMapOf<String, Boolean>()

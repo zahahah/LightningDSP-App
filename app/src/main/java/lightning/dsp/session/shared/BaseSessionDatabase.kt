@@ -21,6 +21,7 @@ abstract class BaseSessionDatabase(protected val context: Context) {
     protected abstract fun shouldAddSession(id: Int, uid: Int, packageName: String): Boolean
     protected abstract fun createSession(id: Int, uid: Int, packageName: String): IEffectSession?
     protected abstract fun onSessionRemoved(item: IEffectSession)
+    protected open fun onSessionDumpUpdated(dump: ISessionInfoDump) {}
 
     fun destroy()
     {
@@ -39,6 +40,8 @@ abstract class BaseSessionDatabase(protected val context: Context) {
             Timber.d("update: SessionDatabase is disposing; ignoring dump")
             return
         }
+
+        onSessionDumpUpdated(dump)
 
         val removedSessions = sessionList.filter {
             !dump.sessions.contains(it.key)

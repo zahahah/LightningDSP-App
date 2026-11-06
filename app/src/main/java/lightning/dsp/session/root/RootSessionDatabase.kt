@@ -3,6 +3,8 @@ package lightning.dsp.session.root
 import android.content.Context
 import android.content.Intent
 import android.media.audiofx.AudioEffect
+import android.os.SystemClock
+import lightning.dsp.session.dump.data.ISessionInfoDump
 import kotlinx.coroutines.Job
 import lightning.dsp.MainApplication
 import lightning.dsp.interop.LightningDspRemoteEngine
@@ -22,6 +24,9 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
     /** Prevent a broadcast or enhanced scan from creating a second AudioEffect
      * for a session currently owned by the mixer-coverage controller. */
     private val supplementalSessionReservations = mutableSetOf<Int>()
+    private val playbackActivity = SessionPlaybackActivity()
+    private val playbackSuspended = mutableSetOf<Int>()
+    val needsPlaybackActivityConfirmation: Boolean get() = playbackActivity.needsConfirmation
 
     @Synchronized
     fun reserveSupplementalSession(id: Int): Boolean {
@@ -43,7 +48,8 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
             field = value
             sessionList.forEach { (id, session) ->
                 val appEnabled = id <= 0 || isPackageDspEnabled(session.packageName)
-                (session as RemoteEffectSession).effect?.enabled = value && appEnabled
+                (session as RemoteEffectSession).effect?.enabled = value && appEnabled && shouldProcess(id, session.uid, session.packageName)
+                recordPlaybackSuspension(id, session.uid, session.packageName)
             }
         }
 
@@ -55,7 +61,10 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
         context.getSharedPreferences("lightningdsp_volume_panel", Context.MODE_PRIVATE)
             .edit().putBoolean(SESSION_DSP_ENABLED_PREFIX + packageName, enabled).apply()
         sessionList.filterValues { it.packageName == packageName }.forEach { (id, session) ->
-            if (id > 0) (session as? RemoteEffectSession)?.effect?.enabled = this.enabled && enabled
+            if (id > 0) {
+                (session as? RemoteEffectSession)?.effect?.enabled = this.enabled && enabled && shouldProcess(id, session.uid, session.packageName)
+                recordPlaybackSuspension(id, session.uid, session.packageName)
+            }
         }
     }
 
@@ -69,6 +78,7 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
         if (sessionList[id] == null) {
             Timber.d("Creating effect for session $id (${packageName})")
 
+            val finalUid = if (uid >= 0) uid else context.getUidFromPackage(packageName)
             val effect = try {
                 LightningDspRemoteEngine(context, id, 0, ProcessorMessageHandler())
             }
@@ -82,12 +92,9 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
             }
 
             effect.syncWithPreferences()
-            effect.enabled = enabled && (id <= 0 || isPackageDspEnabled(packageName))
-
-            val finalUid = if (uid >= 0)
-                uid
-            else
-                context.getUidFromPackage(packageName)
+            effect.enabled = enabled && (id <= 0 || isPackageDspEnabled(packageName)) &&
+                shouldProcess(id, finalUid, packageName)
+            recordPlaybackSuspension(id, finalUid, packageName)
 
             return RemoteEffectSession(packageName, finalUid, effect)
         } else {
@@ -100,7 +107,47 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
         sessionList.values.toList().forEach { session ->
             val engine = (session as? RemoteEffectSession)?.effect ?: return@forEach
             engine.syncWithPreferences()
-            engine.enabled = enabled && (engine.sessionId <= 0 || isPackageDspEnabled(session.packageName))
+            engine.enabled = enabled && (engine.sessionId <= 0 || isPackageDspEnabled(session.packageName)) &&
+                shouldProcess(engine.sessionId, session.uid, session.packageName)
+            recordPlaybackSuspension(engine.sessionId, session.uid, session.packageName)
+        }
+    }
+
+    private fun shouldProcess(id: Int, uid: Int, packageName: String): Boolean =
+        id <= 0 || !app.isEnhancedProcessing || playbackActivity.shouldProcess(id, uid, packageName)
+
+    override fun onSessionDumpUpdated(dump: ISessionInfoDump) {
+        playbackActivity.update(dump.sessions, SystemClock.uptimeMillis())
+        applyPlaybackActivity()
+    }
+
+    /** Unknown/failed observations must not strand a resumed session in bypass. */
+    fun clearPlaybackActivity() {
+        playbackActivity.clear()
+        applyPlaybackActivity()
+    }
+
+    private fun recordPlaybackSuspension(id: Int, uid: Int, packageName: String) {
+        if (id > 0 && !shouldProcess(id, uid, packageName)) playbackSuspended += id
+        else playbackSuspended -= id
+    }
+
+    private fun applyPlaybackActivity() {
+        sessionList.toMap().forEach { (id, session) ->
+            if (id <= 0) return@forEach
+            val engine = (session as? RemoteEffectSession)?.effect ?: return@forEach
+            val allowed = shouldProcess(id, session.uid, session.packageName)
+            val desired = enabled && isPackageDspEnabled(session.packageName) && allowed
+            val actual = runCatching { engine.effect?.enabled }.getOrNull()
+            // Do not send redundant writes, but never cache a failed state change as applied.
+            if ((id in playbackSuspended) == !allowed && actual == desired) return@forEach
+            engine.enabled = desired
+            if (runCatching { engine.effect?.enabled }.getOrNull() != desired) {
+                Timber.w("Session %d playback processing state was not confirmed", id)
+                return@forEach
+            }
+            recordPlaybackSuspension(id, session.uid, session.packageName)
+            Timber.d("Session %d playback processing %s", id, if (allowed) "resumed" else "suspended")
         }
     }
 
@@ -115,6 +162,10 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
         synchronized(this) { id !in supplementalSessionReservations }
 
     override fun onSessionRemoved(item: IEffectSession) {
+        sessionList.entries.firstOrNull { it.value === item }?.key?.let { id ->
+            playbackSuspended -= id
+            playbackActivity.forget(id)
+        }
         (item as RemoteEffectSession).run {
             item.coroutineContext[Job]!!.invokeOnCompletion {
                 item.effect?.close()
@@ -128,6 +179,7 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
         if (sessionId < 0 || (app.isGlobalMode && sessionId > 0)) {
             return
         }
+        playbackActivity.forget(sessionId)
         // Global mode enabled, remove other sessions
         if (sessionId == 0)
             clearSessions()

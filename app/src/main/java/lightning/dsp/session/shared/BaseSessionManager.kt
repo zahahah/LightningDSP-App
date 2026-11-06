@@ -22,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -61,6 +62,9 @@ abstract class BaseSessionManager(protected val context: Context) : DumpManager.
     private val pollingMutex = Mutex()
     private val pollingScope = CoroutineScope(Dispatchers.Main)
     private var continuousPollingJob: Job? = null
+    private var playbackPollingJob: Job? = null
+    private var playbackPollPending = false
+    private val playbackObservation = PlaybackObservationGeneration()
     private var destroyed = false
 
     // Callbacks
@@ -81,7 +85,8 @@ abstract class BaseSessionManager(protected val context: Context) : DumpManager.
                 super.onPlaybackConfigChanged(configs)
 
                 Timber.d("Playback config changed")
-                pollOnce(false)
+                playbackObservation.invalidate()
+                pollPlaybackChange()
             }
         }
         audioManager.registerAudioPlaybackCallback(audioPlaybackCallback!!, Handler(Looper.getMainLooper()))
@@ -112,6 +117,10 @@ abstract class BaseSessionManager(protected val context: Context) : DumpManager.
         preferences.unregisterOnSharedPreferenceChangeListener(preferencesListener)
         continuousPollingJob?.cancel()
         continuousPollingJob = null
+        playbackObservation.invalidate()
+        playbackPollPending = false
+        playbackPollingJob?.cancel()
+        playbackPollingJob = null
         pollingScope.cancel()
 
         dumpManager.unregisterOnDumpMethodChangeListener(this)
@@ -190,7 +199,24 @@ abstract class BaseSessionManager(protected val context: Context) : DumpManager.
         }
 
         pollingMutex.withLock {
-            handleSessionDump(dumpManager.dumpSessions())
+            if (destroyed) return@withLock
+            val observedPlayback = playbackObservation.snapshot()
+            val dump = withContext(Dispatchers.IO) { dumpManager.dumpSessions() }
+            if (!destroyed && playbackObservation.isCurrent(observedPlayback)) handleSessionDump(dump)
+            else Timber.d("Discarded session dump superseded by a playback change")
+        }
+    }
+
+    /** Keep the latest resume signal without enqueuing a dump for every callback. */
+    private fun pollPlaybackChange() {
+        if (destroyed) return
+        playbackPollPending = true
+        if (playbackPollingJob?.isActive == true) return
+        playbackPollingJob = pollingScope.launch {
+            do {
+                playbackPollPending = false
+                pollSessionDump(true)
+            } while (!destroyed && playbackPollPending)
         }
     }
 
@@ -204,6 +230,7 @@ abstract class BaseSessionManager(protected val context: Context) : DumpManager.
 
     @CallSuper
     override fun onDumpMethodChange(method: DumpManager.Method) {
+        playbackObservation.invalidate()
         pollOnce(true)
     }
 

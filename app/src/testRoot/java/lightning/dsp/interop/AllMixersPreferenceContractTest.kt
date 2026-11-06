@@ -113,18 +113,31 @@ class AllMixersPreferenceContractTest {
             "string", "key_audioformat_processing"))
         val source = File(app,
             "src/main/java/lightning/dsp/fragment/settings/SettingsAudioFormatFragment.kt").readText()
-        assertTrue(source.contains("globalMode?.title = getString(if (globalEnabled)"))
-        assertTrue(source.contains("R.string.audio_format_processing_global else R.string.audio_format_processing_session"))
+        assertTrue(source.contains("setProcessingMode(newValue as Boolean)"))
+        assertTrue(source.contains("setProcessingMode(!(newValue as Boolean))"))
+        assertTrue(source.contains("globalMode?.isChecked = globalEnabled"))
+        assertTrue(source.contains("sessionMode?.isChecked = !globalEnabled"))
+        assertTrue(source.contains("preferences.set(R.string.key_audioformat_processing, globalEnabled)"))
         assertTrue(source.contains("RootAudioProcessorService.updateGlobalMode"))
         assertFalse(source.contains("legacyMode"))
         val nodes = xml("src/main/res/xml/app_audio_format_preferences.xml")
             .getElementsByTagName("lightning.dsp.preference.MaterialSwitchPreference")
-        val mode = (0 until nodes.length).map { nodes.item(it) as Element }.single {
-            it.getAttributeNS(androidNamespace, "key") == "@string/key_audioformat_processing"
+        val settings = (0 until nodes.length).map { nodes.item(it) as Element }
+        val globalMode = settings.single {
+            it.getAttributeNS(androidNamespace, "key") == "@string/key_audioformat_processing_global_option"
         }
-        assertEquals("@string/audio_format_processing_global", mode.getAttributeNS(androidNamespace, "title"))
-        assertEquals("@string/audio_format_processing_global_summary", mode.getAttributeNS(androidNamespace, "summaryOn"))
-        assertEquals("@string/audio_format_processing_session_summary", mode.getAttributeNS(androidNamespace, "summaryOff"))
+        val sessionMode = settings.single {
+            it.getAttributeNS(androidNamespace, "key") == "@string/key_audioformat_processing_session_option"
+        }
+        assertEquals("@string/audio_format_processing_global", globalMode.getAttributeNS(androidNamespace, "title"))
+        assertEquals("@string/audio_format_processing_global_summary", globalMode.getAttributeNS(androidNamespace, "summary"))
+        assertEquals("@string/audio_format_processing_session", sessionMode.getAttributeNS(androidNamespace, "title"))
+        assertEquals("@string/audio_format_processing_session_summary", sessionMode.getAttributeNS(androidNamespace, "summary"))
+        assertEquals("false", globalMode.getAttributeNS(androidNamespace, "persistent"))
+        assertEquals("false", sessionMode.getAttributeNS(androidNamespace, "persistent"))
+        assertFalse(globalMode.hasAttributeNS(androidNamespace, "defaultValue"))
+        assertFalse(sessionMode.hasAttributeNS(androidNamespace, "defaultValue"))
+        assertEquals("true", value("src/main/res/values/defaults.xml", "bool", "default_audioformat_processing"))
         assertFalse(source.contains("R.string.audio_format_processing_legacy"))
     }
 }
