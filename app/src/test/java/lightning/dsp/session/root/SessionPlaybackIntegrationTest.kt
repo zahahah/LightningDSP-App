@@ -46,17 +46,14 @@ class SessionPlaybackIntegrationTest {
             .findAll(service).count())
     }
 
-    @Test fun activityChangesKeepAttachmentsAndRespectGlobalAndPerAppGates() {
+    @Test fun confirmedInactiveSessionsAreRemovedAndNotImmediatelyReattached() {
         val database = source("session/root/RootSessionDatabase")
         assertTrue(database.contains("id <= 0 || !app.isEnhancedProcessing || playbackActivity.shouldProcess"))
-        val apply = database.substringAfter("private fun applyPlaybackActivity()").substringBefore("override fun shouldAcceptSessionDump")
-        assertTrue(apply.contains("if (id <= 0) return@forEach"))
-        assertTrue(apply.contains("enabled && isPackageDspEnabled(session.packageName) && allowed"))
-        assertTrue(apply.contains("actual == desired"))
-        assertTrue(apply.indexOf("getOrNull() != desired") < apply.indexOf("recordPlaybackSuspension("))
-        assertFalse(apply.contains("close()"))
-        assertFalse(apply.contains("removeSession("))
-        assertFalse(apply.contains("LightningDspRemoteEngine("))
-        assertFalse(apply.contains("setEnabledIfSupported"))
+        val update = database.substringAfter("override fun onSessionDumpUpdated").substringBefore("fun clearPlaybackActivity")
+        assertTrue(update.contains("playbackActivity.confirmedInactiveSessions()"))
+        assertTrue(update.contains("removeSession(id)"))
+        val addGate = database.substringAfter("override fun shouldAddSession").substringBefore("override fun onSessionRemoved")
+        assertTrue(addGate.contains("playbackActivity.shouldProcess(id, uid, packageName)"))
+        assertTrue(addGate.contains("id !in supplementalSessionReservations"))
     }
 }

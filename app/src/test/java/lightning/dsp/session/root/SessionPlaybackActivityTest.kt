@@ -8,7 +8,7 @@ class SessionPlaybackActivityTest {
     private fun entry(active: Boolean?, uid: Int = 10322, name: String = "player") =
         AudioSessionDumpEntry(uid, name, "AUDIO_USAGE_MEDIA", "AUDIO_CONTENT_TYPE_MUSIC", active)
 
-    @Test fun pauseNeedsGraceAndAFreshConfirmationWithoutRemovingAttachment() {
+    @Test fun confirmedInactiveSessionIsEligibleForEffectCleanup() {
         val policy = SessionPlaybackActivity()
         policy.update(mapOf(4961 to entry(false)), 0)
         assertTrue(policy.needsConfirmation)
@@ -20,8 +20,10 @@ class SessionPlaybackActivityTest {
         policy.update(mapOf(4961 to entry(false)), 1_000)
         assertFalse(policy.shouldProcess(4961, 10322, "player"))
         assertFalse(policy.needsConfirmation)
+        assertEquals(mapOf(4961 to (10322 to "player")), policy.confirmedInactiveSessions())
         policy.update(mapOf(4961 to entry(true)), 1_001)
         assertTrue(policy.shouldProcess(4961, 10322, "player"))
+        assertTrue(policy.confirmedInactiveSessions().isEmpty())
     }
 
     @Test fun activeSessionKeepsProcessingWhilePausedSessionsAreSuspended() {

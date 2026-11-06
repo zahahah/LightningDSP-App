@@ -26,6 +26,7 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
     private val supplementalSessionReservations = mutableSetOf<Int>()
     private val playbackActivity = SessionPlaybackActivity()
     private val playbackSuspended = mutableSetOf<Int>()
+    private val confirmedInactiveRemovals = mutableSetOf<Int>()
     val needsPlaybackActivityConfirmation: Boolean get() = playbackActivity.needsConfirmation
 
     @Synchronized
@@ -118,6 +119,14 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
 
     override fun onSessionDumpUpdated(dump: ISessionInfoDump) {
         playbackActivity.update(dump.sessions, SystemClock.uptimeMillis())
+        val inactive = playbackActivity.confirmedInactiveSessions()
+        sessionList.toMap().forEach { (id, session) ->
+            if (inactive[id] == (session.uid to session.packageName)) {
+                Timber.d("Removing inactive audio session %d (%s)", id, session.packageName)
+                confirmedInactiveRemovals += id
+                removeSession(id)
+            }
+        }
         applyPlaybackActivity()
     }
 
@@ -159,12 +168,14 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
         return true
     }
     override fun shouldAddSession(id: Int, uid: Int, packageName: String) =
-        synchronized(this) { id !in supplementalSessionReservations }
+        synchronized(this) {
+            id !in supplementalSessionReservations && playbackActivity.shouldProcess(id, uid, packageName)
+        }
 
     override fun onSessionRemoved(item: IEffectSession) {
         sessionList.entries.firstOrNull { it.value === item }?.key?.let { id ->
             playbackSuspended -= id
-            playbackActivity.forget(id)
+            if (!confirmedInactiveRemovals.remove(id)) playbackActivity.forget(id)
         }
         (item as RemoteEffectSession).run {
             item.coroutineContext[Job]!!.invokeOnCompletion {

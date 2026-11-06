@@ -25,6 +25,10 @@ internal class SessionPlaybackActivity(private val graceMillis: Long = 1_000) {
     fun shouldProcess(id: Int, uid: Int, packageName: String): Boolean = inactive[id]
         ?.takeIf { it.uid == uid && it.packageName == packageName }?.suspended != true
 
+    fun confirmedInactiveSessions(): Map<Int, Pair<Int, String>> = inactive
+        .filterValues { it.suspended }
+        .mapValues { (_, observation) -> observation.uid to observation.packageName }
+
     fun forget(id: Int) { inactive = inactive - id; needsConfirmation = inactive.values.any { !it.suspended } }
     fun clear() { inactive = emptyMap(); needsConfirmation = false }
 }
