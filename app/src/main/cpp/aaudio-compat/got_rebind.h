@@ -162,13 +162,19 @@ inline bool prepare(const Image& image,const std::array<Target,Count>& targets,s
                 ELF64_ST_BIND(s.st_info)!=STB_GLOBAL||(s.st_other & 3)!=STV_DEFAULT) return false;
             uintptr_t slot;
             if(!add(image.base,r.r_offset,slot)||slot%alignof(uintptr_t)||!l.contains(slot,sizeof(uintptr_t),PF_R|PF_W)) return false;
-            int prot=0;
+            int prot=0; size_t owner=l.count;
             for(size_t j=0;j<l.count;++j) if(slot>=l.segments[j].begin&&slot+sizeof(uintptr_t)<=l.segments[j].end) {
                 if(l.segments[j].flags&PF_X) return false;
-                prot=PROT_READ|PROT_WRITE;
+                prot=PROT_READ|PROT_WRITE; owner=j;
             }
             const auto page=slot&~(pageSize-1);
-            if(page>UINTPTR_MAX-pageSize||!l.contains(page,pageSize,PF_R|PF_W)) return false;
+            if(owner==l.count||page>UINTPTR_MAX-pageSize) return false;
+            // The loader maps whole pages, but p_memsz can stop within the
+            // final page. Bounds for all reads and the slot itself remain the
+            // exact PT_LOAD bounds above. Refuse protection changes if another
+            // segment shares this page, especially executable code.
+            for(size_t j=0;j<l.count;++j)
+                if(j!=owner && l.segments[j].begin<page+pageSize && l.segments[j].end>page) return false;
             if(relro&&page>=l.relroBegin&&page<l.relroEnd) prot=PROT_READ;
             if(!out.page) {out.page=page;out.pageSize=pageSize;out.expectedProtection=prot;}
             if(out.page!=page||out.expectedProtection!=prot) return false;

@@ -36,6 +36,44 @@ struct Fixture {
 struct Protection { int calls=0; int fail=0; uintptr_t* corrupt=nullptr; };
 bool protect(void* opaque,uintptr_t page,size_t size,int mode){auto& p=*static_cast<Protection*>(opaque);++p.calls;if(p.calls==p.fail)return false;const bool ok=mprotect(reinterpret_cast<void*>(page),size,mode)==0;if(ok&&p.calls==1&&p.corrupt)*p.corrupt=0xdead;return ok;}
 int main(){
+    // A loader may map the final partial PT_LOAD page even though p_memsz ends
+    // before the page boundary (as in JL Mod's liboboe.so).
+    {Fixture f; BasicPlan<1> p; const std::array<Target,1> one{{f.targets[0]}};
+        f.ph[0].p_memsz=f.page*2+5*sizeof(uintptr_t);
+        f.ph[0].p_filesz=f.ph[0].p_memsz;
+        assert(prepare({reinterpret_cast<uintptr_t>(f.bytes),f.ph,3},one,f.page,p));
+        assert(mprotect(f.slots,f.page,PROT_READ)==0); Protection state;
+        assert(apply(p,PROT_READ,protect,&state)==Result::Applied);
+        assert(f.slots[0]==f.targets[0].replacement);
+    }
+    // A partial page at the start of a distinct RW segment is also valid.
+    {Fixture f; BasicPlan<1> p; const std::array<Target,1> one{{f.targets[0]}};
+        f.ph[0].p_memsz=f.page*2; f.ph[0].p_filesz=f.ph[0].p_memsz;
+        f.ph[3].p_type=PT_LOAD; f.ph[3].p_flags=PF_R|PF_W;
+        f.ph[3].p_vaddr=f.page*2+0x100; f.ph[3].p_filesz=0x100; f.ph[3].p_memsz=0x100;
+        reinterpret_cast<Elf64_Ehdr*>(f.bytes)->e_phnum=4;
+        auto* slot=reinterpret_cast<uintptr_t*>(f.bytes+f.page*2+0x100);
+        *slot=f.targets[0].original; f.rel[0].r_offset=f.page*2+0x100;
+        assert(prepare({reinterpret_cast<uintptr_t>(f.bytes),f.ph,4},one,f.page,p));
+        assert(p.slots[0].address==slot);
+    }
+    // The import itself must remain wholly inside the declared segment.
+    {Fixture f; BasicPlan<1> p; const std::array<Target,1> one{{f.targets[0]}};
+        f.ph[0].p_memsz=f.page*2+sizeof(uintptr_t)-1;
+        f.ph[0].p_filesz=f.ph[0].p_memsz;
+        assert(!prepare({reinterpret_cast<uintptr_t>(f.bytes),f.ph,3},one,f.page,p));
+    }
+    // Do not change protection when another load segment shares that page,
+    // even if the logical segment ranges do not overlap.
+    for (uint32_t flags : {uint32_t(PF_R|PF_X),uint32_t(PF_R|PF_W)}) {
+        Fixture f; BasicPlan<1> p; const std::array<Target,1> one{{f.targets[0]}};
+        f.ph[0].p_memsz=f.page*2+5*sizeof(uintptr_t);
+        f.ph[0].p_filesz=f.ph[0].p_memsz;
+        f.ph[3].p_type=PT_LOAD; f.ph[3].p_flags=flags;
+        f.ph[3].p_vaddr=f.page*2+0x200; f.ph[3].p_filesz=0x100; f.ph[3].p_memsz=0x100;
+        reinterpret_cast<Elf64_Ehdr*>(f.bytes)->e_phnum=4;
+        assert(!prepare({reinterpret_cast<uintptr_t>(f.bytes),f.ph,4},one,f.page,p));
+    }
     // OpenSL's independent one-symbol plan uses the same fail-closed ELF gate.
     for(size_t targetPage : {size_t{4096}, size_t{16384}}) {
         Fixture f; BasicPlan<1> p;

@@ -15,6 +15,13 @@ metadata, SysV/GNU hashes, imported symbol identity, slot/page uniqueness, prior
 import modifications, RELRO, writable data, protection failures, CAS conflicts,
 rollback, and builder direction/performance observation guards.
 
+An import slot may be inside a PT_LOAD whose first or last page extends beyond
+the exact segment bounds. The protection transaction accepts that partial page
+only when no other PT_LOAD shares it and the actual private mapping has the
+expected non-executable protection. ELF metadata and slots are still read only
+within the exact segment bounds. A page shared with another segment is rejected,
+including the 16 KiB page layout of the examined JL Mod liboboe.so.
+
 The direct AAudio implementation changes five import slots in an eligible user
 library. Except for the restricted Oboe resolver described below, it cannot observe
 dlsym calls or calls originating from other libraries;
