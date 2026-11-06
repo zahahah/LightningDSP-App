@@ -14,6 +14,7 @@ import androidx.core.content.getSystemService
 import androidx.lifecycle.Observer
 import androidx.lifecycle.asLiveData
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
@@ -62,6 +63,8 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
 
     private val backgroundScope = MainScope()
     private var backgroundStartup: Job? = null
+    private val pendingSessionCloseJobs = mutableMapOf<Int, Job>()
+    private val sessionCloseGrace = SessionCloseGrace()
 
     // Enhanced processing
     private var sessionDumpManager: RootSessionDumpManager? = null
@@ -198,10 +201,12 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
                 sendLocalBroadcast(Intent(Constants.ACTION_SERVICE_STARTED))
             }
             AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION -> {
+                val sessionId = intent.getIntExtra(AudioEffect.EXTRA_AUDIO_SESSION, -1)
+                cancelPendingSessionClose(sessionId)
                 if(app.rootSessionDatabase.sessionList.isEmpty())
                     sendLocalBroadcast(Intent(Constants.ACTION_SERVICE_STARTED))
 
-                val duplicateGlobal = intent.getIntExtra(AudioEffect.EXTRA_AUDIO_SESSION, -1) == 0 &&
+                val duplicateGlobal = sessionId == 0 &&
                     app.rootSessionDatabase.hasUsableGlobalSession()
                 if(!isServiceDisposing && !app.isEnhancedProcessing && !duplicateGlobal)
                     app.rootSessionDatabase.addSessionByIntent(intent)
@@ -209,14 +214,8 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
             AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION -> {
                 if(!app.isEnhancedProcessing) {
                     val sessionId = intent.getIntExtra(AudioEffect.EXTRA_AUDIO_SESSION, -1)
-                    MainScope().launch {
-                        if (sessionId != 0)
-                            delay(800)
-                        app.rootSessionDatabase.removeSessionByIntent(intent)
-                        if (app.rootSessionDatabase.sessionList.isEmpty() && mixerFallback?.hasOwnedSessions() != true) {
-                            stopSelf()
-                        }
-                    }
+                    if (sessionId == 0) removeClosedSession(intent)
+                    else scheduleSessionClose(intent, sessionId)
                 }
             }
         }
@@ -233,6 +232,9 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
         mixerFallback?.close()
         mixerFallback = null
         backgroundStartup?.cancel()
+        pendingSessionCloseJobs.values.forEach(Job::cancel)
+        pendingSessionCloseJobs.clear()
+        sessionCloseGrace.clear()
         backgroundScope.cancel()
 
         // Stop foreground service
@@ -252,6 +254,35 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
 
         notificationManager.cancel(Notifications.ID_SERVICE_STATUS)
         StatusNotificationGroup.serviceStopped(this, Notifications.ID_SERVICE_STATUS)
+    }
+
+    /** Keep the root service and session effect warm across short soundbank/audio-track gaps. */
+    private fun scheduleSessionClose(intent: Intent, sessionId: Int) {
+        if (sessionId < 0 || isServiceDisposing) return
+        cancelPendingSessionClose(sessionId)
+        val generation = sessionCloseGrace.schedule(sessionId)
+        val job = backgroundScope.launch(start = CoroutineStart.LAZY) {
+            delay(SESSION_CLOSE_GRACE_MILLIS)
+            if (!sessionCloseGrace.isCurrent(sessionId, generation) || isServiceDisposing) return@launch
+            sessionCloseGrace.complete(sessionId, generation)
+            pendingSessionCloseJobs.remove(sessionId)
+            removeClosedSession(intent)
+        }
+        pendingSessionCloseJobs[sessionId] = job
+        job.start()
+    }
+
+    private fun cancelPendingSessionClose(sessionId: Int) {
+        if (sessionId < 0) return
+        sessionCloseGrace.cancel(sessionId)
+        pendingSessionCloseJobs.remove(sessionId)?.cancel()
+    }
+
+    private fun removeClosedSession(intent: Intent) {
+        app.rootSessionDatabase.removeSessionByIntent(intent)
+        if (app.rootSessionDatabase.sessionList.isEmpty() && mixerFallback?.hasOwnedSessions() != true) {
+            stopSelf()
+        }
     }
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
@@ -367,6 +398,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
     }
 
     companion object {
+        const val SESSION_CLOSE_GRACE_MILLIS = 10_000L
         const val ACTION_START_ENHANCED_PROCESSING = BuildConfig.APPLICATION_ID + ".root.service.START_ENHANCED"
         const val ACTION_START_BACKGROUND = BuildConfig.APPLICATION_ID + ".root.service.START_BACKGROUND"
         const val ACTION_STOP = BuildConfig.APPLICATION_ID + ".root.service.STOP"

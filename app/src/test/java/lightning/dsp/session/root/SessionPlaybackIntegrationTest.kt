@@ -56,4 +56,21 @@ class SessionPlaybackIntegrationTest {
         assertTrue(addGate.contains("playbackActivity.shouldProcess(id, uid, packageName)"))
         assertTrue(addGate.contains("id !in supplementalSessionReservations"))
     }
+
+    @Test fun reopenedSessionCancelsDelayedCloseWhileGlobalSessionStillClosesImmediately() {
+        val service = source("service/RootAudioProcessorService")
+        val open = service.substringAfter("AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION ->")
+            .substringBefore("AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION ->")
+        val close = service.substringAfter("AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION ->")
+            .substringBefore("return START_REDELIVER_INTENT")
+        val delayedClose = service.substringAfter("private fun scheduleSessionClose")
+            .substringBefore("private fun cancelPendingSessionClose")
+
+        assertTrue(open.indexOf("cancelPendingSessionClose(sessionId)") < open.indexOf("addSessionByIntent(intent)"))
+        assertTrue(close.contains("if (sessionId == 0) removeClosedSession(intent)"))
+        assertTrue(close.contains("else scheduleSessionClose(intent, sessionId)"))
+        assertTrue(delayedClose.contains("delay(SESSION_CLOSE_GRACE_MILLIS)"))
+        assertTrue(delayedClose.contains("sessionCloseGrace.isCurrent(sessionId, generation)"))
+        assertTrue(service.contains("const val SESSION_CLOSE_GRACE_MILLIS = 10_000L"))
+    }
 }
