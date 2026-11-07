@@ -7,6 +7,7 @@ import android.os.SystemClock;
 import android.app.Application;
 import android.net.Uri;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
 
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -36,14 +37,17 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
     private static void prepareSession(int sessionId) {
         if (sessionId <= 0 || !requested()) return;
         Future<?> pending = null;
+        AtomicReference<String> phase = new AtomicReference<>("worker_dispatch");
         try {
             final long deadline = SystemClock.elapsedRealtime() + 2000;
             pending = preparationWorker.submit(() -> {
+                phase.set("application_lookup");
                 Application app = (Application) XposedHelpers.callStaticMethod(
                         XposedHelpers.findClass("android.app.ActivityThread", null), "currentApplication");
                 Bundle extras = new Bundle();
                 extras.putLong("deadline", deadline);
                 if (app == null || SystemClock.elapsedRealtime() >= deadline) return false;
+                phase.set("provider_call");
                 Bundle result = app.getContentResolver().call(
                         Uri.parse("content://com.lightning.dsp.compatibility"),
                         "prepare", Integer.toString(sessionId), extras);
@@ -55,9 +59,17 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
                         + " elapsedMs=" + (SystemClock.elapsedRealtime() - (deadline - 2000)));
         } catch (Throwable unavailable) {
             if (pending != null) pending.cancel(true);
-            if (preparationDiagnostics.getAndIncrement() < 24)
-                android.util.Log.i("LightningDSP_AAudio", "preparation unavailable type="
-                        + unavailable.getClass().getSimpleName());
+            if (preparationDiagnostics.getAndIncrement() < 24) {
+                Throwable cause = unavailable;
+                for (int depth = 0; depth < 8 && cause.getCause() != null && cause.getCause() != cause; depth++)
+                    cause = cause.getCause();
+                // ExecutionException alone hides provider, attribution and class-loading failures.
+                // Bounded, local diagnostics; never log the audio dump or preference payload.
+                String category = cause instanceof IllegalArgumentException && cause.getMessage() != null
+                        && cause.getMessage().startsWith("Unknown authority ") ? "provider_unresolved" : "exception";
+                android.util.Log.w("LightningDSP_AAudio", "preparation unavailable phase=" + phase.get()
+                        + " cause=" + cause.getClass().getSimpleName() + " category=" + category);
+            }
             if (unavailable instanceof InterruptedException) Thread.currentThread().interrupt();
             // Missing provider, rejected request or timeout never prevents playback.
         }

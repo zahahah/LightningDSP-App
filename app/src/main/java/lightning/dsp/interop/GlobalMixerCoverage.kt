@@ -146,7 +146,7 @@ internal object GlobalMixerCoverage {
             // descriptor carrying FAST capability). Android 17's AudioFlinger rejects
             // software session effects on a live fast session, so fail closed rather
             // than creating an attachment that can appear enabled without processing.
-            if (rows.any { (_, t) -> t.type.matches(Regex("F\\d+")) })
+            if (rows.any { (_, t) -> t.type.matches(Regex("F\\d+(?:\\s+S)?")) })
                 return@mapNotNull exclude("fast-track session guards (software effects unavailable on fast path)")
             if (rows.any { (_, t) -> !t.normal || t.channels !in setOf(1L, 3L) || t.stream != 3 || t.format !in setOf(1, 3, 4, 5, 6) })
                 return@mapNotNull exclude("track type/flags/layout/format guards")
@@ -208,7 +208,7 @@ internal object GlobalMixerCoverage {
             val active = summary.groupValues[2].ifEmpty { require(total == 0); "0" }.toInt()
             val table = block.substring(summary.range.last + 1).substringBefore("Effect Chains")
             val normalRow = normalTrackLayout(table)
-            val row = Regex("(?m)^\\s*(?:(\\S+)\\s+)?(\\d+)\\s+(yes|no)\\s+(\\d+)/\\s*(\\d+)\\s+(\\d+)\\s+(\\d+)\\s+\\S+\\s+0x[0-9a-fA-F]+\\s+([0-9a-fA-F]+)\\s+([0-9a-fA-F]+)\\s+\\d+\\s+(\\d+)\\b[^\\n]*$")
+            val row = Regex("(?m)^\\s*(?:(\\S+(?:\\s+S)?)\\s+)?(\\d+)\\s+(yes|no)\\s+(\\d+)/\\s*(\\d+)\\s+(\\d+)\\s+(\\d+)\\s+\\S+\\s+0x[0-9a-fA-F]+\\s+([0-9a-fA-F]+)\\s+([0-9a-fA-F]+)\\s+\\d+\\s+(\\d+)\\b[^\\n]*$")
             val tracks = row.findAll(table).map {
                 Track(it.groupValues[3] == "yes", it.groupValues[5].toInt(), it.groupValues[6].toInt(),
                     it.groupValues[7].toInt(), it.groupValues[1],

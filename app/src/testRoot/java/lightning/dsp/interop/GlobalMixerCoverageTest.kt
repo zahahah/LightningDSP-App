@@ -73,6 +73,17 @@ class GlobalMixerCoverageTest {
         assertTrue(inspectSessionMode(listOf(track), effects = listOf(effect(99, 361)), preparations = mapOf(361 to 10322)).targets.isEmpty())
     }
 
+    @Test fun unrelatedFastSharedTrackDoesNotInvalidateNormalPlaybackInspection() {
+        val shared = Playback(session = 825, uid = 10225, port = 71, type = "F1 S",
+            active = false, state = "S", flags = "600",
+            suffix = "false false unavail 0 0 0 1 0")
+        val snapshot = inspect(tracks = listOf(shared, Playback()))
+        assertTrue(snapshot.reason, snapshot.known)
+        assertEquals(listOf(361), snapshot.targets.map { it.id })
+        assertTrue(inspect(tracks = listOf(shared, Playback(active = false, state = "I"))).known)
+        assertTrue(inspect(tracks = listOf(shared.copy(active = true, state = "A", flags = "000"))).targets.isEmpty())
+    }
+
     @Test fun normalRawFastOutputIsEligibleEvenAtZeroVolume() {
         val snapshot = inspect()
         assertTrue(snapshot.reason, snapshot.known)
