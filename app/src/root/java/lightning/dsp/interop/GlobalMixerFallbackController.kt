@@ -81,9 +81,27 @@ internal class GlobalMixerFallbackController(
         override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) = requestCheck()
         override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) = requestCheck()
     }
+    private data class Preparation(val uid: Int, val expires: Long, val done: (Boolean) -> Unit)
+    private val preparations = mutableMapOf<Int, Preparation>()
+    private val neverStarted = mutableMapOf<Int, Long>()
+    private val preparationHandler: (Int, Int, Long, (Boolean) -> Unit) -> Unit = { uid, id, deadline, done ->
+        handler.post {
+            if (deadline <= SystemClock.elapsedRealtime() || closed || !shouldRun() || !AAudioCompatibilityOption.requested(app) ||
+                preparations.size >= 2 || id in preparations || preparations.values.any { it.uid == uid }) done(false)
+            else {
+                val pending = Preparation(uid, deadline, done)
+                preparations[id] = pending
+                handler.postDelayed({
+                    if (preparations[id] === pending) { preparations.remove(id); done(false) }
+                }, maxOf(0, deadline - SystemClock.elapsedRealtime()))
+                requests.trySend(Unit)
+            }
+        }
+    }
     private val worker: Job
 
     init {
+        CompatibilityPreparationBridge.handler = preparationHandler
         audio.registerAudioPlaybackCallback(playbackCallback, handler)
         audio.registerAudioDeviceCallback(devicesCallback, handler)
         worker = scope.launch {
@@ -133,6 +151,11 @@ internal class GlobalMixerFallbackController(
 
     fun hasOwnedSessions(): Boolean = owned.isNotEmpty()
 
+    private fun admissionCurrent(target: GlobalMixerCoverage.Session, snapshot: GlobalMixerCoverage.Snapshot): Boolean =
+        target.id in snapshot.playingSessionIds || preparations[target.id]?.let {
+            CompatibilityPreparationAdmission.current(target.uid, it.uid, it.expires, SystemClock.elapsedRealtime())
+        } == true
+
     private fun baseline() = (app.rootSessionDatabase.sessionList[0] as? RemoteEffectSession)?.effect
     private fun current(expected: Long, global: LightningDspRemoteEngine?) =
         !closed && revision == expected && shouldRun() && baseline() === global &&
@@ -156,11 +179,22 @@ internal class GlobalMixerFallbackController(
             releaseLeaseIfSafe()
             if (lease != null) return
         }
+        val inspectedPreparations = preparations.toMap()
         val snapshot = stableSnapshot(global, retainOnlyOnTransition = true)
         if (!current(expected, global)) return
         if (snapshot == null || !snapshot.known) {
             unknownSnapshot()
             return
+        }
+        neverStarted.keys.removeAll(snapshot.playingSessionIds)
+        val expiredIdle = neverStarted.filterValues { it <= SystemClock.elapsedRealtime() }.keys.toList()
+        remove(expiredIdle)
+        expiredIdle.forEach(neverStarted::remove)
+        inspectedPreparations.forEach { (id, pending) ->
+            if (preparations[id] === pending && !snapshot.reason.startsWith("Topology changing") && snapshot.targets.none { it.id == id && it.uid == pending.uid } && id !in owned) {
+                preparations.remove(id)
+                pending.done(false)
+            }
         }
         poll = snapshot.activeSessions > 0 || owned.isNotEmpty()
         val targets = snapshot.targets.filter {
@@ -180,6 +214,11 @@ internal class GlobalMixerFallbackController(
         }
         remove(plan.obsolete)
         if (targets.isEmpty()) {
+            if (snapshot.reason.startsWith("Topology changing") && preparations.isNotEmpty()) {
+                handler.postDelayed({
+                    if (!closed && preparations.values.any { it.expires > SystemClock.elapsedRealtime() }) requests.trySend(Unit)
+                }, 75)
+            }
             diagnose("no_candidates", "no eligible supplemental candidates; self excluded=${snapshot.targets.size - targets.size}; ${snapshot.reason}")
             attempts.clear()
             releaseLeaseIfSafe()
@@ -202,7 +241,7 @@ internal class GlobalMixerFallbackController(
                 unknownSnapshot()
                 return
             }
-            if (!current(expected, global) || target !in before.targets) continue
+            if (!current(expected, global) || target !in before.targets || !admissionCurrent(target, before)) continue
             attempts.record(target.identity)
             val generation = DspDesiredState.current()
             diagnosticPhase = "construction"
@@ -222,9 +261,10 @@ internal class GlobalMixerFallbackController(
                 continue
             }
             owned[target.id] = Owned(target, engine, id, reserved)
+            if (target.id in preparations) neverStarted[target.id] = SystemClock.elapsedRealtime() + 10_000
             diagnosticPhase = "preparation"
             val prepared = engine.prepareSupplemental(generation)
-            if (!prepared || !current(expected, global) || DspDesiredState.current() != generation) {
+            if (!prepared || !current(expected, global) || !admissionCurrent(target, before) || DspDesiredState.current() != generation) {
                 diagnose("preparation_failed", "supplemental preparation/control/generation check failed; removing")
                 remove(listOf(target.id))
                 continue
@@ -235,7 +275,7 @@ internal class GlobalMixerFallbackController(
                 return
             }
             diagnosticPhase = "activation"
-            if (!current(expected, global) || target !in fresh.targets ||
+            if (!current(expected, global) || target !in fresh.targets || !admissionCurrent(target, fresh) ||
                 !fresh.ownsAttachment(target, id) || !engine.activateSupplemental(generation)) {
                 diagnose("activation_failed", "fresh attachment/target/control or activation check failed; removing")
                 remove(listOf(target.id))
@@ -253,6 +293,9 @@ internal class GlobalMixerFallbackController(
                 diagnose("verification_failed", "enabled unsuspended attachment not verified on current target; removing")
                 remove(listOf(target.id))
             } else {
+                preparations.remove(target.id)?.let { request ->
+                    request.done(request.uid == target.uid && request.expires > SystemClock.elapsedRealtime())
+                }
                 diagnose("attachment_observed", "enabled unsuspended supplemental attachment observed in ${SystemClock.elapsedRealtime() - startedAt} ms; audible processing unverified")
             }
         }
@@ -336,6 +379,7 @@ internal class GlobalMixerFallbackController(
         if (ids.isEmpty()) return
         diagnosticPhase = "teardown"
         diagnose("owned_removed", "removing ${ids.size} owned supplemental effects; baseline retained")
+        ids.forEach(neverStarted::remove)
         val reservedIds = ids.filter { owned[it]?.reservedInSessionDatabase == true }
         SupplementalLifecycle.retireOwned(ids, owned,
             hasControl = { it.engine.canControlEndpoint() },
@@ -389,10 +433,12 @@ internal class GlobalMixerFallbackController(
             diagnose("baseline_identity_missing", "baseline effect identity unavailable")
             return null
         }
-        val first = inspect(id) ?: return null
+        val pendingUids = preparations.filterValues { it.expires > SystemClock.elapsedRealtime() }
+            .mapValues { it.value.uid }
+        val first = inspect(id, pendingUids) ?: return null
         if (!first.known) return null
         delay(150)
-        val second = inspect(id) ?: return null
+        val second = inspect(id, pendingUids) ?: return null
         if (!second.known) return null
         if (global?.effectIdOrNull() != id) return null
         if (second.signature != first.signature) {
@@ -403,7 +449,9 @@ internal class GlobalMixerFallbackController(
         return second
     }
 
-    private suspend fun inspect(globalId: Int?): GlobalMixerCoverage.Snapshot? {
+    private suspend fun inspect(globalId: Int?, pendingUids: Map<Int, Int> =
+        preparations.filterValues { it.expires > SystemClock.elapsedRealtime() }.mapValues { it.value.uid }
+    ): GlobalMixerCoverage.Snapshot? {
         val ids = owned.values.map { it.effectId }.toSet()
         return withContext(Dispatchers.IO) {
             if (!RootShellImpl.hasRootShell()) {
@@ -412,9 +460,12 @@ internal class GlobalMixerFallbackController(
             }
             val flinger = readDump("media.audio_flinger") ?: return@withContext null
             val policy = readDump("media.audio_policy") ?: return@withContext null
-            GlobalMixerCoverage.inspect(flinger, policy, globalId, ids).also {
+            GlobalMixerCoverage.inspect(flinger, policy, globalId, ids,
+                pendingUids).also {
                 if (!it.known) diagnose("parser_unknown", "parser rejected snapshot: ${it.reason}")
             }
+        }.also { snapshot ->
+            if (snapshot?.known == true) neverStarted.keys.removeAll(snapshot.playingSessionIds)
         }
     }
 
@@ -450,6 +501,9 @@ internal class GlobalMixerFallbackController(
     }
 
     override fun close() {
+        if (CompatibilityPreparationBridge.handler === preparationHandler) CompatibilityPreparationBridge.handler = null
+        preparations.values.forEach { it.done(false) }
+        preparations.clear()
         if (closed) return
         closed = true
         revision++

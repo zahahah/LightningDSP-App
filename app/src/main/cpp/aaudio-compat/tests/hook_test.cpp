@@ -30,6 +30,7 @@ static int fakeDelete(AAudioStreamBuilder* b) { delete b; return 0; }
 static int fakeOpen(AAudioStreamBuilder* b, AAudioStream** out) {
     openedModes.push_back(b->performance);
     if (normalFails && b->performance == 10) { *out = nullptr; return -1; }
+    audioStream.session = b->session == 0 ? 101 : b->session;
     *out = &audioStream; return 0;
 }
 extern "C" int AAudio_createStreamBuilder(AAudioStreamBuilder** b) { return fakeCreate(b); }
@@ -37,6 +38,8 @@ extern "C" void AAudioStreamBuilder_setDirection(AAudioStreamBuilder* b, int d) 
 extern "C" void AAudioStreamBuilder_setPerformanceMode(AAudioStreamBuilder* b, int p) { fakePerformance(b, p); }
 extern "C" int AAudioStreamBuilder_openStream(AAudioStreamBuilder* b, AAudioStream** out) { return fakeOpen(b, out); }
 extern "C" int AAudioStreamBuilder_delete(AAudioStreamBuilder* b) { return fakeDelete(b); }
+extern "C" void AAudioStreamBuilder_setSessionId(AAudioStreamBuilder* b, int session) { b->session = session; }
+extern "C" int AAudioStream_getSessionId(AAudioStream* stream) { return stream->session; }
 static int hookCount = 0;
 static void* resolvedSymbol = nullptr;
 static void* lastHandle = nullptr;
@@ -208,5 +211,34 @@ int main() {
     expect(allocated[0], {10}); expect(allocated[128], {12});
     for (auto* b : allocated) deleteBuilder(b);
     assert(std::all_of(builders.begin(), builders.end(), [](const auto& b) { return !b.builder; }));
+    property = "1";
+    ready.store(true);
+    AAudioStreamBuilder* sessionBuilder = nullptr;
+    createBuilder(&sessionBuilder);
+    setDirection(sessionBuilder, AAUDIO_DIRECTION_OUTPUT);
+    setPerformance(sessionBuilder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
+    setSession(sessionBuilder, AAUDIO_SESSION_ID_NONE);
+    const auto beforePreparation = preparationsForTest;
+    expect(sessionBuilder, {AAUDIO_PERFORMANCE_MODE_NONE});
+    assert(sessionBuilder->session == AAUDIO_SESSION_ID_NONE);
+    assert(audioStream.session == 101);
+    assert(preparationsForTest == beforePreparation + 1);
+    setSession(sessionBuilder, 777);
+    expect(sessionBuilder, {AAUDIO_PERFORMANCE_MODE_NONE});
+    assert(sessionBuilder->session == 777 && audioStream.session == 777);
+    setSession(sessionBuilder, AAUDIO_SESSION_ID_NONE);
+    normalFails = true;
+    const auto failedPreparations = preparationsForTest;
+    expect(sessionBuilder, {10, 12});
+    assert(sessionBuilder->session == AAUDIO_SESSION_ID_NONE);
+    assert(audioStream.session == AAUDIO_SESSION_ID_NONE);
+    assert(preparationsForTest == failedPreparations);
+    normalFails = false;
+    // Unobserved requests must not be overwritten even when compatibility is active.
+    findBuilder(sessionBuilder)->sessionObserved = false;
+    sessionBuilder->session = 999;
+    expect(sessionBuilder, {10});
+    assert(audioStream.session == 999 && sessionBuilder->session == 999);
+    deleteBuilder(sessionBuilder);
     std::puts("AAudio compatibility construction tests passed");
 }

@@ -2,6 +2,12 @@ package lightning.dsp.interop;
 
 import android.content.pm.ApplicationInfo;
 import android.os.Process;
+import android.os.Bundle;
+import android.os.SystemClock;
+import android.app.Application;
+import android.net.Uri;
+import java.util.concurrent.*;
+
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -15,8 +21,47 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
     private static final String PROPERTY = "debug.ldsp.aaudio_compat";
     private static final AtomicBoolean launchHookInstalled = new AtomicBoolean();
+    private static final AtomicInteger preparationDiagnostics = new AtomicInteger();
     private static final AtomicInteger launchDiagnostics = new AtomicInteger();
     private static native boolean nativeReady();
+    private static native void nativeSetPreparationCallback();
+    private static final ThreadPoolExecutor preparationWorker = new ThreadPoolExecutor(
+            0, 1, 10, TimeUnit.SECONDS, new SynchronousQueue<>(), runnable -> {
+                Thread thread = new Thread(runnable, "LDSP-session-prepare");
+                thread.setDaemon(true);
+                return thread;
+            });
+
+    /** Called only after open, before the caller can start its stream. Never on a PCM callback. */
+    private static void prepareSession(int sessionId) {
+        if (sessionId <= 0 || !requested()) return;
+        Future<?> pending = null;
+        try {
+            final long deadline = SystemClock.elapsedRealtime() + 2000;
+            pending = preparationWorker.submit(() -> {
+                Application app = (Application) XposedHelpers.callStaticMethod(
+                        XposedHelpers.findClass("android.app.ActivityThread", null), "currentApplication");
+                Bundle extras = new Bundle();
+                extras.putLong("deadline", deadline);
+                if (app == null || SystemClock.elapsedRealtime() >= deadline) return false;
+                Bundle result = app.getContentResolver().call(
+                        Uri.parse("content://com.lightning.dsp.compatibility"),
+                        "prepare", Integer.toString(sessionId), extras);
+                return result != null && result.getBoolean("prepared", false);
+            });
+            Object prepared = pending.get(2200, TimeUnit.MILLISECONDS);
+            if (preparationDiagnostics.getAndIncrement() < 24)
+                android.util.Log.i("LightningDSP_AAudio", "preparation ready=" + Boolean.TRUE.equals(prepared)
+                        + " elapsedMs=" + (SystemClock.elapsedRealtime() - (deadline - 2000)));
+        } catch (Throwable unavailable) {
+            if (pending != null) pending.cancel(true);
+            if (preparationDiagnostics.getAndIncrement() < 24)
+                android.util.Log.i("LightningDSP_AAudio", "preparation unavailable type="
+                        + unavailable.getClass().getSimpleName());
+            if (unavailable instanceof InterruptedException) Thread.currentThread().interrupt();
+            // Missing provider, rejected request or timeout never prevents playback.
+        }
+    }
     private static native boolean nativeObserverReady();
 
     /** Do not even load the native library into selected apps while disabled. */
@@ -72,6 +117,7 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
         installLaunchHook();
         try {
             System.loadLibrary("ldsp_aaudio_compat");
+            nativeSetPreparationCallback();
             // Registration, patched imports and audio processing are distinct states.
             String state = !nativeObserverReady() ? "native observer unavailable"
                     : nativeReady() ? "imports rebound" : "observer ready; waiting for app audio library";

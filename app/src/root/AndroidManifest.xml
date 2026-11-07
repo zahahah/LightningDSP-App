@@ -10,6 +10,9 @@
 
     <application
         tools:node="merge">
+        <provider android:name="lightning.dsp.interop.CompatibilityPreparationProvider"
+            android:authorities="com.lightning.dsp.compatibility"
+            android:exported="true" android:grantUriPermissions="false" />
         <meta-data android:name="xposedmodule" android:value="true" />
         <meta-data android:name="xposeddescription" android:value="LightningDSP optional audio compatibility and focus controls" />
         <meta-data android:name="xposedminversion" android:value="83" />

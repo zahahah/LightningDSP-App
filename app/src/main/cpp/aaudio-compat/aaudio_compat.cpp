@@ -36,6 +36,34 @@ std::atomic<bool> observerReady{false};
 [[maybe_unused]] std::atomic<bool> unsafeFailure{false};
 [[maybe_unused]] std::atomic<bool> initStarted{false};
 std::atomic<unsigned> openDiagnostics{0};
+using SessionSetter = void (*)(AAudioStreamBuilder*, int32_t);
+using SessionGetter = int32_t (*)(AAudioStream*);
+SessionSetter originalSession = nullptr;
+SessionGetter originalGetSession = nullptr;
+#ifndef LDSP_AAUDIO_COMPAT_HOST_TEST
+std::mutex preparationRegistration;
+std::atomic<bool> preparationReady{false};
+JavaVM* preparationVm = nullptr;
+jclass preparationClass = nullptr;
+jmethodID preparationMethod = nullptr;
+bool canPrepareStream() { return preparationReady.load(std::memory_order_acquire); }
+void prepareOpenedStream(AAudioStream* stream) {
+    if (!stream || !originalGetSession || !preparationReady.load(std::memory_order_acquire)) return;
+    const auto id = originalGetSession(stream);
+    if (id <= 0) return;
+    JNIEnv* env = nullptr;
+    const bool attach = preparationVm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) == JNI_EDETACHED;
+    if (attach && preparationVm->AttachCurrentThread(&env, nullptr) != JNI_OK) return;
+    if (!env) return;
+    env->CallStaticVoidMethod(preparationClass, preparationMethod, static_cast<jint>(id));
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    if (attach) preparationVm->DetachCurrentThread();
+}
+#else
+bool canPrepareStream() { return true; }
+unsigned preparationsForTest = 0;
+void prepareOpenedStream(AAudioStream* stream) { if (originalGetSession && originalGetSession(stream) > 0) ++preparationsForTest; }
+#endif
 std::mutex buildersMutex;
 struct BuilderState {
     AAudioStreamBuilder* builder = nullptr;
@@ -43,6 +71,8 @@ struct BuilderState {
     aaudio_performance_mode_t performance = AAUDIO_PERFORMANCE_MODE_NONE;
     bool directionObserved = false;
     bool performanceObserved = false;
+    aaudio_session_id_t session = AAUDIO_SESSION_ID_NONE;
+    bool sessionObserved = false;
 };
 // Bounded bookkeeping: unknown builders retain the original behavior.
 std::array<BuilderState, 128> builders{};
@@ -84,6 +114,11 @@ BuilderState* findBuilder(AAudioStreamBuilder* builder) {
     std::lock_guard<std::mutex> lock(buildersMutex);
     if (auto* state = findBuilder(builder)) { state->performance = mode; state->performanceObserved = true; }
 }
+[[maybe_unused]] void setSession(AAudioStreamBuilder* builder, aaudio_session_id_t session) {
+    originalSession(builder, session);
+    std::lock_guard<std::mutex> lock(buildersMutex);
+    if (auto* state = findBuilder(builder)) { state->session = session; state->sessionObserved = true; }
+}
 [[maybe_unused]] aaudio_result_t deleteBuilder(AAudioStreamBuilder* builder) {
     // AAudio builders may not be concurrently used/deleted by the caller.
     const auto status = originalDelete(builder);
@@ -116,17 +151,22 @@ BuilderState* findBuilder(AAudioStreamBuilder* builder) {
     // The builder is restored even on failure. A clean failure gets exactly one
     // retry using the application's original request; no routing/restart loop.
     originalPerformance(builder, AAUDIO_PERFORMANCE_MODE_NONE);
+    // Only an observed NONE request may be temporarily allocated. Never replace an app ID.
+    const bool allocateSession = canPrepareStream() && originalSession && originalGetSession && state.sessionObserved && state.session == AAUDIO_SESSION_ID_NONE;
+    if (allocateSession) originalSession(builder, AAUDIO_SESSION_ID_ALLOCATE);
     AAudioStream* candidate = nullptr;
     if (diagnostic) __android_log_print(ANDROID_LOG_INFO, "LightningDSP_AAudio", "open normal enter pid=%d", getpid());
     const auto status = originalOpen(builder, &candidate);
     if (diagnostic) __android_log_print(ANDROID_LOG_INFO, "LightningDSP_AAudio", "open normal returned=%d pid=%d", status, getpid());
     originalPerformance(builder, state.performance);
+    if (allocateSession) originalSession(builder, state.session);
     if (status != AAUDIO_OK && candidate == nullptr) {
         const auto fallback = originalOpen(builder, stream);
         __android_log_print(ANDROID_LOG_WARN, "LightningDSP_AAudio",
                             "normal request failed=%d; original retry=%d pid=%d", status, fallback, getpid());
         return fallback;
     }
+    if (status == AAUDIO_OK) prepareOpenedStream(candidate);
     *stream = candidate;
     __android_log_print(ANDROID_LOG_INFO, "LightningDSP_AAudio", "normal request pid=%d result=%d", getpid(), status);
     return status;
@@ -157,6 +197,8 @@ BuilderState* findBuilder(AAudioStreamBuilder* builder) {
         {"AAudioStreamBuilder_openStream", reinterpret_cast<void*>(originalOpen), reinterpret_cast<void*>(openStream)},
         {"AAudioStreamBuilder_delete", reinterpret_cast<void*>(originalDelete), reinterpret_cast<void*>(deleteBuilder)},
     }};
+    if (originalSession && resolved == reinterpret_cast<void*>(originalSession) &&
+        !std::strcmp(symbol, "AAudioStreamBuilder_setSessionId")) return reinterpret_cast<void*>(setSession);
     for (const auto& mapping : mappings) {
         if (resolved == mapping.original && !std::strcmp(symbol, mapping.name)) return mapping.replacement;
     }
@@ -323,6 +365,13 @@ LoadedCallback native_init(const NativeApi* api) {
     originalOpen = AAudioStreamBuilder_openStream;
     originalDelete = AAudioStreamBuilder_delete;
     originalResolve = dlsym;
+#ifdef LDSP_AAUDIO_COMPAT_HOST_TEST
+    originalSession = AAudioStreamBuilder_setSessionId;
+    originalGetSession = AAudioStream_getSessionId;
+#else
+    originalSession = reinterpret_cast<SessionSetter>(dlsym(RTLD_DEFAULT, "AAudioStreamBuilder_setSessionId"));
+    originalGetSession = reinterpret_cast<SessionGetter>(dlsym(RTLD_DEFAULT, "AAudioStream_getSessionId"));
+#endif
 #ifndef LDSP_AAUDIO_COMPAT_HOST_TEST
     ldsp::opensl::originalCreate = slCreateEngine;
     ldsp::opensl::requested = [] { return requested() && !unsafeFailure.load(std::memory_order_acquire); };
@@ -347,5 +396,22 @@ Java_lightning_dsp_interop_AudioCompatibilityHook_nativeReady(JNIEnv*, jclass) {
 extern "C" JNIEXPORT jboolean JNICALL
 Java_lightning_dsp_interop_AudioCompatibilityHook_nativeObserverReady(JNIEnv*, jclass) {
     return observerReady.load(std::memory_order_acquire) ? JNI_TRUE : JNI_FALSE;
+}
+#endif
+
+#ifndef LDSP_AAUDIO_COMPAT_HOST_TEST
+extern "C" JNIEXPORT void JNICALL
+Java_lightning_dsp_interop_AudioCompatibilityHook_nativeSetPreparationCallback(JNIEnv* env, jclass cls) {
+    // Installed once during package initialization, before app audio construction.
+    std::lock_guard<std::mutex> lock(preparationRegistration);
+    if (preparationReady.load(std::memory_order_acquire)) return;
+    jmethodID method = env->GetStaticMethodID(cls, "prepareSession", "(I)V");
+    if (!method || env->ExceptionCheck()) { env->ExceptionClear(); return; }
+    jclass global = static_cast<jclass>(env->NewGlobalRef(cls));
+    if (!global) return;
+    env->GetJavaVM(&preparationVm);
+    preparationMethod = method;
+    preparationClass = global;
+    preparationReady.store(true, std::memory_order_release);
 }
 #endif

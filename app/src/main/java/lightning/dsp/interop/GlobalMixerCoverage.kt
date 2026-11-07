@@ -21,6 +21,7 @@ internal object GlobalMixerCoverage {
         val activeSessions: Int = 0,
         val signature: String = "",
         val retainableSessions: List<Session> = emptyList(),
+        val playingSessionIds: Set<Int> = emptySet(),
     ) {
         fun retainsAttachment(session: Session, effectId: Int): Boolean =
             known && session in retainableSessions && ownsAttachment(session, effectId)
@@ -65,7 +66,7 @@ internal object GlobalMixerCoverage {
     private data class PolicyOutput(val id: Int, val flags: Long, val clients: List<Client>)
 
     fun inspect(flinger: String, policy: String, globalEffectId: Int?,
-                ownedEffectIds: Set<Int> = emptySet()): Snapshot {
+                ownedEffectIds: Set<Int> = emptySet(), preparationUids: Map<Int, Int> = emptyMap()): Snapshot {
         if (flinger.length > MAX_DUMP_CHARS || policy.length > MAX_DUMP_CHARS)
             return Snapshot(false, "Audio diagnostic size limit exceeded")
         if (globalEffectId != null && globalEffectId <= 0) return Snapshot(false, "Invalid global effect identity")
@@ -77,7 +78,7 @@ internal object GlobalMixerCoverage {
             val policyOutputs = parsePolicy(policy)
             require(policyOutputs.isNotEmpty())
             reason = "Audio topology or baseline attachment identity is inconsistent or missing"
-            inspectParsed(outputs, policyOutputs, policy, globalEffectId, ownedEffectIds)
+            inspectParsed(outputs, policyOutputs, policy, globalEffectId, ownedEffectIds, preparationUids)
         } catch (_: IllegalArgumentException) {
             Snapshot(false, reason)
         } catch (_: NoSuchElementException) {
@@ -86,7 +87,7 @@ internal object GlobalMixerCoverage {
     }
 
     private fun inspectParsed(outputs: List<Output>, policy: List<PolicyOutput>, policyText: String,
-                              globalEffectId: Int?, owned: Set<Int>): Snapshot {
+                              globalEffectId: Int?, owned: Set<Int>, preparationUids: Map<Int, Int>): Snapshot {
         require(outputs.isNotEmpty() && policy.isNotEmpty())
         require(outputs.size <= 64 && policy.size <= 64)
         require(outputs.map { it.id }.distinct().size == outputs.size)
@@ -170,7 +171,7 @@ internal object GlobalMixerCoverage {
                 it.session == track.session && it.port == track.port && it.active == track.active
             } }
         }.keys
-        val targets = eligible.filter { it.id in activeIds }.take(MAX_SUPPLEMENTAL_SESSIONS)
+        val targets = eligible.filter { it.id in activeIds || preparationUids[it.id] == it.uid }.take(MAX_SUPPLEMENTAL_SESSIONS)
         val retained = eligible.filter { it.id in ownedSessions }
         val signature = "${global?.id ?: 0}:${global?.output ?: 0}:" + observed.filter {
             it.second.active || it.second.session in ownedSessions
@@ -186,7 +187,7 @@ internal object GlobalMixerCoverage {
             else excluded.entries.joinToString(", ") { "${it.key}=${it.value}" }
         } else ""
         return Snapshot(true, reason, global?.output,
-            targets, effects, allActive.map { it.second.session }.distinct().size, signature, retained)
+            targets, effects, allActive.map { it.second.session }.distinct().size, signature, retained, activeIds)
     }
 
     private fun parseOutputs(text: String): List<Output> {

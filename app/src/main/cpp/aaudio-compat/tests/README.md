@@ -112,3 +112,21 @@ An Android ARM64 build must also verify that the special-handle path compiles to
 a tail branch. These checks do not prove that a particular backend resolves its
 functions after the hook is installed, that its stream avoids FAST, or that DSP
 is audible; device testing is required.
+
+## Pre-start AAudio preparation experiment
+
+Scoped, opted-in low-latency AAudio opens can request session preparation before
+returning the newly opened stream. Only an observed NONE session request is
+temporarily changed to ALLOCATE; observed positive IDs are preserved and builder
+state is restored before fallback. The optional session setter is intercepted
+through the existing dynamic resolver, not added as a required GOT import.
+
+The root-flavor provider captures Binder UID and only hints to the existing
+controller. Inactive admission requires that exact UID/session in both diagnostic
+sources and retains all format, reserved-output, duplicate-effect and control
+guards. Deadlines travel across IPC and are rechecked after suspensions.
+Caller wait is bounded to 2.2 seconds; unavailable/expired preparation releases
+playback rather than blocking indefinitely. This can delay stream startup.
+Never-started prewarmed owners expire after 10 seconds. Runtime provider access,
+inactive-track visibility, responsiveness and audible JL Mod results require
+device testing; host tests do not establish first-frame coverage.

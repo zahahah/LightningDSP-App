@@ -53,11 +53,24 @@ class GlobalMixerCoverageTest {
         return GlobalMixerCoverage.inspect(transformFlinger(flinger), transformPolicy(policy), 27, owned)
     }
 
-    private fun inspectSessionMode(tracks: List<Playback> = listOf(Playback()), effects: List<String> = emptyList(), usage: String = "MEDIA"):
+    private fun inspectSessionMode(tracks: List<Playback> = listOf(Playback()), effects: List<String> = emptyList(), usage: String = "MEDIA", preparations: Map<Int, Int> = emptyMap()):
         GlobalMixerCoverage.Snapshot {
         val flinger = output(45, tracks, effects)
         val policy = " Outputs (1):\n" + policyOutput(45, tracks, usage = usage) + "\n Inputs (0):\n"
-        return GlobalMixerCoverage.inspect(flinger, policy, null)
+        return GlobalMixerCoverage.inspect(flinger, policy, null, preparationUids = preparations)
+    }
+
+    @Test fun preparationOnlyAdmitsTheVerifiedCallersInactiveNormalSession() {
+        val track = Playback(active = false, state = "I")
+        assertTrue(inspectSessionMode(listOf(track)).targets.isEmpty())
+        assertTrue(inspectSessionMode(listOf(track), preparations = mapOf(361 to 99999)).targets.isEmpty())
+        assertTrue(inspectSessionMode(listOf(track), preparations = mapOf(999 to 10322)).targets.isEmpty())
+        val prepared = inspectSessionMode(listOf(track), preparations = mapOf(361 to 10322))
+        assertTrue(prepared.reason, prepared.known)
+        assertEquals(listOf(361), prepared.targets.map { it.id })
+        assertTrue(prepared.playingSessionIds.isEmpty())
+        assertTrue(inspectSessionMode(listOf(track.copy(type = "F1")), preparations = mapOf(361 to 10322)).targets.isEmpty())
+        assertTrue(inspectSessionMode(listOf(track), effects = listOf(effect(99, 361)), preparations = mapOf(361 to 10322)).targets.isEmpty())
     }
 
     @Test fun normalRawFastOutputIsEligibleEvenAtZeroVolume() {
