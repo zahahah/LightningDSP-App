@@ -34,6 +34,9 @@ using LoadedCallback = void (*)(const char*, void*);
 struct NativeApi { uint32_t version; HookFunction hook; int (*unhook)(void*); };
 std::atomic<bool> ready{false};
 std::atomic<bool> observerReady{false};
+// Session reuse must not override an explicit app ID. If a direct session
+// setter import exists but cannot be safely observed, fail closed for reuse.
+std::atomic<bool> sessionReuseSafe{true};
 [[maybe_unused]] std::atomic<bool> unsafeFailure{false};
 [[maybe_unused]] std::atomic<bool> initStarted{false};
 std::atomic<unsigned> openDiagnostics{0};
@@ -99,7 +102,8 @@ bool requested() {
 }
 bool reuseSessionRequested() {
     char value[PROP_VALUE_MAX]{};
-    return requested() && __system_property_get(kReuseSessionProperty, value) == 1 && value[0] == '1';
+    return requested() && sessionReuseSafe.load(std::memory_order_acquire) &&
+        __system_property_get(kReuseSessionProperty, value) == 1 && value[0] == '1';
 }
 BuilderState* findBuilder(AAudioStreamBuilder* builder) {
     for (auto& item : builders) if (item.builder == builder) return &item;
@@ -356,6 +360,48 @@ int inspectLibrary(dl_phdr_info* info, size_t, void* opaque) {
     };
     applyImports(targets, "AAudio");
     if (lookup.result == ldsp::got::Result::Unsafe) return 1;
+    // Track direct imports too. The dynamic dlsym wrapper covers Oboe-style
+    // lookups, but without this optional single-symbol transaction an app's
+    // ordinary PLT call could set an explicit ID that the default-NONE reuse
+    // path would otherwise mistake for an unset request.
+    if (originalSession) {
+        const std::array<ldsp::got::Target, 1> sessionTargets{{
+            {"AAudioStreamBuilder_setSessionId", reinterpret_cast<uintptr_t>(originalSession),
+                reinterpret_cast<uintptr_t>(setSession), true}
+        }};
+        ldsp::got::BasicPlan<1> sessionPlan;
+        if (!ldsp::got::prepare({info->dlpi_addr, info->dlpi_phdr, info->dlpi_phnum},
+                sessionTargets, static_cast<size_t>(pageSize), sessionPlan)) {
+            sessionReuseSafe.store(false, std::memory_order_release);
+            __android_log_print(ANDROID_LOG_WARN, "LightningDSP_AAudio",
+                "session reuse disabled: setter import could not be verified pid=%d", getpid());
+        } else if (sessionPlan.page) {
+            int protection = 0;
+            if (!pageProtection(sessionPlan.page, sessionPlan.pageSize, protection) ||
+                    protection != sessionPlan.expectedProtection) {
+                sessionReuseSafe.store(false, std::memory_order_release);
+                __android_log_print(ANDROID_LOG_WARN, "LightningDSP_AAudio",
+                    "session reuse disabled: setter import protection unsupported pid=%d", getpid());
+            } else {
+                const auto result = ldsp::got::apply(sessionPlan, protection, protectPage, nullptr);
+                if (result == ldsp::got::Result::Unsafe) {
+                    sessionReuseSafe.store(false, std::memory_order_release);
+                    unsafeFailure.store(true, std::memory_order_release);
+                    ready.store(false, std::memory_order_release);
+                    __android_log_print(ANDROID_LOG_WARN, "LightningDSP_AAudio",
+                        "session setter import transaction unsafe pid=%d", getpid());
+                    return 1;
+                }
+                if (result != ldsp::got::Result::Applied && result != ldsp::got::Result::AlreadyApplied) {
+                    sessionReuseSafe.store(false, std::memory_order_release);
+                    __android_log_print(ANDROID_LOG_WARN, "LightningDSP_AAudio",
+                        "session reuse disabled: setter import transaction rejected pid=%d", getpid());
+                }
+            }
+        }
+    } else {
+        sessionReuseSafe.store(false, std::memory_order_release);
+    }
     // Independent one-symbol transaction, also considered in mixed-backend DSOs.
     const std::array<ldsp::got::Target, 1> openSlTargets{{
         {"slCreateEngine", reinterpret_cast<uintptr_t>(ldsp::opensl::originalCreate),

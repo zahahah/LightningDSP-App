@@ -17,7 +17,7 @@ namespace ldsp::got {
 constexpr size_t kTargets = 5;
 constexpr size_t kMaxSegments = 32;
 constexpr size_t kMaxSymbols = 262144;
-struct Target { const char* name; uintptr_t original; uintptr_t replacement; };
+struct Target { const char* name; uintptr_t original; uintptr_t replacement; bool optional = false; };
 struct Image { uintptr_t base; const Elf64_Phdr* headers; size_t count; };
 struct Slot { uintptr_t* address = nullptr; uintptr_t original = 0; uintptr_t replacement = 0; };
 template<size_t Count> struct BasicPlan {
@@ -186,7 +186,7 @@ inline bool prepare(const Image& image,const std::array<Target,Count>& targets,s
             seen[t]=true;out.slots[t]={reinterpret_cast<uintptr_t*>(slot),targets[t].original,targets[t].replacement};
         }
     }
-    for(bool found:seen) if(!found) return false;
+    for(size_t i=0;i<Count;++i) if(!seen[i]&&!targets[i].optional) return false;
     if(anyOriginal&&anyReplacement) return false;
     out.alreadyApplied=anyReplacement;return true;
 }

@@ -23,8 +23,10 @@ within the exact segment bounds. A page shared with another segment is rejected,
 including the 16 KiB page layout of the examined JL Mod liboboe.so.
 
 The direct AAudio implementation changes five import slots in an eligible user
-library. Except for the restricted Oboe resolver described below, it cannot observe
-dlsym calls or calls originating from other libraries;
+library. An optional, separate one-slot transaction observes direct
+`AAudioStreamBuilder_setSessionId` imports so explicit app IDs are not mistaken
+for the default. Except for the restricted Oboe resolver described below, it
+cannot observe dlsym calls or calls originating from other libraries;
 missing direction/performance setter observations therefore remain unchanged.
 All five eager-resolved imports must exist on one nonexecutable data page. Other
 layouts and non-ARM64 ABIs intentionally do nothing. Prior GOT modifications are
@@ -146,8 +148,10 @@ Builder state is restored, the first allocation is serialized across concurrent
 opens, and pre-start preparation is requested once for the shared ID rather
 than on every short sound. The older pre-start path remains restricted to apps
 that explicitly called the session setter, unless the separate reuse option is
-enabled. A failed reused-session open clears the pin and receives one original
-request retry.
+enabled. Direct setter imports are observed through their own optional safe GOT
+transaction; if a present import cannot be safely observed, session reuse is
+disabled for that process. A failed reused-session open clears the pin and
+receives one original request retry.
 
 The purpose is to avoid rebuilding a per-session effect chain when an app closes
 and reopens short-lived AAudio streams. This can change how streams from one

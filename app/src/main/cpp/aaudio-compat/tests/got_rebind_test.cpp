@@ -36,6 +36,16 @@ struct Fixture {
 struct Protection { int calls=0; int fail=0; uintptr_t* corrupt=nullptr; };
 bool protect(void* opaque,uintptr_t page,size_t size,int mode){auto& p=*static_cast<Protection*>(opaque);++p.calls;if(p.calls==p.fail)return false;const bool ok=mprotect(reinterpret_cast<void*>(page),size,mode)==0;if(ok&&p.calls==1&&p.corrupt)*p.corrupt=0xdead;return ok;}
 int main(){
+    // Optional imports can be absent without rejecting the core AAudio plan;
+    // a present optional import still gets its own bounded one-slot plan.
+    {Fixture f; BasicPlan<1> p;
+        const std::array<Target,1> absent{{{"setSessionId",0x3000,0x4000,true}}};
+        assert(prepare({reinterpret_cast<uintptr_t>(f.bytes),f.ph,3},absent,f.page,p));
+        assert(!p.page && !p.slots[0].address);
+        const std::array<Target,1> present{{{"create",f.targets[0].original,f.targets[0].replacement,true}}};
+        assert(prepare({reinterpret_cast<uintptr_t>(f.bytes),f.ph,3},present,f.page,p));
+        assert(p.page && p.slots[0].address==f.slots);
+    }
     // A loader may map the final partial PT_LOAD page even though p_memsz ends
     // before the page boundary (as in JL Mod's liboboe.so).
     {Fixture f; BasicPlan<1> p; const std::array<Target,1> one{{f.targets[0]}};
