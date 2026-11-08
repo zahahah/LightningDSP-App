@@ -14,6 +14,7 @@ import lightning.dsp.R
 import lightning.dsp.activity.OnboardingActivity
 import lightning.dsp.interop.BenchmarkManager
 import lightning.dsp.interop.AAudioCompatibilityOption
+import lightning.dsp.interop.AAudioSessionReuseOption
 import lightning.dsp.interop.AAudioCompatibilityResult
 import lightning.dsp.interop.PostGainRangePolicy
 import lightning.dsp.preference.MaterialSeekbarPreference
@@ -44,6 +45,7 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
     private val allMixers by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_all_mixers)) }
     private val enhancedMode by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_enhanced_processing)) }
     private val audioCompat by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_aaudio_compat)) }
+    private val aaudioSessionReuse by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_aaudio_reuse_session)) }
     private val enhancedModeInfo by lazy { findPreference<Preference>(getString(R.string.key_audioformat_enhanced_processing_info)) }
     private val benchmark by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_optimization_benchmark)) }
     private val benchmarkRefresh by lazy { findPreference<Preference>(getString(R.string.key_audioformat_optimization_refresh)) }
@@ -65,7 +67,10 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
                 lifecycleScope.launch {
                     val actual = withContext(Dispatchers.IO) { AAudioCompatibilityOption.actual() }
                     val requested = AAudioCompatibilityOption.requested(compatContext)
-                    if (actual != null && actual == requested) isEnabled = true
+                if (actual != null && actual == requested) {
+                    isEnabled = true
+                    aaudioSessionReuse?.isEnabled = requested
+                }
                     else {
                         if (actual != null) isChecked = actual
                         setSummary(R.string.audio_format_aaudio_compat_unknown)
@@ -84,10 +89,58 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
                         AAudioCompatibilityResult.APPLIED -> {
                             preference.isEnabled = true
                             (preference as MaterialSwitchPreference).isChecked = enabled
+                            aaudioSessionReuse?.isEnabled = enabled
                             if (isAdded) requireContext().toast(R.string.audio_format_aaudio_compat_restart)
                         }
                         AAudioCompatibilityResult.FAILED -> {
                             preference.isEnabled = true
+                            if (isAdded) requireContext().toast(R.string.audio_format_aaudio_compat_failed)
+                        }
+                        AAudioCompatibilityResult.UNKNOWN -> {
+                            preference.setSummary(R.string.audio_format_aaudio_compat_unknown)
+                            if (isAdded) requireContext().toast(R.string.audio_format_aaudio_compat_unknown)
+                        }
+                    }
+                }
+                false
+            }
+        }
+
+        aaudioSessionReuse?.apply {
+            val compatContext = requireContext().applicationContext
+            isVisible = isRoot()
+            isChecked = AAudioSessionReuseOption.requested(compatContext)
+            isEnabled = isRoot() && AAudioCompatibilityOption.requested(compatContext)
+            if (isRoot()) {
+                isEnabled = false
+                lifecycleScope.launch {
+                    val actual = withContext(Dispatchers.IO) { AAudioSessionReuseOption.actual() }
+                    val expected = AAudioSessionReuseOption.requested(compatContext) &&
+                        AAudioCompatibilityOption.requested(compatContext)
+                    if (actual != null && actual == expected) {
+                        isEnabled = AAudioCompatibilityOption.requested(compatContext)
+                    } else {
+                        if (actual != null && AAudioCompatibilityOption.requested(compatContext)) isChecked = actual
+                        setSummary(R.string.audio_format_aaudio_compat_unknown)
+                    }
+                }
+            }
+            setOnPreferenceChangeListener { preference, newValue ->
+                val enabled = newValue as Boolean
+                val appContext = requireContext().applicationContext
+                preference.isEnabled = false
+                lifecycleScope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        AAudioSessionReuseOption.set(appContext, enabled)
+                    }
+                    when (result) {
+                        AAudioCompatibilityResult.APPLIED -> {
+                            preference.isEnabled = AAudioCompatibilityOption.requested(appContext)
+                            (preference as MaterialSwitchPreference).isChecked = enabled
+                            if (isAdded) requireContext().toast(R.string.audio_format_aaudio_reuse_session_restart)
+                        }
+                        AAudioCompatibilityResult.FAILED -> {
+                            preference.isEnabled = AAudioCompatibilityOption.requested(appContext)
                             if (isAdded) requireContext().toast(R.string.audio_format_aaudio_compat_failed)
                         }
                         AAudioCompatibilityResult.UNKNOWN -> {

@@ -24,6 +24,7 @@ class AllMixersPreferenceContractTest {
 
     @Test fun audioCompatibilityIsOptInAndFollowsMediaScanning() {
         assertEquals("false", value("src/main/res/values/defaults.xml", "bool", "default_audioformat_aaudio_compat"))
+        assertEquals("false", value("src/main/res/values/defaults.xml", "bool", "default_audioformat_aaudio_reuse_session"))
         assertEquals("Improve app compatibility", value("src/main/res/values/strings.xml", "string", "audio_format_aaudio_compat"))
         assertEquals("Requires selecting incompatible apps in Vector or LSPosed.",
             value("src/main/res/values/strings.xml", "string", "audio_format_aaudio_compat_summary"))
@@ -32,9 +33,17 @@ class AllMixersPreferenceContractTest {
         val settings = (0 until nodes.length).map { nodes.item(it) as Element }
         val scanning = settings.indexOfFirst { it.getAttributeNS(androidNamespace, "key") == "@string/key_audioformat_enhanced_processing" }
         val compat = settings.indexOfFirst { it.getAttributeNS(androidNamespace, "key") == "@string/key_audioformat_aaudio_compat" }
+        val reuse = settings.indexOfFirst { it.getAttributeNS(androidNamespace, "key") == "@string/key_audioformat_aaudio_reuse_session" }
         assertEquals(scanning + 1, compat)
+        assertEquals(compat + 1, reuse)
         assertEquals("false", settings[compat].getAttributeNS(androidNamespace, "persistent"))
+        assertEquals("false", settings[reuse].getAttributeNS(androidNamespace, "persistent"))
+        assertEquals("Reuse AAudio session", value("src/main/res/values/strings.xml", "string", "audio_format_aaudio_reuse_session"))
         val nativeSource = File(app, "src/main/cpp/aaudio-compat/aaudio_compat.cpp").readText()
+        assertTrue(nativeSource.contains("debug.ldsp.aaudio_reuse_session"))
+        assertTrue(nativeSource.contains("firstPinnedSession"))
+        val option = File(app, "src/root/java/lightning/dsp/interop/AAudioSessionReuseOption.kt").readText()
+        assertTrue(option.contains("AAudioCompatibilityOption.requested(context)"))
         val cmake = File(app, "src/main/cpp/CMakeLists.txt").readText()
         // Vector calls native_init under its registry lock; reentering dlopen deadlocks.
         assertFalse(nativeSource.contains("dlopen(\"libaaudio.so\""))

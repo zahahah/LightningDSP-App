@@ -7,12 +7,15 @@
 #include <string>
 
 static const char* property = "";
+static const char* reuseSessionProperty = "0";
 static std::vector<int> openedModes;
 static bool normalFails = false;
 static int warnings = 0;
+static int nextAllocatedSession = 101;
 static AAudioStream audioStream;
-extern "C" int __system_property_get(const char*, char* value) {
-    std::strcpy(value, property); return std::strlen(property);
+extern "C" int __system_property_get(const char* name, char* value) {
+    const char* selected = name && std::strcmp(name, kReuseSessionProperty) == 0 ? reuseSessionProperty : property;
+    std::strcpy(value, selected); return std::strlen(selected);
 }
 extern "C" int __android_log_print(int priority, const char*, const char*, ...) {
     if (priority == ANDROID_LOG_WARN) ++warnings;
@@ -30,7 +33,7 @@ static int fakeDelete(AAudioStreamBuilder* b) { delete b; return 0; }
 static int fakeOpen(AAudioStreamBuilder* b, AAudioStream** out) {
     openedModes.push_back(b->performance);
     if (normalFails && b->performance == 10) { *out = nullptr; return -1; }
-    audioStream.session = b->session == 0 ? 101 : b->session;
+    audioStream.session = b->session == AAUDIO_SESSION_ID_ALLOCATE ? nextAllocatedSession++ : b->session;
     *out = &audioStream; return 0;
 }
 extern "C" int AAudio_createStreamBuilder(AAudioStreamBuilder** b) { return fakeCreate(b); }
@@ -223,6 +226,10 @@ int main() {
     assert(sessionBuilder->session == AAUDIO_SESSION_ID_NONE);
     assert(audioStream.session == 101);
     assert(preparationsForTest == beforePreparation + 1);
+    setSession(sessionBuilder, AAUDIO_SESSION_ID_NONE);
+    expect(sessionBuilder, {AAUDIO_PERFORMANCE_MODE_NONE});
+    assert(audioStream.session == 102 && pinnedSession == AAUDIO_SESSION_ID_NONE);
+    assert(preparationsForTest == beforePreparation + 2);
     setSession(sessionBuilder, 777);
     expect(sessionBuilder, {AAUDIO_PERFORMANCE_MODE_NONE});
     assert(sessionBuilder->session == 777 && audioStream.session == 777);
@@ -240,5 +247,37 @@ int main() {
     expect(sessionBuilder, {10});
     assert(audioStream.session == 999 && sessionBuilder->session == 999);
     deleteBuilder(sessionBuilder);
+
+    // The experimental session pin is independently opt-in, applies only to
+    // observed NONE requests, and prepares a shared process session only once.
+    reuseSessionProperty = "1";
+    pinnedSession = AAUDIO_SESSION_ID_NONE;
+    AAudioStreamBuilder* firstReuseBuilder = nullptr;
+    createBuilder(&firstReuseBuilder);
+    setDirection(firstReuseBuilder, AAUDIO_DIRECTION_OUTPUT);
+    setPerformance(firstReuseBuilder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
+    setSession(firstReuseBuilder, AAUDIO_SESSION_ID_NONE);
+    const auto beforePinnedPreparation = preparationsForTest;
+    expect(firstReuseBuilder, {AAUDIO_PERFORMANCE_MODE_NONE});
+    assert(audioStream.session == 103);
+    assert(pinnedSession == 103 && firstReuseBuilder->session == AAUDIO_SESSION_ID_NONE);
+    assert(preparationsForTest == beforePinnedPreparation + 1);
+
+    AAudioStreamBuilder* nextReuseBuilder = nullptr;
+    createBuilder(&nextReuseBuilder);
+    setDirection(nextReuseBuilder, AAUDIO_DIRECTION_OUTPUT);
+    setPerformance(nextReuseBuilder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
+    setSession(nextReuseBuilder, AAUDIO_SESSION_ID_NONE);
+    expect(nextReuseBuilder, {AAUDIO_PERFORMANCE_MODE_NONE});
+    assert(audioStream.session == 103);
+    assert(pinnedSession == 103 && nextReuseBuilder->session == AAUDIO_SESSION_ID_NONE);
+    assert(preparationsForTest == beforePinnedPreparation + 1);
+
+    setSession(nextReuseBuilder, 777);
+    expect(nextReuseBuilder, {AAUDIO_PERFORMANCE_MODE_NONE});
+    assert(audioStream.session == 777 && pinnedSession == 103);
+    deleteBuilder(nextReuseBuilder);
+    deleteBuilder(firstReuseBuilder);
+    reuseSessionProperty = "0";
     std::puts("AAudio compatibility construction tests passed");
 }

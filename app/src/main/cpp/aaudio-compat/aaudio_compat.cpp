@@ -28,6 +28,7 @@
 
 namespace {
 constexpr char kProperty[] = "debug.ldsp.aaudio_compat";
+constexpr char kReuseSessionProperty[] = "debug.ldsp.aaudio_reuse_session";
 using HookFunction = int (*)(void*, void*, void**);
 using LoadedCallback = void (*)(const char*, void*);
 struct NativeApi { uint32_t version; HookFunction hook; int (*unhook)(void*); };
@@ -40,6 +41,8 @@ using SessionSetter = void (*)(AAudioStreamBuilder*, int32_t);
 using SessionGetter = int32_t (*)(AAudioStream*);
 SessionSetter originalSession = nullptr;
 SessionGetter originalGetSession = nullptr;
+std::mutex pinnedSessionMutex;
+aaudio_session_id_t pinnedSession = AAUDIO_SESSION_ID_NONE;
 #ifndef LDSP_AAUDIO_COMPAT_HOST_TEST
 std::mutex preparationRegistration;
 std::atomic<bool> preparationReady{false};
@@ -87,6 +90,10 @@ using SymbolResolver = void* (*)(void*, const char*);
 bool requested() {
     char value[PROP_VALUE_MAX]{};
     return __system_property_get(kProperty, value) == 1 && value[0] == '1';
+}
+bool reuseSessionRequested() {
+    char value[PROP_VALUE_MAX]{};
+    return requested() && __system_property_get(kReuseSessionProperty, value) == 1 && value[0] == '1';
 }
 BuilderState* findBuilder(AAudioStreamBuilder* builder) {
     for (auto& item : builders) if (item.builder == builder) return &item;
@@ -151,24 +158,54 @@ BuilderState* findBuilder(AAudioStreamBuilder* builder) {
     // The builder is restored even on failure. A clean failure gets exactly one
     // retry using the application's original request; no routing/restart loop.
     originalPerformance(builder, AAUDIO_PERFORMANCE_MODE_NONE);
-    // Only an observed NONE request may be temporarily allocated. Never replace an app ID.
-    const bool allocateSession = canPrepareStream() && originalSession && originalGetSession && state.sessionObserved && state.session == AAUDIO_SESSION_ID_NONE;
-    if (allocateSession) originalSession(builder, AAUDIO_SESSION_ID_ALLOCATE);
+    // In the opt-in session-reuse experiment, serialize first allocation so
+    // concurrent streams in one app process cannot claim different session IDs.
+    // Explicit app-requested session IDs are never replaced.
+    const bool reuseRequested = reuseSessionRequested() && originalSession && originalGetSession &&
+        state.sessionObserved && state.session == AAUDIO_SESSION_ID_NONE;
+    std::unique_lock<std::mutex> sessionLock(pinnedSessionMutex, std::defer_lock);
+    if (reuseRequested) sessionLock.lock();
+    const bool reuseExistingSession = reuseRequested && pinnedSession > 0;
+    // Only an observed NONE request may be temporarily allocated or pinned.
+    // Allocation remains available for the existing pre-start preparation path.
+    const bool allocateSession = originalSession && originalGetSession && state.sessionObserved &&
+        state.session == AAUDIO_SESSION_ID_NONE && (canPrepareStream() || reuseRequested) && !reuseExistingSession;
+    if (reuseExistingSession) originalSession(builder, pinnedSession);
+    else if (allocateSession) originalSession(builder, AAUDIO_SESSION_ID_ALLOCATE);
     AAudioStream* candidate = nullptr;
     if (diagnostic) __android_log_print(ANDROID_LOG_INFO, "LightningDSP_AAudio", "open normal enter pid=%d", getpid());
     const auto status = originalOpen(builder, &candidate);
     if (diagnostic) __android_log_print(ANDROID_LOG_INFO, "LightningDSP_AAudio", "open normal returned=%d pid=%d", status, getpid());
     originalPerformance(builder, state.performance);
     if (allocateSession) originalSession(builder, state.session);
+    else if (reuseExistingSession) originalSession(builder, state.session);
     if (status != AAUDIO_OK && candidate == nullptr) {
+        // A rejected reused ID must not poison later opens. The fallback below
+        // retries exactly once with the original session and performance mode.
+        if (reuseExistingSession) pinnedSession = AAUDIO_SESSION_ID_NONE;
         const auto fallback = originalOpen(builder, stream);
         __android_log_print(ANDROID_LOG_WARN, "LightningDSP_AAudio",
                             "normal request failed=%d; original retry=%d pid=%d", status, fallback, getpid());
+        if (sessionLock.owns_lock()) sessionLock.unlock();
         return fallback;
     }
-    if (status == AAUDIO_OK) prepareOpenedStream(candidate);
+    bool firstPinnedSession = false;
+    if (status == AAUDIO_OK && allocateSession && reuseRequested) {
+        const auto allocated = originalGetSession(candidate);
+        if (allocated > 0) {
+            pinnedSession = allocated;
+            firstPinnedSession = true;
+        }
+    }
+    if (sessionLock.owns_lock()) sessionLock.unlock();
+    // Subsequent streams share the established chain. Reissuing preparation on
+    // every brief sound can synchronously stall each open, so only the first
+    // stream asks the app/controller to prewarm this stable session.
+    if (status == AAUDIO_OK && (!reuseRequested || firstPinnedSession)) prepareOpenedStream(candidate);
     *stream = candidate;
-    __android_log_print(ANDROID_LOG_INFO, "LightningDSP_AAudio", "normal request pid=%d result=%d", getpid(), status);
+    if (diagnostic) __android_log_print(ANDROID_LOG_INFO, "LightningDSP_AAudio",
+        "normal request pid=%d result=%d session=%d reused=%d", getpid(), status,
+        originalGetSession ? originalGetSession(candidate) : AAUDIO_SESSION_ID_NONE, reuseExistingSession);
     return status;
 }
 

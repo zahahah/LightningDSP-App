@@ -130,3 +130,25 @@ playback rather than blocking indefinitely. This can delay stream startup.
 Never-started prewarmed owners expire after 10 seconds. Runtime provider access,
 inactive-track visibility, responsiveness and audible JL Mod results require
 device testing; host tests do not establish first-frame coverage.
+
+## Experimental process-local AAudio session reuse
+
+An independent, default-off `debug.ldsp.aaudio_reuse_session` option is exposed
+under the existing root AAudio compatibility setting. In explicitly scoped
+Vector/LSPosed user apps, it pins only streams whose observed session request is
+`AAUDIO_SESSION_ID_NONE` and whose low-latency request is already converted by
+the compatibility hook. The first successful stream allocates a session; later
+eligible streams in that process temporarily request the same ID. Explicit app
+session IDs, input streams, normal/untracked builders, and requests without the
+session setter observation pass through unchanged. Builder state is restored,
+the first allocation is serialized across concurrent opens, and pre-start
+preparation is requested once for the shared ID rather than on every short
+sound. A failed reused-session open clears the pin and receives one original
+request retry.
+
+The purpose is to avoid rebuilding a per-session effect chain when an app closes
+and reopens short-lived AAudio streams. This can change how streams from one
+process share effects, and Android documents that allocated or specified AAudio
+session IDs may increase latency. Keep the option off except for targeted
+testing; host tests prove only wrapper decisions, not device latency, sound
+quality, safe behavior for every app, or JL Mod stability.
