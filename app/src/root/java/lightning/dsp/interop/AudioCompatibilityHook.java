@@ -24,8 +24,18 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
     private static final AtomicBoolean launchHookInstalled = new AtomicBoolean();
     private static final AtomicInteger preparationDiagnostics = new AtomicInteger();
     private static final AtomicInteger launchDiagnostics = new AtomicInteger();
+    private static final AtomicInteger libraryScanDiagnostics = new AtomicInteger();
+    private static final AtomicBoolean libraryScanScheduled = new AtomicBoolean();
     private static native boolean nativeReady();
+    private static native boolean nativeAAudioReady();
     private static native void nativeSetPreparationCallback();
+    private static native int nativeScanLoadedAudioLibraries();
+    private static final ScheduledExecutorService libraryScanWorker = Executors.newSingleThreadScheduledExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "LDSP-library-scan");
+        thread.setDaemon(true);
+        return thread;
+    });
+    private static volatile ScheduledFuture<?> libraryScanTask;
     private static final ThreadPoolExecutor preparationWorker = new ThreadPoolExecutor(
             0, 1, 10, TimeUnit.SECONDS, new SynchronousQueue<>(), runnable -> {
                 Thread thread = new Thread(runnable, "LDSP-session-prepare");
@@ -75,6 +85,40 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
         }
     }
     private static native boolean nativeObserverReady();
+
+    /** Catch app audio DSOs loaded before Vector registered its linker callback. */
+    private static void scanLoadedAudioLibraries() {
+        try {
+            int scanned = nativeScanLoadedAudioLibraries();
+            if (nativeAAudioReady()) {
+                ScheduledFuture<?> task = libraryScanTask;
+                if (task != null) task.cancel(false);
+                libraryScanScheduled.set(false);
+                XposedBridge.log("LightningDSP AAudio: loaded audio imports rebound pid=" + Process.myPid());
+            } else if (scanned > 0 && libraryScanDiagnostics.getAndIncrement() < 4) {
+                XposedBridge.log("LightningDSP AAudio: scanned " + scanned
+                        + " loaded app libraries; compatibility imports not ready pid=" + Process.myPid());
+            }
+        } catch (Throwable error) {
+            if (libraryScanDiagnostics.getAndIncrement() < 4)
+                XposedBridge.log("LightningDSP AAudio: loaded-library scan unavailable; waiting for linker callback");
+        }
+    }
+
+    private static void startLoadedLibraryScan() {
+        if (!nativeObserverReady()) return;
+        scanLoadedAudioLibraries();
+        if (nativeAAudioReady() || !libraryScanScheduled.compareAndSet(false, true)) return;
+        libraryScanTask = libraryScanWorker.scheduleWithFixedDelay(() -> {
+            if (!requested() || nativeAAudioReady()) {
+                ScheduledFuture<?> task = libraryScanTask;
+                if (task != null) task.cancel(false);
+                libraryScanScheduled.set(false);
+                return;
+            }
+            scanLoadedAudioLibraries();
+        }, 1, 2, TimeUnit.SECONDS);
+    }
 
     /** Do not even load the native library into selected apps while disabled. */
     private static boolean requested() {
@@ -130,9 +174,12 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
         try {
             System.loadLibrary("ldsp_aaudio_compat");
             nativeSetPreparationCallback();
+            startLoadedLibraryScan();
             // Registration, patched imports and audio processing are distinct states.
             String state = !nativeObserverReady() ? "native observer unavailable"
-                    : nativeReady() ? "imports rebound" : "observer ready; waiting for app audio library";
+                    : nativeAAudioReady() ? "AAudio imports rebound"
+                    : nativeReady() ? "other audio imports rebound; waiting for AAudio library"
+                    : "observer ready; waiting for app audio library";
             XposedBridge.log("LightningDSP AAudio: " + state
                     + " pid=" + Process.myPid());
         } catch (Throwable error) {

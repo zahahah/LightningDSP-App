@@ -19,6 +19,8 @@
 #include <cstdio>
 #include <type_traits>
 #include <dlfcn.h>
+#include <string>
+#include <vector>
 #if defined(__aarch64__) || defined(LDSP_AAUDIO_COMPAT_HOST_TEST)
 #include "got_rebind.h"
 #ifndef LDSP_AAUDIO_COMPAT_HOST_TEST
@@ -33,6 +35,7 @@ using HookFunction = int (*)(void*, void*, void**);
 using LoadedCallback = void (*)(const char*, void*);
 struct NativeApi { uint32_t version; HookFunction hook; int (*unhook)(void*); };
 std::atomic<bool> ready{false};
+std::atomic<bool> aaudioReady{false};
 std::atomic<bool> observerReady{false};
 // Session reuse must not override an explicit app ID. If a direct session
 // setter import exists but cannot be safely observed, fail closed for reuse.
@@ -291,6 +294,16 @@ bool eligibleLibrary(const char* path) {
     return !std::strcmp(name, "liboboe.so") || !std::strcmp(name, "libmmapi_tsf.so") ||
         !std::strcmp(name, "libmmapi_eas.so");
 }
+template <typename Paths, typename Callback>
+size_t visitEligibleLibraries(const Paths& paths, Callback&& callback) {
+    size_t visited = 0;
+    for (const auto& path : paths) {
+        if (!eligibleLibrary(path.c_str())) continue;
+        callback(path.c_str());
+        ++visited;
+    }
+    return visited;
+}
 #ifndef LDSP_AAUDIO_COMPAT_HOST_TEST
 std::mutex rebindMutex;
 bool protectPage(void*, uintptr_t page, size_t size, int protection) {
@@ -354,6 +367,9 @@ int inspectLibrary(dl_phdr_info* info, size_t, void* opaque) {
         if (result == ldsp::got::Result::Unsafe || result == ldsp::got::Result::Applied ||
                 result == ldsp::got::Result::AlreadyApplied || lookup.result == ldsp::got::Result::Rejected)
             lookup.result = result;
+        if (result == ldsp::got::Result::Applied || result == ldsp::got::Result::AlreadyApplied) {
+            if (std::strcmp(backend, "OpenSL") != 0) aaudioReady.store(true, std::memory_order_release);
+        }
         lookup.reason = "import transaction rejected or rolled back";
         if (result == ldsp::got::Result::Applied)
             __android_log_print(ANDROID_LOG_INFO, "LightningDSP_AAudio", "%s imports ready pid=%d", backend, getpid());
@@ -444,6 +460,31 @@ void libraryLoaded(const char* name, void*) {
     }
 #endif
 }
+
+#ifndef LDSP_AAUDIO_COMPAT_HOST_TEST
+struct LoadedLibraryPaths {
+    std::vector<std::string> paths;
+};
+int collectLoadedLibrary(dl_phdr_info* info, size_t, void* opaque) {
+    if (!info->dlpi_name || !eligibleLibrary(info->dlpi_name)) return 0;
+    static_cast<LoadedLibraryPaths*>(opaque)->paths.emplace_back(info->dlpi_name);
+    return 0;
+}
+size_t scanLoadedLibraries() {
+    if (!observerReady.load(std::memory_order_acquire) || !requested()) return 0;
+    LoadedLibraryPaths loaded;
+    dl_iterate_phdr(collectLoadedLibrary, &loaded);
+    // Do not rebind while dl_iterate_phdr is walking the loader's image list.
+    // Copy names first, then reuse the normal callback's duplicate-image checks.
+    return visitEligibleLibraries(loaded.paths, [](const char* path) { libraryLoaded(path, nullptr); });
+}
+#endif
+}
+#endif
+
+#if !defined(__aarch64__) && !defined(LDSP_AAUDIO_COMPAT_HOST_TEST)
+namespace {
+size_t scanLoadedLibraries() { return 0; }
 }
 #endif
 
@@ -488,8 +529,20 @@ Java_lightning_dsp_interop_AudioCompatibilityHook_nativeReady(JNIEnv*, jclass) {
     return ready.load(std::memory_order_acquire) ? JNI_TRUE : JNI_FALSE;
 }
 extern "C" JNIEXPORT jboolean JNICALL
+Java_lightning_dsp_interop_AudioCompatibilityHook_nativeAAudioReady(JNIEnv*, jclass) {
+    return aaudioReady.load(std::memory_order_acquire) ? JNI_TRUE : JNI_FALSE;
+}
+extern "C" JNIEXPORT jboolean JNICALL
 Java_lightning_dsp_interop_AudioCompatibilityHook_nativeObserverReady(JNIEnv*, jclass) {
     return observerReady.load(std::memory_order_acquire) ? JNI_TRUE : JNI_FALSE;
+}
+extern "C" JNIEXPORT jint JNICALL
+Java_lightning_dsp_interop_AudioCompatibilityHook_nativeScanLoadedAudioLibraries(JNIEnv*, jclass) {
+    try {
+        return static_cast<jint>(scanLoadedLibraries());
+    } catch (...) {
+        return 0;
+    }
 }
 #endif
 

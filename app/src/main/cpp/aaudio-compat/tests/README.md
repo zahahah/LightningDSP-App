@@ -15,6 +15,12 @@ metadata, SysV/GNU hashes, imported symbol identity, slot/page uniqueness, prior
 import modifications, RELRO, writable data, protection failures, CAS conflicts,
 rollback, and builder direction/performance observation guards.
 
+The hook tests also verify the loaded-library sweep's path filtering. At runtime,
+the Xposed entry performs an immediate sweep and retries every two seconds until
+an AAudio import is rebound. This covers app audio libraries that were already
+loaded before Vector registered its linker callback, without touching audio
+buffers or changing playback from the scan thread.
+
 An import slot may be inside a PT_LOAD whose first or last page extends beyond
 the exact segment bounds. The protection transaction accepts that partial page
 only when no other PT_LOAD shares it and the actual private mapping has the

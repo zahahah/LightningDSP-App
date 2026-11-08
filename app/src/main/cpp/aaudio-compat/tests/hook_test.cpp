@@ -64,6 +64,21 @@ static void expect(AAudioStreamBuilder* builder, std::initializer_list<int> mode
     assert(openedModes == std::vector<int>(modes));
 }
 int main() {
+    const std::vector<std::string> alreadyLoaded{
+        "/data/app/com.example-1/lib/arm64/liboboe.so",
+        "/data/app/com.example-1/lib/arm64/libmmapi_eas.so",
+        "/system/lib64/libaaudio.so",
+        "/data/app/com.lightning.dsp-1/lib/arm64/libldsp_aaudio_compat.so",
+        "/data/app/com.example-1/lib/arm64/libunrelated.so"
+    };
+    std::vector<std::string> scanned;
+    const auto visited = visitEligibleLibraries(alreadyLoaded, [&](const char* path) { scanned.emplace_back(path); });
+    assert(visited == 3);
+    assert(scanned.size() == 3);
+    assert(scanned[0] == alreadyLoaded[0] && eligibleDynamicAAudioLibrary(scanned[0].c_str()));
+    assert(scanned[1] == alreadyLoaded[1] && eligibleDynamicAAudioLibrary(scanned[1].c_str()));
+    assert(scanned[2] == alreadyLoaded[4] && !eligibleDynamicAAudioLibrary(scanned[2].c_str()));
+
     NativeApi invalid{99, fakeHook, nullptr};
     native_init(&invalid); assert(!ready.load()); assert(hookCount == 0);
     NativeApi valid{2, fakeHook, nullptr};
