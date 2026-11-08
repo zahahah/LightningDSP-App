@@ -19,7 +19,7 @@ class SessionDumpAdmissionTest {
         val destroy = source.substringAfter("override fun onDestroy() {").substringBefore("override fun onSharedPreferenceChanged")
         assertTrue(destroy.indexOf("sessionDumpManager = null") < destroy.indexOf("oldSessionDumpManager?.destroy()"))
         assertTrue(destroy.indexOf("oldSessionDumpManager?.destroy()") < destroy.indexOf("app.rootSessionDatabase.clearSessions()"))
-        assertTrue(source.split("SessionDumpAdmission.allows(!isServiceDisposing && sessionDumpManager === manager, app.isEnhancedProcessing)").size == 3)
-        assertTrue(source.contains("if (isServiceDisposing || sessionDumpManager != null || !app.isEnhancedProcessing) return"))
+        assertTrue(source.split("SessionDumpAdmission.allows(!isServiceDisposing && sessionDumpManager === manager, !app.isGlobalMode)").size == 3)
+        assertTrue(source.contains("if (isServiceDisposing || sessionDumpManager != null || app.isGlobalMode) return"))
     }
 }

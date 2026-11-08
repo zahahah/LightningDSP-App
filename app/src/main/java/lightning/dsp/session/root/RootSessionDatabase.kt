@@ -115,13 +115,22 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
     }
 
     private fun shouldProcess(id: Int, uid: Int, packageName: String): Boolean =
-        id <= 0 || !app.isEnhancedProcessing || playbackActivity.shouldProcess(id, uid, packageName)
+        id <= 0 || playbackActivity.shouldProcess(id, uid, packageName)
+
+    /** Ownership includes idle/prepared engines; notifications must expose playback only. */
+    fun playingSessions(): Array<IEffectSession> = sessionList.filter { (id, session) ->
+        id > 0 && playbackActivity.isPlaying(id, session.uid, session.packageName)
+    }.values.toTypedArray()
+
+    fun markPlaybackUnavailable() = playbackActivity.markUnavailable()
+
+    fun updatePlaybackActivity(dump: ISessionInfoDump) = onSessionDumpUpdated(dump)
 
     override fun onSessionDumpUpdated(dump: ISessionInfoDump) {
-        playbackActivity.update(dump.sessions, SystemClock.uptimeMillis())
+        playbackActivity.update(dump.sessions, SystemClock.uptimeMillis(), sessionList.keys.toSet())
         val inactive = playbackActivity.confirmedInactiveSessions()
         sessionList.toMap().forEach { (id, session) ->
-            if (inactive[id] == (session.uid to session.packageName)) {
+            if (app.isEnhancedProcessing && inactive[id] == (session.uid to session.packageName)) {
                 Timber.d("Removing inactive audio session %d (%s)", id, session.packageName)
                 confirmedInactiveRemovals += id
                 removeSession(id)
@@ -130,7 +139,7 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
         applyPlaybackActivity()
     }
 
-    /** Unknown/failed observations must not strand a resumed session in bypass. */
+    /** Explicit lifecycle/mode reset; collector failures must not call this. */
     fun clearPlaybackActivity() {
         playbackActivity.clear()
         applyPlaybackActivity()
@@ -190,7 +199,6 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
         if (sessionId < 0 || (app.isGlobalMode && sessionId > 0)) {
             return
         }
-        playbackActivity.forget(sessionId)
         // Global mode enabled, remove other sessions
         if (sessionId == 0)
             clearSessions()

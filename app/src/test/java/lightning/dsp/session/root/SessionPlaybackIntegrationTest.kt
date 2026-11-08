@@ -38,20 +38,22 @@ class SessionPlaybackIntegrationTest {
         assertTrue(destroy.contains("requestPlaybackActivityConfirmation(false)"))
     }
 
-    @Test fun invalidDumpAndStoppingScanningRestoreUnknownActivity() {
+    @Test fun invalidDumpCannotReenableIdleAndObservationRunsWithoutDiscovery() {
         val service = source("service/RootAudioProcessorService")
-        assertTrue(service.contains("if (dump == null) app.rootSessionDatabase.clearPlaybackActivity()"))
-        assertTrue(service.contains("manager.requestPlaybackActivityConfirmation(app.rootSessionDatabase.needsPlaybackActivityConfirmation)"))
-        assertEquals(2, Regex("sessionDumpManager = null\\s+app.rootSessionDatabase.clearPlaybackActivity\\(\\)")
-            .findAll(service).count())
+        assertFalse(service.contains("if (dump == null) app.rootSessionDatabase.clearPlaybackActivity()"))
+        assertTrue(service.contains("if (dump != null)"))
+        assertTrue(service.contains("else app.rootSessionDatabase.updatePlaybackActivity(dump)"))
+        assertTrue(service.contains("manager.requestPlaybackActivityConfirmation(dump != null && app.rootSessionDatabase.needsPlaybackActivityConfirmation)"))
+        assertTrue(service.contains("app.rootSessionDatabase.playingSessions()"))
     }
 
     @Test fun confirmedInactiveSessionsAreRemovedAndNotImmediatelyReattached() {
         val database = source("session/root/RootSessionDatabase")
-        assertTrue(database.contains("id <= 0 || !app.isEnhancedProcessing || playbackActivity.shouldProcess"))
+        assertTrue(database.contains("id <= 0 || playbackActivity.shouldProcess"))
         val update = database.substringAfter("override fun onSessionDumpUpdated").substringBefore("fun clearPlaybackActivity")
         assertTrue(update.contains("playbackActivity.confirmedInactiveSessions()"))
         assertTrue(update.contains("removeSession(id)"))
+        assertTrue(update.contains("app.isEnhancedProcessing && inactive[id]"))
         val addGate = database.substringAfter("override fun shouldAddSession").substringBefore("override fun onSessionRemoved")
         assertTrue(addGate.contains("playbackActivity.shouldProcess(id, uid, packageName)"))
         assertTrue(addGate.contains("id !in supplementalSessionReservations"))

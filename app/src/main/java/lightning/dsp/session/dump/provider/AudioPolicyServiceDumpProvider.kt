@@ -19,7 +19,9 @@ class AudioPolicyServiceDumpProvider : ISessionDumpProvider {
         val dump = DumpUtils.dumpAll(context, TARGET_SERVICE)
         dump ?: return null
 
-        return process(context, dump)
+        // No matched sessions may mean an unsupported vendor layout, not proven silence.
+        // The AudioService fallback can provide a validated empty player section.
+        return process(context, dump).takeIf { it.sessions.isNotEmpty() }
     }
 
     private fun process(context: Context, dump: String): ISessionInfoDump {

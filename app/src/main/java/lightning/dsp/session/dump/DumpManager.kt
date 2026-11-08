@@ -53,34 +53,18 @@ class DumpManager constructor(val context: Context): KoinComponent {
 
     fun dumpSessions(): ISessionInfoDump? {
         val preferred = availableDumpMethods[activeDumpMethod]
-        var dump: ISessionInfoDump? = null
-        try {
-            dump = preferred?.dump(context)
-        } catch (ex: Exception) {
-            Timber.e("Exception raised while dumping session info using method ${activeDumpMethod.name} (id ${activeDumpMethod})")
-            Timber.e(ex)
+        val alternatives = availableDumpMethods.filterKeys { it != activeDumpMethod }.map { (method, provider) ->
+            {
+                Timber.d("Falling back to method: ${method.name}")
+                provider.dump(context)
+            }
         }
-
-        if(!allowFallback || (dump != null && dump.sessions.isNotEmpty()))
-        {
-            return dump
-        }
-
-        availableDumpMethods.forEach {
-                Timber.d("Falling back to method: ${it.key.name}")
-
-                if(it.key != activeDumpMethod)
-                {
-                    dump = it.value.dump(context)
-                }
-                if(dump != null && dump!!.sessions.isNotEmpty())
-                {
-                    return dump
-                }
-        }
-
-        Timber.e("Failed to find session info using any method")
-        return null
+        return SessionDumpSelection.collect(
+            preferred = { preferred?.dump(context) },
+            alternatives = alternatives,
+            allowFallback = allowFallback,
+            onFailure = { failure -> Timber.e(failure, "Failed to collect session info from a dump provider") },
+        )
     }
 
     fun dumpCaptureAllowlistLog(): ISessionPolicyInfoDump? {

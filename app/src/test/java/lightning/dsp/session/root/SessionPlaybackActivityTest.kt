@@ -8,106 +8,83 @@ class SessionPlaybackActivityTest {
     private fun entry(active: Boolean?, uid: Int = 10322, name: String = "player") =
         AudioSessionDumpEntry(uid, name, "AUDIO_USAGE_MEDIA", "AUDIO_CONTENT_TYPE_MUSIC", active)
 
-    @Test fun confirmedInactiveSessionIsEligibleForEffectCleanup() {
+    @Test fun idleEngineIsBypassedImmediatelyButRetainedOnlyForBoundedReuse() {
         val policy = SessionPlaybackActivity()
-        policy.update(mapOf(4961 to entry(false)), 0)
+        policy.update(mapOf(42 to entry(false)), 0)
+        assertFalse(policy.shouldProcess(42, 10322, "player"))
+        assertFalse(policy.isPlaying(42, 10322, "player"))
+        assertTrue(policy.confirmedInactiveSessions().isEmpty())
         assertTrue(policy.needsConfirmation)
-        assertTrue(policy.shouldProcess(4961, 10322, "player"))
-        // Merely waiting does not apply an old observation.
-        assertTrue(policy.shouldProcess(4961, 10322, "player"))
-        policy.update(mapOf(4961 to entry(false)), 9_999)
-        assertTrue(policy.shouldProcess(4961, 10322, "player"))
-        policy.update(mapOf(4961 to entry(false)), 10_000)
-        assertFalse(policy.shouldProcess(4961, 10322, "player"))
+        policy.update(mapOf(42 to entry(false)), 10_000)
+        assertEquals(mapOf(42 to (10322 to "player")), policy.confirmedInactiveSessions())
         assertFalse(policy.needsConfirmation)
-        assertEquals(mapOf(4961 to (10322 to "player")), policy.confirmedInactiveSessions())
-        policy.update(mapOf(4961 to entry(true)), 10_001)
-        assertTrue(policy.shouldProcess(4961, 10322, "player"))
+    }
+
+    @Test fun freshPlaybackRestoresRetainedSessionWithoutInheritingIdleState() {
+        val policy = SessionPlaybackActivity()
+        policy.update(mapOf(42 to entry(false)), 0)
+        policy.update(mapOf(42 to entry(true)), 500)
+        assertTrue(policy.shouldProcess(42, 10322, "player"))
+        assertTrue(policy.isPlaying(42, 10322, "player"))
         assertTrue(policy.confirmedInactiveSessions().isEmpty())
     }
 
-    @Test fun activeSessionKeepsProcessingWhilePausedSessionsAreSuspended() {
+    @Test fun unknownObservationCannotReenableKnownIdleOrAdvertisePlayback() {
         val policy = SessionPlaybackActivity()
-        val sessions = mapOf(
-            4961 to entry(true, uid = 10322, name = "spotify"),
-            2321 to entry(false, uid = 10548, name = "paused-a"),
-            2329 to entry(false, uid = 10548, name = "paused-b"),
-            2337 to entry(false, uid = 10548, name = "paused-c"),
-        )
-
-        policy.update(sessions, 10_000)
-        assertTrue(policy.shouldProcess(4961, 10322, "spotify"))
-        assertTrue(policy.shouldProcess(2321, 10548, "paused-a"))
-        policy.update(sessions, 20_000)
-
-        assertTrue(policy.shouldProcess(4961, 10322, "spotify"))
-        assertFalse(policy.shouldProcess(2321, 10548, "paused-a"))
-        assertFalse(policy.shouldProcess(2329, 10548, "paused-b"))
-        assertFalse(policy.shouldProcess(2337, 10548, "paused-c"))
-        assertFalse(policy.needsConfirmation)
+        policy.update(mapOf(42 to entry(false)), 0)
+        policy.update(mapOf(42 to entry(null)), 500)
+        assertFalse(policy.shouldProcess(42, 10322, "player"))
+        assertFalse(policy.isPlaying(42, 10322, "player"))
+        assertTrue(policy.shouldProcess(42, 99999, "other"))
+        assertFalse(policy.isPlaying(42, 99999, "other"))
     }
 
-    @Test fun activeUnknownAndMissingObservationsImmediatelyRestoreProcessing() {
-        for (next in listOf(mapOf(4961 to entry(true)), mapOf(4961 to entry(null)), emptyMap())) {
-            val policy = SessionPlaybackActivity()
-            policy.update(mapOf(4961 to entry(false)), 0)
-            policy.update(mapOf(4961 to entry(false)), 10_000)
-            assertFalse(policy.shouldProcess(4961, 10322, "player"))
-            policy.update(next, 10_001)
-            assertTrue(policy.shouldProcess(4961, 10322, "player"))
-            assertFalse(policy.needsConfirmation)
-        }
+    @Test fun ownershipAndUnknownActivityNeverCountAsActivePlayback() {
+        val policy = SessionPlaybackActivity()
+        policy.update(mapOf(42 to entry(true), 43 to entry(false), 44 to entry(null)), 0)
+        assertTrue(policy.isPlaying(42, 10322, "player"))
+        assertFalse(policy.isPlaying(43, 10322, "player"))
+        assertFalse(policy.isPlaying(44, 10322, "player"))
+        assertFalse(policy.isPlaying(45, 10322, "player"))
+        assertFalse(policy.shouldProcess(43, 10322, "player"))
+        assertTrue(policy.shouldProcess(42, 10322, "player"))
     }
 
-    @Test fun reusedUidOrPackageDoesNotInheritSuspensionOrGrace() {
+    @Test fun missingRetainedSessionIsBypassedUntilFreshPlaybackAndForgetDropsProjection() {
         val policy = SessionPlaybackActivity()
-        policy.update(mapOf(4961 to entry(false)), 0)
-        policy.update(mapOf(4961 to entry(false)), 10_000)
-        assertTrue(policy.shouldProcess(4961, 99999, "player"))
-        assertTrue(policy.shouldProcess(4961, 10322, "different"))
-        policy.update(mapOf(4961 to entry(false, name = "different")), 10_001)
-        assertTrue(policy.shouldProcess(4961, 10322, "different"))
-        assertTrue(policy.needsConfirmation)
+        policy.update(mapOf(42 to entry(true)), 0)
+        policy.update(emptyMap(), 100, setOf(42))
+        assertFalse(policy.isPlaying(42, 10322, "player"))
+        assertFalse(policy.shouldProcess(42, 10322, "player"))
+        policy.update(emptyMap(), 200, setOf(42))
+        assertFalse(policy.shouldProcess(42, 10322, "player"))
+        policy.update(mapOf(42 to entry(true)), 300, setOf(42))
+        assertTrue(policy.isPlaying(42, 10322, "player"))
+        assertTrue(policy.shouldProcess(42, 10322, "player"))
+        policy.forget(42)
+        assertFalse(policy.isPlaying(42, 10322, "player"))
     }
 
-    @Test fun globalSessionIsNeverSuspendedAndClearCancelsPendingEvidence() {
+    @Test fun failureHidesUnverifiedPlaybackWithoutInventingInactivityOrErasingEvidence() {
         val policy = SessionPlaybackActivity()
-        policy.update(mapOf(0 to entry(false), 4961 to entry(false)), 0)
-        policy.update(mapOf(0 to entry(false), 4961 to entry(false)), 10_000)
+        policy.update(mapOf(42 to entry(true)), 0)
+        policy.markUnavailable()
+        assertFalse(policy.isPlaying(42, 10322, "player"))
+        assertTrue(policy.shouldProcess(42, 10322, "player"))
+        policy.update(emptyMap(), 100, setOf(42))
+        assertFalse(policy.shouldProcess(42, 10322, "player"))
+        policy.markUnavailable()
+        assertFalse(policy.shouldProcess(42, 10322, "player"))
+    }
+
+    @Test fun changedIdentityDoesNotInheritIdleEvidenceAndGlobalIsExempt() {
+        val policy = SessionPlaybackActivity()
+        policy.update(mapOf(0 to entry(false), 42 to entry(false)), 0)
         assertTrue(policy.shouldProcess(0, 10322, "player"))
+        policy.update(mapOf(42 to entry(null, name = "other")), 1)
+        assertTrue(policy.shouldProcess(42, 10322, "other"))
+        assertFalse(policy.isPlaying(42, 10322, "other"))
         policy.clear()
-        assertTrue(policy.shouldProcess(4961, 10322, "player"))
         assertFalse(policy.needsConfirmation)
-        policy.update(mapOf(4961 to entry(false)), 11_000)
-        policy.forget(4961)
-        assertTrue(policy.shouldProcess(4961, 10322, "player"))
-        assertFalse(policy.needsConfirmation)
-    }
-
-    @Test fun rollbackAndInterruptedInactivityRestartTheGrace() {
-        val policy = SessionPlaybackActivity()
-        policy.update(mapOf(4961 to entry(false)), 10_000)
-        policy.update(mapOf(4961 to entry(false)), 0)
-        assertTrue(policy.shouldProcess(4961, 10322, "player"))
-        policy.update(mapOf(4961 to entry(true)), 500)
-        policy.update(mapOf(4961 to entry(false)), 1_000)
-        assertTrue(policy.shouldProcess(4961, 10322, "player"))
-    }
-
-    @Test fun shortInactiveGapsKeepEffectAliveButLongInactiveSessionsAreCleanedUp() {
-        val policy = SessionPlaybackActivity()
-        policy.update(mapOf(4961 to entry(false)), 0)
-        policy.update(mapOf(4961 to entry(false)), 1_000)
-        assertTrue(policy.shouldProcess(4961, 10322, "player"))
-        assertTrue(policy.confirmedInactiveSessions().isEmpty())
-
-        // A resumed audio burst resets the inactivity window rather than inheriting stale time.
-        policy.update(mapOf(4961 to entry(true)), 8_000)
-        policy.update(mapOf(4961 to entry(false)), 9_000)
-        policy.update(mapOf(4961 to entry(false)), 18_999)
-        assertTrue(policy.shouldProcess(4961, 10322, "player"))
-        policy.update(mapOf(4961 to entry(false)), 19_000)
-        assertFalse(policy.shouldProcess(4961, 10322, "player"))
-        assertEquals(mapOf(4961 to (10322 to "player")), policy.confirmedInactiveSessions())
     }
 }

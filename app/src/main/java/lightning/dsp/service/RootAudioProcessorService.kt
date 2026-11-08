@@ -288,7 +288,9 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         when (key) {
             getString(R.string.key_audioformat_processing) -> {
-                if (app.isEnhancedProcessing) {
+                if (!app.isGlobalMode) {
+                    // The global baseline must never coexist with ordinary Session Mode engines.
+                    app.rootSessionDatabase.removeSession(0)
                     if (sessionDumpManager == null) setupEnhancedProcessing()
                 } else {
                     sessionDumpManager?.destroy()
@@ -313,8 +315,9 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
             }
             getString(R.string.key_audioformat_enhanced_processing) -> {
                 // If switched to enhanced processing while the service was already active...
-                if(app.isEnhancedProcessing) {
+                if (!app.isGlobalMode) {
                     setupEnhancedProcessing()
+                    sessionDumpManager?.pollOnce(true)
                 }
                 else {
                     sessionDumpManager?.destroy()
@@ -359,27 +362,28 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
     }
 
     private fun initializeProcessingIfNeeded() {
-        if (app.isEnhancedProcessing && sessionDumpManager == null) setupEnhancedProcessing()
+        if (!app.isGlobalMode && sessionDumpManager == null) setupEnhancedProcessing()
     }
 
     private fun setupEnhancedProcessing() {
-        if (isServiceDisposing || sessionDumpManager != null || !app.isEnhancedProcessing) return
-        app.rootSessionDatabase.clearSessions()
-
+        if (isServiceDisposing || sessionDumpManager != null || app.isGlobalMode) return
         val manager = RootSessionDumpManager(this)
         sessionDumpManager = manager
         manager.setOnSessionDump { dump ->
-            if (SessionDumpAdmission.allows(!isServiceDisposing && sessionDumpManager === manager, app.isEnhancedProcessing)) {
-                if (dump == null) app.rootSessionDatabase.clearPlaybackActivity()
-                else app.rootSessionDatabase.update(dump)
-                manager.requestPlaybackActivityConfirmation(app.rootSessionDatabase.needsPlaybackActivityConfirmation)
+            if (SessionDumpAdmission.allows(!isServiceDisposing && sessionDumpManager === manager, !app.isGlobalMode)) {
+                // A failed observation cannot turn a previously paused session back on.
+                if (dump != null) {
+                    if (app.isEnhancedProcessing) app.rootSessionDatabase.update(dump)
+                    else app.rootSessionDatabase.updatePlaybackActivity(dump)
+                } else app.rootSessionDatabase.markPlaybackUnavailable()
+                updateServiceNotification()
+                manager.requestPlaybackActivityConfirmation(dump != null && app.rootSessionDatabase.needsPlaybackActivityConfirmation)
             }
         }
         manager.setOnDumpMethodChanged {
-            if (SessionDumpAdmission.allows(!isServiceDisposing && sessionDumpManager === manager, app.isEnhancedProcessing)) {
+            if (SessionDumpAdmission.allows(!isServiceDisposing && sessionDumpManager === manager, !app.isGlobalMode)) {
                 manager.requestPlaybackActivityConfirmation(false)
-                app.rootSessionDatabase.clearPlaybackActivity()
-                app.rootSessionDatabase.clearSessions()
+                if (app.isEnhancedProcessing) app.rootSessionDatabase.clearSessions()
             }
         }
         manager.pollOnce(false)
@@ -394,7 +398,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
         if(preferences.get<Boolean>(R.string.key_audioformat_processing))
             ServiceNotificationHelper.pushServiceNotificationGlobal(this)
         else
-            ServiceNotificationHelper.pushServiceNotification(this, app.rootSessionDatabase.sessionList.values.toTypedArray())
+            ServiceNotificationHelper.pushServiceNotification(this, app.rootSessionDatabase.playingSessions())
     }
 
     companion object {
