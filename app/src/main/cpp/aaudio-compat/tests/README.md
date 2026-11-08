@@ -135,15 +135,18 @@ device testing; host tests do not establish first-frame coverage.
 
 An independent, default-off `debug.ldsp.aaudio_reuse_session` option is exposed
 under the existing root AAudio compatibility setting. In explicitly scoped
-Vector/LSPosed user apps, it pins only streams whose observed session request is
+Vector/LSPosed user apps, it pins streams whose effective session request is
 `AAUDIO_SESSION_ID_NONE` and whose low-latency request is already converted by
-the compatibility hook. The first successful stream allocates a session; later
+the compatibility hook. AAudio specifies NONE as the default even when the app
+does not call `setSessionId`; the host test covers both implicit-default and
+explicit-NONE callers. The first successful stream allocates a session; later
 eligible streams in that process temporarily request the same ID. Explicit app
-session IDs, input streams, normal/untracked builders, and requests without the
-session setter observation pass through unchanged. Builder state is restored,
-the first allocation is serialized across concurrent opens, and pre-start
-preparation is requested once for the shared ID rather than on every short
-sound. A failed reused-session open clears the pin and receives one original
+session IDs, input streams and normal/untracked builders pass through unchanged.
+Builder state is restored, the first allocation is serialized across concurrent
+opens, and pre-start preparation is requested once for the shared ID rather
+than on every short sound. The older pre-start path remains restricted to apps
+that explicitly called the session setter, unless the separate reuse option is
+enabled. A failed reused-session open clears the pin and receives one original
 request retry.
 
 The purpose is to avoid rebuilding a per-session effect chain when an app closes

@@ -278,6 +278,33 @@ int main() {
     assert(audioStream.session == 777 && pinnedSession == 103);
     deleteBuilder(nextReuseBuilder);
     deleteBuilder(firstReuseBuilder);
+
+    // AAudio's documented builder default is NONE even when the caller never
+    // invokes setSessionId. This is the common app path the reuse experiment
+    // must recognize, pin, and reuse for later short streams.
+    pinnedSession = AAUDIO_SESSION_ID_NONE;
+    AAudioStreamBuilder* defaultSessionBuilder = nullptr;
+    createBuilder(&defaultSessionBuilder);
+    assert(findBuilder(defaultSessionBuilder)->sessionObserved);
+    assert(findBuilder(defaultSessionBuilder)->session == AAUDIO_SESSION_ID_NONE);
+    setDirection(defaultSessionBuilder, AAUDIO_DIRECTION_OUTPUT);
+    setPerformance(defaultSessionBuilder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
+    const auto beforeDefaultSessionPreparation = preparationsForTest;
+    expect(defaultSessionBuilder, {AAUDIO_PERFORMANCE_MODE_NONE});
+    assert(audioStream.session == 104);
+    assert(pinnedSession == 104 && defaultSessionBuilder->session == AAUDIO_SESSION_ID_NONE);
+    assert(preparationsForTest == beforeDefaultSessionPreparation + 1);
+
+    AAudioStreamBuilder* nextDefaultSessionBuilder = nullptr;
+    createBuilder(&nextDefaultSessionBuilder);
+    setDirection(nextDefaultSessionBuilder, AAUDIO_DIRECTION_OUTPUT);
+    setPerformance(nextDefaultSessionBuilder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
+    expect(nextDefaultSessionBuilder, {AAUDIO_PERFORMANCE_MODE_NONE});
+    assert(audioStream.session == 104);
+    assert(pinnedSession == 104 && nextDefaultSessionBuilder->session == AAUDIO_SESSION_ID_NONE);
+    assert(preparationsForTest == beforeDefaultSessionPreparation + 1);
+    deleteBuilder(nextDefaultSessionBuilder);
+    deleteBuilder(defaultSessionBuilder);
     reuseSessionProperty = "0";
     std::puts("AAudio compatibility construction tests passed");
 }

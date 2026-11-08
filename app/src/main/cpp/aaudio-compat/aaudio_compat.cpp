@@ -75,7 +75,13 @@ struct BuilderState {
     bool directionObserved = false;
     bool performanceObserved = false;
     aaudio_session_id_t session = AAUDIO_SESSION_ID_NONE;
-    bool sessionObserved = false;
+    // AAudio specifies NONE when the application does not call setSessionId.
+    // Treat that documented builder default as an observed request so the
+    // opt-in reuse path also covers apps that leave the session unset.
+    bool sessionObserved = true;
+    // Keep the older pre-start allocation path limited to callers that invoked
+    // setSessionId; only the separate reuse opt-in consumes the default above.
+    bool sessionSetterObserved = false;
 };
 // Bounded bookkeeping: unknown builders retain the original behavior.
 std::array<BuilderState, 128> builders{};
@@ -124,7 +130,11 @@ BuilderState* findBuilder(AAudioStreamBuilder* builder) {
 [[maybe_unused]] void setSession(AAudioStreamBuilder* builder, aaudio_session_id_t session) {
     originalSession(builder, session);
     std::lock_guard<std::mutex> lock(buildersMutex);
-    if (auto* state = findBuilder(builder)) { state->session = session; state->sessionObserved = true; }
+    if (auto* state = findBuilder(builder)) {
+        state->session = session;
+        state->sessionObserved = true;
+        state->sessionSetterObserved = true;
+    }
 }
 [[maybe_unused]] aaudio_result_t deleteBuilder(AAudioStreamBuilder* builder) {
     // AAudio builders may not be concurrently used/deleted by the caller.
@@ -169,7 +179,8 @@ BuilderState* findBuilder(AAudioStreamBuilder* builder) {
     // Only an observed NONE request may be temporarily allocated or pinned.
     // Allocation remains available for the existing pre-start preparation path.
     const bool allocateSession = originalSession && originalGetSession && state.sessionObserved &&
-        state.session == AAUDIO_SESSION_ID_NONE && (canPrepareStream() || reuseRequested) && !reuseExistingSession;
+        state.session == AAUDIO_SESSION_ID_NONE &&
+        ((canPrepareStream() && state.sessionSetterObserved) || reuseRequested) && !reuseExistingSession;
     if (reuseExistingSession) originalSession(builder, pinnedSession);
     else if (allocateSession) originalSession(builder, AAUDIO_SESSION_ID_ALLOCATE);
     AAudioStream* candidate = nullptr;
