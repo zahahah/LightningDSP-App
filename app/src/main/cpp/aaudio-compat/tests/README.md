@@ -104,10 +104,10 @@ Android reference: https://developer.android.com/ndk/guides/audio/opensl/opensl-
 
 ## Oboe dynamic AAudio lookup
 
-For an eligible app-local `liboboe.so`, the opt-in compatibility hook can
-rebind its `dlsym` import. It also checks the JL Mod TinySoundFont and Sonivox
-backend DSOs (`libmmapi_tsf.so` and `libmmapi_eas.so`) because a build may
-statically link Oboe's dynamic AAudio loader into either backend. It substitutes
+For eligible app-local audio DSOs, the opt-in compatibility hook can rebind
+their `dlsym` import. This includes `liboboe.so`, JL Mod's TinySoundFont and
+Sonivox backend DSOs (`libmmapi_tsf.so` and `libmmapi_eas.so`), and ARMSX2's
+`libemucore_4k.so` / `libemucore_16k.so`, which statically link Oboe and its dynamic AAudio loader. It substitutes
 the existing AAudio construction wrappers only when both the requested symbol
 and the resolved address match the expected platform function. Other results,
 errors and explicit opt-out are preserved. Caller-relative `RTLD_DEFAULT` and
@@ -115,7 +115,7 @@ errors and explicit opt-out are preserved. Caller-relative `RTLD_DEFAULT` and
 original caller address. No system library or global resolver is patched.
 
 The host test checks matching and nonmatching symbols, real `dlerror` behavior,
-opt-out, eligible Oboe/JL Mod backend DSO names, and special-handle forwarding.
+opt-out, eligible Oboe/JL Mod/ARMSX2 backend DSO names, and special-handle forwarding.
 An Android ARM64 build must also verify that the special-handle path compiles to
 a tail branch. These checks do not prove that a particular backend resolves its
 functions after the hook is installed, that its stream avoids FAST, or that DSP

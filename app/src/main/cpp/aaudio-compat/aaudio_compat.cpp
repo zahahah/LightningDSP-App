@@ -228,8 +228,8 @@ BuilderState* findBuilder(AAudioStreamBuilder* builder) {
 }
 
 // Oboe resolves AAudio through an explicit dlopen handle instead of ELF imports.
-// Some apps statically link Oboe into their own audio backend DSO, so rebind its
-// app-local dlsym slot there as well as in liboboe.so. Never intercept libdl
+// Some apps statically link Oboe into their app-specific audio DSO, so rebind
+// that DSO's app-local dlsym slot as well as liboboe.so. Never intercept libdl
 // itself. The special handles use caller-relative lookup in Bionic, so a
 // guaranteed tail call must preserve the original return address.
 [[maybe_unused]] void* resolveAppAudioSymbol(void* handle, const char* symbol) {
@@ -288,11 +288,14 @@ bool eligibleLibrary(const char* path) {
     const char* basename = std::strrchr(path, '/');
     if (!basename) return false;
     const char* name = basename + 1;
-    // JL Mod's TinySoundFont and Sonivox MIDI backends use Oboe to open
-    // low-latency AAudio streams. Their Android.mk builds may place Oboe's
-    // dynamic AAudio loader in these app-local DSOs rather than liboboe.so.
+    // Oboe's Android loader resolves AAudio with dlsym. It can live in a
+    // standalone liboboe.so, in JL Mod's soundfont DSOs, or statically inside
+    // ARMSX2's page-size-specific libemucore_4k/16k.so. Restrict this resolver hook to known app-local
+    // audio backends; the wrapper still substitutes only matching AAudio
+    // symbols and addresses.
     return !std::strcmp(name, "liboboe.so") || !std::strcmp(name, "libmmapi_tsf.so") ||
-        !std::strcmp(name, "libmmapi_eas.so");
+        !std::strcmp(name, "libmmapi_eas.so") || !std::strcmp(name, "libemucore_4k.so") ||
+        !std::strcmp(name, "libemucore_16k.so");
 }
 template <typename Paths, typename Callback>
 size_t visitEligibleLibraries(const Paths& paths, Callback&& callback) {

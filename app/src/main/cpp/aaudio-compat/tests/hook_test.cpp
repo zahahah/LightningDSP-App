@@ -67,17 +67,19 @@ int main() {
     const std::vector<std::string> alreadyLoaded{
         "/data/app/com.example-1/lib/arm64/liboboe.so",
         "/data/app/com.example-1/lib/arm64/libmmapi_eas.so",
+        "/data/app/com.armsx2/lib/arm64/libemucore_4k.so",
         "/system/lib64/libaaudio.so",
         "/data/app/com.lightning.dsp-1/lib/arm64/libldsp_aaudio_compat.so",
         "/data/app/com.example-1/lib/arm64/libunrelated.so"
     };
     std::vector<std::string> scanned;
     const auto visited = visitEligibleLibraries(alreadyLoaded, [&](const char* path) { scanned.emplace_back(path); });
-    assert(visited == 3);
-    assert(scanned.size() == 3);
+    assert(visited == 4);
+    assert(scanned.size() == 4);
     assert(scanned[0] == alreadyLoaded[0] && eligibleDynamicAAudioLibrary(scanned[0].c_str()));
     assert(scanned[1] == alreadyLoaded[1] && eligibleDynamicAAudioLibrary(scanned[1].c_str()));
-    assert(scanned[2] == alreadyLoaded[4] && !eligibleDynamicAAudioLibrary(scanned[2].c_str()));
+    assert(scanned[2] == alreadyLoaded[2] && eligibleDynamicAAudioLibrary(scanned[2].c_str()));
+    assert(scanned[3] == alreadyLoaded[5] && !eligibleDynamicAAudioLibrary(scanned[3].c_str()));
 
     NativeApi invalid{99, fakeHook, nullptr};
     native_init(&invalid); assert(!ready.load()); assert(hookCount == 0);
@@ -162,9 +164,12 @@ int main() {
     assert(resolveAppAudioSymbol(concreteHandle, nullptr) == nullptr);
     assert(eligibleDynamicAAudioLibrary("/data/app/example/lib/arm64/liboboe.so"));
     assert(eligibleDynamicAAudioLibrary("/data/app/example/base.apk!/lib/arm64-v8a/liboboe.so"));
+    assert(eligibleDynamicAAudioLibrary("/data/app/example/lib/arm64/libemucore_4k.so"));
+    assert(eligibleDynamicAAudioLibrary("/data/app/example/base.apk!/lib/arm64-v8a/libemucore_16k.so"));
     assert(eligibleDynamicAAudioLibrary("/data/app/example/lib/arm64/libmmapi_tsf.so"));
     assert(eligibleDynamicAAudioLibrary("/data/app/example/base.apk!/lib/arm64-v8a/libmmapi_eas.so"));
     for (const char* path : {"/system/lib64/liboboe.so", "/system/lib64/libmmapi_tsf.so",
+            "/system/lib64/libemucore_4k.so",
             "/data/app/example/liboboe.so.bak", "/data/app/example/libother.so",
             "/data/app/com.lightning.dsp-abc/liboboe.so", "/data/app/com.lightning.dsp-abc/libmmapi_tsf.so"})
         assert(!eligibleDynamicAAudioLibrary(path));

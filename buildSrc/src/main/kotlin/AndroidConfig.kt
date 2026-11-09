@@ -4,9 +4,9 @@ object AndroidConfig {
     const val compileSdk = 35
     const val targetSdk = 34
 
-    const val versionName = "1.7.1-samsung-volume-test-29"
+    const val versionName = "1.7.1-armsx2-audio-test-30"
     // Root flavor adds four; test builds use monotonically increasing app codes.
-    const val versionCode = 114
+    const val versionCode = 115
 
     const val kotlinVersion = "2.1.0"
     const val kspVersion = "2.1.0-1.0.29"
