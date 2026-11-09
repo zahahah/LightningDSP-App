@@ -1,2 +1,3 @@
 lightning.dsp.volumemanager.focus.DisableAudioFocusHook
 lightning.dsp.interop.AudioCompatibilityHook
+lightning.dsp.volumemanager.backend.SamsungVolumePanelHook

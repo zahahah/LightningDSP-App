@@ -123,6 +123,9 @@ object LightningDspVolumeRoot {
         var rootForegroundError: String? = null
         var callbackWarning: String? = null
         var lastPlaybackScanAt = 0L
+        var lastPanelLeaseRefreshAt = 0L
+        var panelLeaseEnabled = false
+        var panelLeaseWritten = false
         try {
             ownership.acquire()
             if (Looper.getMainLooper() == null) Looper.prepareMainLooper()
@@ -160,6 +163,32 @@ object LightningDspVolumeRoot {
                         settings = next
                         settingsChanged = true
                         panelBypass.set(settings.optBoolean("panel_bypass"))
+                    }
+                }
+                // Samsung One UI may dispatch the native panel independently of the
+                // registered IVolumeController. Keep a short lease only while the
+                // root-managed overlay is enabled; SystemUI fails open after expiry.
+                val shouldSuppressSamsungPanel = uid == 0 && settings.optBoolean("panel_enabled")
+                val panelLeaseNow = SystemClock.uptimeMillis()
+                if (!panelLeaseWritten || shouldSuppressSamsungPanel != panelLeaseEnabled ||
+                    (shouldSuppressSamsungPanel && panelLeaseNow - lastPanelLeaseRefreshAt >= VolumePanelSuppressionLease.REFRESH_INTERVAL_MS)) {
+                    val leaseWrite = runCatching {
+                        val properties = Class.forName("android.os.SystemProperties")
+                        val set = properties.getDeclaredMethod("set", String::class.java, String::class.java).apply { isAccessible = true }
+                        val get = properties.getDeclaredMethod("get", String::class.java, String::class.java).apply { isAccessible = true }
+                        val value = VolumePanelSuppressionLease.propertyValue(shouldSuppressSamsungPanel, panelLeaseNow)
+                        set.invoke(null, VolumePanelSuppressionLease.PROPERTY, value)
+                        check(get.invoke(null, VolumePanelSuppressionLease.PROPERTY, "0") == value) {
+                            "volume-panel lease property was not retained"
+                        }
+                    }
+                    leaseWrite.onFailure {
+                        callbackWarning = "Samsung volume-panel workaround unavailable"
+                    }
+                    if (leaseWrite.isSuccess) {
+                        panelLeaseEnabled = shouldSuppressSamsungPanel
+                        panelLeaseWritten = true
+                        lastPanelLeaseRefreshAt = panelLeaseNow
                     }
                 }
                 if (!settings.optBoolean("activate")) {
@@ -340,6 +369,13 @@ object LightningDspVolumeRoot {
             output.println(JSONObject().put("error", "Privileged playback access unavailable: ${error.cause?.javaClass?.simpleName ?: error.javaClass.simpleName}"))
             output.flush()
         } finally {
+            // Do not leave Samsung's SystemUI panel suppressed if this root bridge exits.
+            runCatching {
+                val properties = Class.forName("android.os.SystemProperties")
+                properties.getDeclaredMethod("set", String::class.java, String::class.java)
+                    .apply { isAccessible = true }
+                    .invoke(null, VolumePanelSuppressionLease.PROPERTY, "0")
+            }
             // Remove our multipliers on opt-out, EOF, or a failed bridge. No services are restarted.
             var cleanupConfirmed = true
             changedPlayers.values.forEach { player ->
