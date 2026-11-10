@@ -36,6 +36,7 @@ internal class UnifiedSessionOwnerProof(private val onRevoked: () -> Unit) {
             override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
                 if (code != CODE) return super.onTransact(code, data, reply, flags)
                 data.enforceInterface(DESCRIPTOR)
+                if (flags and IBinder.FLAG_ONEWAY != 0) return false // oneway has no caller PID
                 if (UnifiedSessionOwnerAdmission.matches(uid, pid, getCallingUid(), getCallingPid())) verified.set(true)
                 completed.countDown()
                 return true

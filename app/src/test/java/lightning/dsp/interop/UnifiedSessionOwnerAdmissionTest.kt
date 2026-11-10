@@ -8,6 +8,7 @@ class UnifiedSessionOwnerAdmissionTest {
         assertTrue(UnifiedSessionOwnerAdmission.matches(10123, 42, 10123, 42))
         assertFalse(UnifiedSessionOwnerAdmission.matches(10123, 42, 10124, 42))
         assertFalse(UnifiedSessionOwnerAdmission.matches(10123, 42, 10123, 43))
+        assertFalse(UnifiedSessionOwnerAdmission.matches(10123, 42, 10123, 0)) // oneway ACK
         assertFalse(UnifiedSessionOwnerAdmission.matches(10123, 0, 10123, 0))
     }
     @Test fun missingAckDeathAndDeadlineFailClosed() {

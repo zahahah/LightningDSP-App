@@ -26,6 +26,7 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
     private val supplementalSessionReservations = mutableSetOf<Int>()
     private val playbackActivity = SessionPlaybackActivity()
     private val unifiedSessions = UnifiedSessionRetention()
+    private val unifiedFocus = UnifiedSessionFocus { SystemClock.elapsedRealtime() }
     @Volatile var unifiedSessionRetentionEnabled: () -> Boolean = { false }
 
     private val retentionLifecycle = UnifiedSessionRetentionLifecycle()
@@ -33,9 +34,12 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
     private val retentionWatch = object : Runnable {
         override fun run() {
             if (retentionLifecycle.current() == null) return
-            if (unifiedSessions.reconcile(!app.isGlobalMode && unifiedSessionRetentionEnabled()))
+            val retainEnabled = !app.isGlobalMode && unifiedSessionRetentionEnabled()
+            val sessionChanged = unifiedSessions.reconcile(retainEnabled)
+            val focusChanged = unifiedFocus.reconcile(retainEnabled)
+            if (sessionChanged || focusChanged)
                 applyPlaybackActivity()
-            if (unifiedSessions.hasClaims()) retentionHandler.postDelayed(this, 500L)
+            if (unifiedSessions.hasClaims() || unifiedFocus.hasOwners()) retentionHandler.postDelayed(this, 500L)
         }
     }
 
@@ -56,10 +60,16 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
         retentionLifecycle.stop()
         retentionHandler.removeCallbacks(retentionWatch)
         unifiedSessions.clear()
+        unifiedFocus.clear()
     }
 
     @Synchronized fun registerUnifiedSession(id: Int, uid: Int, pid: Int, alive: () -> Boolean): Boolean =
         (retentionLifecycle.current() != null && !app.isGlobalMode && unifiedSessionRetentionEnabled() && unifiedSessions.claim(id, uid, pid, alive))
+            .also { if (it) reconcileUnifiedSessionRetention() }
+
+    @Synchronized fun registerUnifiedSessionFocus(uid: Int, pid: Int, packageName: String, focused: Boolean, alive: () -> Boolean): Boolean =
+        (retentionLifecycle.current() != null && !app.isGlobalMode && unifiedSessionRetentionEnabled() &&
+            unifiedFocus.update(uid, pid, packageName, focused, alive))
             .also { if (it) reconcileUnifiedSessionRetention() }
     private val playbackSuspended = mutableSetOf<Int>()
     private val confirmedInactiveRemovals = mutableSetOf<Int>()
@@ -150,9 +160,12 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
         }
     }
 
+    private fun shouldKeepUnified(id: Int, uid: Int, packageName: String): Boolean =
+        !app.isGlobalMode && unifiedSessionRetentionEnabled() && unifiedFocus.isFocused(uid, packageName) &&
+            unifiedSessions.shouldRetain(id, uid, packageName)
+
     private fun shouldProcess(id: Int, uid: Int, packageName: String): Boolean =
-        id <= 0 || (!app.isGlobalMode && unifiedSessionRetentionEnabled() &&
-            unifiedSessions.shouldRetain(id, uid, packageName)) || playbackActivity.shouldProcess(id, uid, packageName)
+        id <= 0 || shouldKeepUnified(id, uid, packageName) || playbackActivity.shouldProcess(id, uid, packageName)
 
     /** Ownership includes idle/prepared engines; notifications must expose playback only. */
     fun playingSessions(): Array<IEffectSession> = sessionList.filter { (id, session) ->
@@ -173,7 +186,7 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
         val inactive = playbackActivity.confirmedInactiveSessions()
         sessionList.toMap().forEach { (id, session) ->
             if (app.isEnhancedProcessing && inactive[id] == (session.uid to session.packageName) &&
-                !unifiedSessions.shouldRetain(id, session.uid, session.packageName)) {
+                !shouldKeepUnified(id, session.uid, session.packageName)) {
                 Timber.d("Removing inactive audio session %d (%s)", id, session.packageName)
                 confirmedInactiveRemovals += id
                 removeSession(id)
@@ -186,6 +199,7 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
     fun clearPlaybackActivity() {
         retentionHandler.removeCallbacks(retentionWatch)
         unifiedSessions.clear()
+        unifiedFocus.clear()
         playbackActivity.clear()
         applyPlaybackActivity()
     }

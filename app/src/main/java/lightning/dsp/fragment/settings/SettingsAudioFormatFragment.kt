@@ -15,6 +15,7 @@ import lightning.dsp.activity.OnboardingActivity
 import lightning.dsp.interop.BenchmarkManager
 import lightning.dsp.interop.AAudioCompatibilityOption
 import lightning.dsp.interop.AAudioSessionReuseOption
+import lightning.dsp.interop.AAudioFocusedSessionOption
 import lightning.dsp.interop.AAudioCompatibilityResult
 import lightning.dsp.interop.PostGainRangePolicy
 import lightning.dsp.preference.MaterialSeekbarPreference
@@ -46,6 +47,7 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
     private val enhancedMode by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_enhanced_processing)) }
     private val audioCompat by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_aaudio_compat)) }
     private val aaudioSessionReuse by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_aaudio_reuse_session)) }
+    private val focusedSession by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_aaudio_focus_hold)) }
     private val enhancedModeInfo by lazy { findPreference<Preference>(getString(R.string.key_audioformat_enhanced_processing_info)) }
     private val benchmark by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_optimization_benchmark)) }
     private val benchmarkRefresh by lazy { findPreference<Preference>(getString(R.string.key_audioformat_optimization_refresh)) }
@@ -90,6 +92,7 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
                             preference.isEnabled = true
                             (preference as MaterialSwitchPreference).isChecked = enabled
                             aaudioSessionReuse?.isEnabled = enabled
+                            updateFocusedSessionOption()
                             if (isAdded) requireContext().toast(R.string.audio_format_aaudio_compat_restart)
                         }
                         AAudioCompatibilityResult.FAILED -> {
@@ -137,6 +140,7 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
                         AAudioCompatibilityResult.APPLIED -> {
                             preference.isEnabled = AAudioCompatibilityOption.requested(appContext)
                             (preference as MaterialSwitchPreference).isChecked = enabled
+                            updateFocusedSessionOption()
                             if (isAdded) requireContext().toast(R.string.audio_format_aaudio_reuse_session_restart)
                         }
                         AAudioCompatibilityResult.FAILED -> {
@@ -148,6 +152,26 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
                             if (isAdded) requireContext().toast(R.string.audio_format_aaudio_compat_unknown)
                         }
                     }
+                }
+                false
+            }
+        }
+
+        focusedSession?.apply {
+            val appContext = requireContext().applicationContext
+            isChecked = AAudioFocusedSessionOption.requested(appContext)
+            updateFocusedSessionOption()
+            setOnPreferenceChangeListener { preference, newValue ->
+                val enabled = newValue as Boolean
+                preference.isEnabled = false
+                lifecycleScope.launch {
+                    val result = withContext(Dispatchers.IO) { AAudioFocusedSessionOption.set(appContext, enabled) }
+                    if (result == AAudioCompatibilityResult.APPLIED) {
+                        (preference as MaterialSwitchPreference).isChecked = enabled
+                        if (isAdded) requireContext().toast(R.string.audio_format_aaudio_reuse_session_restart)
+                    } else if (isAdded) requireContext().toast(if (result == AAudioCompatibilityResult.FAILED)
+                        R.string.audio_format_aaudio_compat_failed else R.string.audio_format_aaudio_compat_unknown)
+                    if (isAdded) updateFocusedSessionOption()
                 }
                 false
             }
@@ -260,6 +284,7 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
     private fun updateProcessingMode(globalEnabled: Boolean) {
         globalMode?.isChecked = globalEnabled
         sessionMode?.isChecked = !globalEnabled
+        updateFocusedSessionOption()
         enhancedMode?.isVisible = isRoot() && !globalEnabled
         enhancedModeInfo?.isVisible = isRoot() && !globalEnabled
         if (isRoot() && !globalEnabled) enhancedMode?.apply {
@@ -276,6 +301,14 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
             // in Session Mode; the stored opt-in remains shared between the modes.
             isVisible = isRoot()
             isEnabled = isRoot()
+        }
+    }
+
+    private fun updateFocusedSessionOption() {
+        focusedSession?.apply {
+            isVisible = isRoot() && !preferences.get<Boolean>(R.string.key_audioformat_processing)
+            isEnabled = isVisible && AAudioCompatibilityOption.requested(requireContext()) &&
+                AAudioSessionReuseOption.requested(requireContext())
         }
     }
 

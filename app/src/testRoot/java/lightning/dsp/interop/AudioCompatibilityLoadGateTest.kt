@@ -38,7 +38,9 @@ class AudioCompatibilityLoadGateTest {
         assertTrue(source.contains("() -> new ProcessBuilder().environment()"))
         assertTrue(source.contains("param.args[1] = adapted"))
         assertFalse(source.contains("param.args ="))
-        assertFalse(source.contains("afterHookedMethod"))
+        val launch = source.substringAfter("private static void installLaunchHook()")
+            .substringBefore("@Override public void handleLoadPackage")
+        assertFalse(launch.contains("afterHookedMethod"))
         assertFalse(source.contains("invokeOriginalMethod"))
         assertFalse(source.contains("XC_MethodReplacement"))
     }

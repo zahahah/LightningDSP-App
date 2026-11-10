@@ -169,7 +169,8 @@ quality, safe behavior for every app, or JL Mod stability.
 ## Unified-session idle retention
 
 The first successful pinned AAudio stream now identifies itself to the app. A
-process-local Binder answers a one-way callback challenge; the provider verifies
+process-local Binder receives a one-way challenge and sends a short synchronous
+ACK (one-way Binder calls have no caller PID); the provider verifies
 the callback's actual Binder UID/PID against its caller, links owner death, and
 issues a six-second lease. Binder death and opt-out enqueue main-thread effect
 reconciliation; a bounded 500ms owner watcher withdraws expired exemptions even
@@ -179,9 +180,11 @@ seconds, outside stream and PCM callbacks, so a restarted LightningDSP service
 can recover ownership without waiting for a new native pin. An unavailable or
 busy provider never blocks the audio thread during renewal.
 
-Only Session Mode receives this exemption, with both compatibility/reuse options
-enabled, a live authenticated owner lease, and a current independent framework
-player record matching session/UID/package. The effect may remain enabled while
+Only Session Mode receives this exemption, with compatibility/reuse and the
+default-off **Keep effects ready while focused** option enabled, a live
+authenticated owner lease, a current focused window of the same uniquely resolved
+app package, and a current independent framework player record matching
+session/UID/package. The effect may remain enabled while
 that player is idle, but the active-app list still requires actual playback. A
 missing framework player removes the effect normally; the process claim can
 re-enroll on the next matching player. Global coverage, app DSP opt-out, explicit
@@ -191,3 +194,22 @@ opens cannot bypass that first barrier. This does not guarantee first-frame DSP
 after the framework truly destroys a player, after a service restart, or for
 non-AAudio paths; these still require a fresh validated attachment and runtime
 testing.
+
+Focus is observed from the selected app's own Activity windows with
+`ViewTreeObserver.OnWindowFocusChangeListener`, not inferred from onResume alone.
+Focus reports use the same bounded owner proof, but have their own six-second
+freshness limit renewed only by another focus report, never by audio heartbeats.
+A missed immediate loss report can retain an idle effect until that focus limit
+expires and the next bounded reconciliation tick runs. The UI and audio may live in different processes of the same
+unique package. Shared-UID package ambiguity is rejected. No Volume Manager,
+accessibility service, cross-app UI inspection, or new Android permission is
+required. Missing focus returns to normal idle suspension, never creates a new
+session or bypasses the per-app DSP power setting. Window focus and audible
+continuity still require device validation, including multiwindow, lockscreen,
+and in-app dialogs that take focus.
+
+This separates the controls: **Reuse AAudio session** selects one eligible ID;
+**Keep effects ready while focused** authorizes idle effect retention. With the
+new option off, normal idle suspension applies. This intentionally replaces the
+test-34 prototype's attempted unconditional idle exemption, which failed to
+authenticate its owner because its one-way ACK had no caller PID.

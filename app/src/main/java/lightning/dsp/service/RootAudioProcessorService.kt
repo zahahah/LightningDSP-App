@@ -31,6 +31,7 @@ import lightning.dsp.interop.LightningDspRemoteEngine
 import lightning.dsp.interop.GlobalMixerFallbackController
 import lightning.dsp.interop.AAudioCompatibilityOption
 import lightning.dsp.interop.AAudioSessionReuseOption
+import lightning.dsp.interop.AAudioFocusedSessionOption
 import lightning.dsp.model.IEffectSession
 import lightning.dsp.model.room.AppBlocklistDatabase
 import lightning.dsp.model.room.AppBlocklistRepository
@@ -111,7 +112,8 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
         if (isRoot()) backgroundScope.launch(Dispatchers.IO) {
             val compatibilityRestored = AAudioCompatibilityOption.restore(applicationContext)
             val sessionReuseRestored = AAudioSessionReuseOption.restore(applicationContext)
-            if (!compatibilityRestored || !sessionReuseRestored)
+            val focusedSessionRestored = AAudioFocusedSessionOption.restore(applicationContext)
+            if (!compatibilityRestored || !sessionReuseRestored || !focusedSessionRestored)
                 Timber.w("AAudio compatibility request could not be restored")
         }
 
@@ -293,6 +295,9 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         when (key) {
             getString(R.string.key_audioformat_processing) -> {
+                if (isRoot()) backgroundScope.launch(Dispatchers.IO) {
+                    AAudioFocusedSessionOption.restore(applicationContext)
+                }
                 if (!app.isGlobalMode) {
                     // The global baseline must never coexist with ordinary Session Mode engines.
                     app.rootSessionDatabase.removeSession(0)

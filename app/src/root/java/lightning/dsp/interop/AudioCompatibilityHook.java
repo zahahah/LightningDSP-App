@@ -22,6 +22,9 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
     private static final String PROPERTY = "debug.ldsp.aaudio_compat";
     private static final AtomicBoolean launchHookInstalled = new AtomicBoolean();
+    private static final AtomicBoolean focusHookInstalled = new AtomicBoolean();
+    private static volatile ScopedAppFocusTracker focusTracker;
+    private static volatile Future<?> focusReport;
     private static final AtomicInteger preparationDiagnostics = new AtomicInteger();
     private static final AtomicInteger launchDiagnostics = new AtomicInteger();
     private static final AtomicInteger libraryScanDiagnostics = new AtomicInteger();
@@ -54,10 +57,13 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
             android.os.IBinder ack = data.readStrongBinder();
             if (ack == null) return false;
             android.os.Parcel confirmation = android.os.Parcel.obtain();
+            android.os.Parcel response = android.os.Parcel.obtain();
             try {
                 confirmation.writeInterfaceToken(OWNER_DESCRIPTOR);
-                return ack.transact(OWNER_CODE, confirmation, null, android.os.IBinder.FLAG_ONEWAY);
-            } finally { confirmation.recycle(); }
+                // A oneway ACK has no calling PID. Keep the outward challenge oneway,
+                // but use a tiny synchronous ACK so the provider can verify our PID.
+                return ack.transact(OWNER_CODE, confirmation, response, 0);
+            } finally { response.recycle(); confirmation.recycle(); }
         }
     };
     private static volatile ScheduledFuture<?> reuseHeartbeat;
@@ -66,6 +72,8 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
 
     private static synchronized void retainUnifiedSession(int sessionId) {
         unifiedSessionId = sessionId;
+        ScopedAppFocusTracker tracker = focusTracker;
+        if (tracker != null) tracker.refresh();
         if (reuseHeartbeat != null && !reuseHeartbeat.isDone()) return;
         reuseHeartbeat = libraryScanWorker.scheduleWithFixedDelay(() -> {
             if (!requested() || !reuseRequested()) {
@@ -96,6 +104,53 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
             Class<?> props = XposedHelpers.findClass("android.os.SystemProperties", null);
             return "1".equals(XposedHelpers.callStaticMethod(props, "get", "debug.ldsp.aaudio_reuse_session", "0"));
         } catch (Throwable unavailable) { return false; }
+    }
+
+    private static boolean focusRequested() {
+        try {
+            Class<?> props = XposedHelpers.findClass("android.os.SystemProperties", null);
+            return requested() && reuseRequested() && "1".equals(XposedHelpers.callStaticMethod(
+                    props, "get", "debug.ldsp.aaudio_focus_hold", "0"));
+        } catch (Throwable unavailable) { return false; }
+    }
+
+    private static synchronized void reportFocus(boolean focused) {
+        if (focusReport != null && !focusReport.isDone()) return;
+        try {
+            focusReport = preparationWorker.submit(() -> {
+                Application app = (Application) XposedHelpers.callStaticMethod(
+                        XposedHelpers.findClass("android.app.ActivityThread", null), "currentApplication");
+                if (app == null) return;
+                Bundle extras = new Bundle();
+                extras.putLong("deadline", SystemClock.elapsedRealtime() + 1500);
+                extras.putBinder("owner", reuseOwner);
+                extras.putBoolean("focused", focused);
+                app.getContentResolver().call(Uri.parse("content://com.lightning.dsp.compatibility"),
+                        "focus", null, extras);
+            });
+        } catch (Throwable ignored) { /* No UI/audio thread waits; a lost report expires. */ }
+    }
+
+    private static synchronized void trackFocus(Application app) {
+        if (focusTracker == null) focusTracker = new ScopedAppFocusTracker(app,
+                AudioCompatibilityHook::focusRequested, AudioCompatibilityHook::reportFocus);
+    }
+
+    private static void installFocusHook() {
+        if (!focusHookInstalled.compareAndSet(false, true)) return;
+        try {
+            XposedHelpers.findAndHookMethod(Application.class, "attach", android.content.Context.class,
+                    new XC_MethodHook() {
+                @Override protected void afterHookedMethod(MethodHookParam param) {
+                    if (param.thisObject instanceof Application) trackFocus((Application) param.thisObject);
+                }
+            });
+            Application current = (Application) XposedHelpers.callStaticMethod(
+                    XposedHelpers.findClass("android.app.ActivityThread", null), "currentApplication");
+            if (current != null) trackFocus(current);
+        } catch (Throwable unavailable) {
+            XposedBridge.log("LightningDSP AAudio: focus observer unavailable; idle retention disabled");
+        }
     }
 
     private static void prepareSession(int sessionId, boolean unified) {
@@ -230,6 +285,7 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
             return;
         }
         installLaunchHook();
+        installFocusHook();
         try {
             System.loadLibrary("ldsp_aaudio_compat");
             nativeSetPreparationCallback();
