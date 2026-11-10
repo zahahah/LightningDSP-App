@@ -183,7 +183,6 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
                 return null
             }
 
-            effect.syncWithPreferences()
             effect.enabled = enabled && (id <= 0 || isPackageDspEnabled(packageName)) &&
                 shouldProcess(id, finalUid, packageName)
             recordPlaybackSuspension(id, finalUid, packageName)
@@ -192,6 +191,16 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
         } else {
             Timber.w("Session $id ($packageName) already existed")
             return null
+        }
+    }
+
+    override fun onSessionAdded(id: Int, session: IEffectSession) {
+        if (id <= 0) return
+        val remote = (session as? RemoteEffectSession)?.effect ?: return
+        remote.prepareInitialSessionState {
+            sessionList[id] === session && this.enabled &&
+                isPackageDspEnabled(session.packageName) &&
+                shouldProcess(id, session.uid, session.packageName)
         }
     }
 

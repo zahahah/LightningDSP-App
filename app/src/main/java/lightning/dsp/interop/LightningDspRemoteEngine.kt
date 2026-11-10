@@ -6,6 +6,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.media.audiofx.AudioEffect
 import android.media.audiofx.AudioEffectHidden
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import dev.rikka.tools.refine.Refine
 import lightning.dsp.MainApplication
 import lightning.dsp.interop.structure.EelVmVariable
@@ -73,7 +75,15 @@ class LightningDspRemoteEngine(
     private val supplementalAdmitted: Boolean get() = !supplemental || supplementalState.admitted
     private val preparedGeneration: Long get() = supplementalState.preparedGeneration
     @Volatile private var supplementalInvalidated = false
-    private var requestedEnabled = false
+    @Volatile private var requestedEnabled = false
+    private val sessionStartupFence = if (sessionId > 0 && !supplemental) SessionEffectStartupFence(
+        canUseEndpoint = { !disposed && canControlEndpoint() },
+        isEnabled = { runCatching { effect?.enabled ?: false }.getOrDefault(false) },
+        writeCompleteState = { syncCompleteState(it) },
+        setEnabled = ::applyFrameworkEnabled,
+    ) else null
+    @Volatile private var sessionStartupEligibility: (() -> Boolean)? = null
+    @Volatile private var sessionStartupJob: Job? = null
 
     override var enabled: Boolean
         set(value) {
@@ -81,12 +91,13 @@ class LightningDspRemoteEngine(
                     (!supplementalAdmitted || preparedGeneration != DspDesiredState.current() ||
                         !LightningDspControlClient.isCoverageLeaseActive() || !canControlEndpoint()))) return
             requestedEnabled = value
-            // The framework must dispatch audio even when the global control
-            // service owns the DSP parameter. Binder acceptance alone does not
-            // enable the AudioFlinger effect or its processing thread.
-            try { if (!supplemental || canControlEndpoint()) effect?.enabled = value }
-            catch (e: Exception) { Timber.w(e, "Framework effect enable failed; native diagnostics retained") }
-            if (usesUnscopedNative) LightningDspControlClient.setEnabledIfSupported(value)
+            val startup = sessionStartupFence
+            if (startup != null && !startup.ready) {
+                startup.requestEnabled(value)
+                if (value) startSessionStartupPreparation()
+                return
+            }
+            applyFrameworkEnabled(value)
         }
         get() = runCatching { effect?.enabled ?: false }.getOrDefault(false)
 
@@ -102,7 +113,12 @@ class LightningDspRemoteEngine(
         if (usesUnscopedNative) LightningDspControlClient.probeAsync { nativeControlReady ->
             if (nativeControlReady && !disposed) syncWithPreferences(arrayOf(Constants.PREF_OUTPUT, Constants.PREF_EQ))
         }
-        if (!supplemental) syncWithPreferences()
+        // Positive sessions are initialized by a complete-state barrier after
+        // BaseSessionDatabase has registered them. Enabling a new AudioEffect
+        // before this async write finishes can expose partially configured DSP
+        // state on the first audio buffers.
+        if (!supplemental && sessionId <= 0) syncWithPreferences()
+        sessionStartupFence?.requestEnabled(false)
 
         val filter = IntentFilter()
         filter.addAction(Constants.ACTION_PREFERENCES_UPDATED)
@@ -121,6 +137,48 @@ class LightningDspRemoteEngine(
         } catch (e: Exception) {
             Timber.w(e, "AudioEffect attachment unavailable; keep global-control diagnostics alive")
             null
+        }
+    }
+
+    private fun applyFrameworkEnabled(value: Boolean) {
+        if (disposed) return
+        // The framework must dispatch audio even when the global control
+        // service owns the DSP parameter. Binder acceptance alone does not
+        // enable the AudioFlinger effect or its processing thread.
+        try { if (!supplemental || canControlEndpoint()) effect?.enabled = value }
+        catch (e: Exception) { Timber.w(e, "Framework effect enable failed; native diagnostics retained") }
+        if (usesUnscopedNative) LightningDspControlClient.setEnabledIfSupported(value)
+    }
+
+    /** Defer first session activation until every namespace has reached this effect. */
+    internal fun prepareInitialSessionState(shouldEnable: () -> Boolean) {
+        if (sessionStartupFence == null || disposed) return
+        sessionStartupEligibility = shouldEnable
+        startSessionStartupPreparation()
+    }
+
+    private fun startSessionStartupPreparation() {
+        val startup = sessionStartupFence ?: return
+        if (disposed || startup.ready || sessionStartupEligibility == null || sessionStartupJob?.isActive == true) return
+        sessionStartupJob = launchPreferenceSync {
+            val retryDelays = longArrayOf(0L, 250L, 500L, 1_000L)
+            for (retryDelay in retryDelays) {
+                if (disposed || startup.ready) return@launchPreferenceSync
+                if (retryDelay > 0) delay(retryDelay)
+                val generation = DspDesiredState.current()
+                val prepared = startup.prepare(generation) {
+                    requestedEnabled = runCatching {
+                        sessionStartupEligibility?.invoke() == true
+                    }.getOrDefault(false)
+                    requestedEnabled
+                }
+                if (prepared) {
+                    Timber.i("Initial DSP state prepared for session %s; processing %s", sessionId,
+                        if (requestedEnabled) "enabled" else "bypassed")
+                    return@launchPreferenceSync
+                }
+            }
+            Timber.w("Initial DSP state was not confirmed for session %s; effect remains bypassed", sessionId)
         }
     }
 
@@ -150,7 +208,12 @@ class LightningDspRemoteEngine(
             // writable session reconcile. A session without control waits for gain.
             DspDesiredState.replace { }
             context.sendLocalBroadcast(Intent(Constants.ACTION_PRESET_LOADED))
-            if (granted) enabled = requestedEnabled
+            if (granted) {
+                if (sessionStartupFence != null) {
+                    sessionStartupFence.reset()
+                    startSessionStartupPreparation()
+                } else enabled = requestedEnabled
+            }
         }
     }
 
@@ -167,12 +230,21 @@ class LightningDspRemoteEngine(
             watchControl(effect)
         }
         context.sendLocalBroadcast(Intent(Constants.ACTION_PRESET_LOADED))
-        enabled = requestedEnabled
-        if (usesUnscopedNative) LightningDspControlClient.probeAsync()
+        if (sessionStartupFence != null) {
+            sessionStartupFence.reset()
+            startSessionStartupPreparation()
+        } else {
+            enabled = requestedEnabled
+            if (usesUnscopedNative) LightningDspControlClient.probeAsync()
+        }
     }
 
     override fun syncWithPreferences(forceUpdateNamespaces: Array<String>?) {
         if (disposed || (supplemental && !supplementalAdmitted)) return
+        if (sessionStartupFence?.ready == false) {
+            startSessionStartupPreparation()
+            return
+        }
         if(effect == null && !nativeReady) {
             Timber.d("Rejecting update due to disposed engine")
             return
@@ -237,6 +309,7 @@ class LightningDspRemoteEngine(
         DspDesiredState.serialized {
             if (disposed) return@serialized
             disposed = true
+            sessionStartupFence?.invalidate()
             supplementalState.invalidate()
             context.unregisterLocalReceiver(broadcastReceiver)
             if (usesUnscopedNative) LightningDspControlClient.invalidateContext()

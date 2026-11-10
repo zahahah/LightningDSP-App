@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -58,6 +59,8 @@ abstract class LightningDspBaseEngine(
             syncWithPreferencesAsync(forceUpdateNamespaces, retryAttempt = 0, generation)
         }
     }
+
+    protected fun launchPreferenceSync(block: suspend () -> Unit): Job = syncScope.launch { block() }
 
     fun clearCache() {
         cache.clear()

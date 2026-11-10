@@ -81,7 +81,7 @@ object ServiceNotificationHelper: KoinComponent {
     }
 
     fun createServiceNotification(context: Context, sessions: Array<IEffectSession>): Notification {
-        val apps = sessions.distinct().joinToString(", ") {
+        val apps = SessionNotificationProjection.uniqueApps(sessions, isRootless()).joinToString(", ") {
             // Rootless uses UIDs primarily internally, while Root has a guaranteed package name
             if(isRootless()) {
                 context.getAppNameFromUid(it.uid)

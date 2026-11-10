@@ -20,6 +20,7 @@ abstract class BaseSessionDatabase(protected val context: Context) {
     protected abstract fun shouldAcceptSessionDump(id: Int, session: AudioSessionDumpEntry): Boolean
     protected abstract fun shouldAddSession(id: Int, uid: Int, packageName: String): Boolean
     protected abstract fun createSession(id: Int, uid: Int, packageName: String): IEffectSession?
+    protected open fun onSessionAdded(id: Int, session: IEffectSession) {}
     protected abstract fun onSessionRemoved(item: IEffectSession)
     protected open fun onSessionDumpUpdated(dump: ISessionInfoDump) {}
     protected open fun shouldRetainMissingSession(id: Int, session: IEffectSession): Boolean = false
@@ -92,7 +93,9 @@ abstract class BaseSessionDatabase(protected val context: Context) {
         }
 
         Timber.d("Found new session: sid=$sid; $packageName")
-        sessionList[sid] = createSession(sid, uid, packageName) ?: return
+        val session = createSession(sid, uid, packageName) ?: return
+        sessionList[sid] = session
+        onSessionAdded(sid, session)
         Timber.d("Successfully added session $sid")
 
         changeCallbacks.forEach { it.onSessionChanged(sessionList) }
