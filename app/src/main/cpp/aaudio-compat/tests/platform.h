@@ -13,6 +13,7 @@ constexpr int AAUDIO_OK = 0;
 constexpr int AAUDIO_DIRECTION_OUTPUT = 0;
 constexpr int AAUDIO_DIRECTION_INPUT = 1;
 constexpr int AAUDIO_PERFORMANCE_MODE_NONE = 10;
+constexpr int AAUDIO_PERFORMANCE_MODE_POWER_SAVING = 11;
 constexpr int AAUDIO_PERFORMANCE_MODE_LOW_LATENCY = 12;
 constexpr int PROP_VALUE_MAX = 92;
 constexpr int ANDROID_LOG_INFO = 4;

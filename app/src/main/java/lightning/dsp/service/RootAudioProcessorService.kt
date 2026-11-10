@@ -218,8 +218,11 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
 
                 val duplicateGlobal = sessionId == 0 &&
                     app.rootSessionDatabase.hasUsableGlobalSession()
-                if(!isServiceDisposing && !app.isEnhancedProcessing && !duplicateGlobal)
+                if (!isServiceDisposing && !app.isGlobalMode && app.isEnhancedProcessing && sessionId > 0) {
+                    app.rootSessionDatabase.addSessionFromEarlyOpenIntent(intent)
+                } else if (!isServiceDisposing && !app.isEnhancedProcessing && !duplicateGlobal) {
                     app.rootSessionDatabase.addSessionByIntent(intent)
+                }
             }
             AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION -> {
                 if(!app.isEnhancedProcessing) {

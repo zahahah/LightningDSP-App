@@ -77,4 +77,21 @@ class SessionPlaybackIntegrationTest {
         assertTrue(delayedClose.contains("sessionCloseGrace.isCurrent(sessionId, generation)"))
         assertTrue(service.contains("const val SESSION_CLOSE_GRACE_MILLIS = 10_000L"))
     }
+
+    @Test fun enhancedSessionModeCanPrepareExplicitOpenBeforeAudioFlingerDiscovery() {
+        val service = source("service/RootAudioProcessorService")
+        val open = service.substringAfter("AudioEffect.ACTION_OPEN_AUDIO_EFFECT_CONTROL_SESSION ->")
+            .substringBefore("AudioEffect.ACTION_CLOSE_AUDIO_EFFECT_CONTROL_SESSION ->")
+        val database = source("session/root/RootSessionDatabase")
+        val earlyOpen = database.substringAfter("fun addSessionFromEarlyOpenIntent")
+            .substringBefore("fun removeSessionByIntent")
+
+        assertTrue(open.contains("!app.isGlobalMode && app.isEnhancedProcessing && sessionId > 0"))
+        assertTrue(open.contains("addSessionFromEarlyOpenIntent(intent)"))
+        assertTrue(earlyOpen.contains("if (app.isGlobalMode) return false"))
+        assertTrue(earlyOpen.contains("if (sessionId <= 0) return false"))
+        assertTrue(earlyOpen.contains("playbackActivity.forget(sessionId)"))
+        assertTrue(earlyOpen.contains("addSession(sessionId, uid, packageName)"))
+        assertFalse(earlyOpen.contains("addSession(sessionId, uid, packageName, true)"))
+    }
 }

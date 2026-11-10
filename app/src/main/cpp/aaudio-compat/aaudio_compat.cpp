@@ -182,9 +182,17 @@ BuilderState* findBuilder(AAudioStreamBuilder* builder) {
         "open enter pid=%d tracked=%d direction=%d mode=%d ready=%d", getpid(),
         state.builder != nullptr, static_cast<int>(state.direction), static_cast<int>(state.performance),
         ready.load(std::memory_order_acquire));
+    // Session reuse is independent of the FAST/low-latency compatibility
+    // downgrade. Players such as Spotify may use POWER_SAVING or NONE, but
+    // still create a fresh AAudio session for each stream. Preserve their
+    // requested performance mode while pinning only an unassigned session.
+    const bool reuseRequested = reuseSessionRequested() && originalSession && originalGetSession &&
+        state.sessionObserved && state.session == AAUDIO_SESSION_ID_NONE;
+    const bool downgradeLowLatency = state.directionObserved && state.performanceObserved &&
+        state.direction == AAUDIO_DIRECTION_OUTPUT &&
+        state.performance == AAUDIO_PERFORMANCE_MODE_LOW_LATENCY;
     if (!stream || !ready.load(std::memory_order_acquire) || unsafeFailure.load(std::memory_order_acquire) || !optIn ||
-        !state.builder || !state.directionObserved || !state.performanceObserved || state.direction != AAUDIO_DIRECTION_OUTPUT ||
-        state.performance != AAUDIO_PERFORMANCE_MODE_LOW_LATENCY) {
+        !state.builder || state.direction != AAUDIO_DIRECTION_OUTPUT || (!downgradeLowLatency && !reuseRequested)) {
         const auto status = originalOpen(builder, stream);
         if (diagnostic) __android_log_print(ANDROID_LOG_INFO, "LightningDSP_AAudio",
             "open original returned=%d pid=%d", status, getpid());
@@ -192,12 +200,10 @@ BuilderState* findBuilder(AAudioStreamBuilder* builder) {
     }
     // The builder is restored even on failure. A clean failure gets exactly one
     // retry using the application's original request; no routing/restart loop.
-    originalPerformance(builder, AAUDIO_PERFORMANCE_MODE_NONE);
+    if (downgradeLowLatency) originalPerformance(builder, AAUDIO_PERFORMANCE_MODE_NONE);
     // In the opt-in session-reuse experiment, serialize first allocation so
     // concurrent streams in one app process cannot claim different session IDs.
     // Explicit app-requested session IDs are never replaced.
-    const bool reuseRequested = reuseSessionRequested() && originalSession && originalGetSession &&
-        state.sessionObserved && state.session == AAUDIO_SESSION_ID_NONE;
     std::unique_lock<std::mutex> sessionLock(pinnedSessionMutex, std::defer_lock);
     if (reuseRequested) sessionLock.lock();
     const bool reuseExistingSession = reuseRequested && pinnedSession > 0;
@@ -212,7 +218,7 @@ BuilderState* findBuilder(AAudioStreamBuilder* builder) {
     if (diagnostic) __android_log_print(ANDROID_LOG_INFO, "LightningDSP_AAudio", "open normal enter pid=%d", getpid());
     const auto status = originalOpen(builder, &candidate);
     if (diagnostic) __android_log_print(ANDROID_LOG_INFO, "LightningDSP_AAudio", "open normal returned=%d pid=%d", status, getpid());
-    originalPerformance(builder, state.performance);
+    if (downgradeLowLatency) originalPerformance(builder, state.performance);
     if (allocateSession) originalSession(builder, state.session);
     else if (reuseExistingSession) originalSession(builder, state.session);
     if (status != AAUDIO_OK && candidate == nullptr) {

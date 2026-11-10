@@ -273,6 +273,34 @@ int main() {
     // observed NONE requests, and prepares a shared process session only once.
     reuseSessionProperty = "1";
     pinnedSession = AAUDIO_SESSION_ID_NONE;
+    const auto savedNextAllocatedSession = nextAllocatedSession;
+    AAudioStreamBuilder* powerSavingBuilder = nullptr;
+    createBuilder(&powerSavingBuilder);
+    setDirection(powerSavingBuilder, AAUDIO_DIRECTION_OUTPUT);
+    setPerformance(powerSavingBuilder, AAUDIO_PERFORMANCE_MODE_POWER_SAVING);
+    setSession(powerSavingBuilder, AAUDIO_SESSION_ID_NONE);
+    const auto beforePowerSavingPreparation = preparationsForTest;
+    expect(powerSavingBuilder, {AAUDIO_PERFORMANCE_MODE_POWER_SAVING});
+    const auto powerSavingSession = audioStream.session;
+    assert(powerSavingSession > 0 && pinnedSession == powerSavingSession);
+    assert(powerSavingBuilder->performance == AAUDIO_PERFORMANCE_MODE_POWER_SAVING);
+    assert(powerSavingBuilder->session == AAUDIO_SESSION_ID_NONE);
+    assert(preparationsForTest == beforePowerSavingPreparation + 1);
+    AAudioStreamBuilder* nextPowerSavingBuilder = nullptr;
+    createBuilder(&nextPowerSavingBuilder);
+    setDirection(nextPowerSavingBuilder, AAUDIO_DIRECTION_OUTPUT);
+    setPerformance(nextPowerSavingBuilder, AAUDIO_PERFORMANCE_MODE_POWER_SAVING);
+    setSession(nextPowerSavingBuilder, AAUDIO_SESSION_ID_NONE);
+    const auto powerSavingRenewals = renewalsForTest;
+    expect(nextPowerSavingBuilder, {AAUDIO_PERFORMANCE_MODE_POWER_SAVING});
+    assert(audioStream.session == powerSavingSession);
+    assert(renewalsForTest == powerSavingRenewals + 1);
+    assert(preparationsForTest == beforePowerSavingPreparation + 1);
+    deleteBuilder(nextPowerSavingBuilder);
+    deleteBuilder(powerSavingBuilder);
+    pinnedSession = AAUDIO_SESSION_ID_NONE;
+    nextAllocatedSession = savedNextAllocatedSession;
+
     AAudioStreamBuilder* firstReuseBuilder = nullptr;
     createBuilder(&firstReuseBuilder);
     setDirection(firstReuseBuilder, AAUDIO_DIRECTION_OUTPUT);

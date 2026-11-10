@@ -25,7 +25,7 @@ internal class ForegroundAppObserver(
     }
     private var polling: ScheduledFuture<*>? = null
     private var lastQueryTime = 0L
-    private var foregroundPackage: String? = null
+    private val activityTracker = ForegroundActivityTracker()
     private var reportedPackage: String? = null
 
     @Synchronized fun start() {
@@ -37,15 +37,16 @@ internal class ForegroundAppObserver(
     @Synchronized fun stop() {
         polling?.cancel(true)
         polling = null
-        foregroundPackage = null
+        activityTracker.clear()
         lastQueryTime = 0L
         report(null)
     }
 
+    @Synchronized
     private fun poll() {
         val currentTime = System.currentTimeMillis()
         if (!appContext.hasPackageUsagePermission() || powerManager?.isInteractive == false) {
-            foregroundPackage = null
+            activityTracker.clear()
             lastQueryTime = currentTime
             report(null)
             return
@@ -55,7 +56,7 @@ internal class ForegroundAppObserver(
             else (lastQueryTime - OVERLAP_MILLIS).coerceAtLeast(0L)
         val events = runCatching { usageStats?.queryEvents(begin, currentTime) }.getOrNull()
         if (events == null) {
-            foregroundPackage = null
+            activityTracker.clear()
             lastQueryTime = currentTime
             report(null)
             return
@@ -65,13 +66,25 @@ internal class ForegroundAppObserver(
         while (events.hasNextEvent()) {
             if (!events.getNextEvent(event)) continue
             val packageName = event.packageName?.takeIf(String::isNotBlank) ?: continue
+            val activityId = activityId(event)
             when (eventType(event)) {
-                RESUMED_EVENT -> foregroundPackage = packageName
-                PAUSED_EVENT, STOPPED_EVENT -> if (foregroundPackage == packageName) foregroundPackage = null
+                RESUMED_EVENT -> activityTracker.onResumed(packageName, activityId)
+                PAUSED_EVENT, STOPPED_EVENT -> activityTracker.onPaused(packageName, activityId)
             }
         }
         lastQueryTime = currentTime
-        report(foregroundPackage)
+        report(activityTracker.foregroundPackage)
+    }
+
+    @Suppress("NewApi")
+    private fun activityId(event: UsageEvents.Event): String {
+        val className = event.className?.takeIf(String::isNotBlank) ?: "activity"
+        // UsageEvents.Event.getInstanceId() is hidden from the public SDK, but
+        // uniquely distinguishes multiple instances of the same Activity.
+        val instance = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) runCatching {
+            event.javaClass.getMethod("getInstanceId").invoke(event) as Int
+        }.getOrDefault(-1) else -1
+        return "$className#$instance"
     }
 
     private fun report(packageName: String?) {

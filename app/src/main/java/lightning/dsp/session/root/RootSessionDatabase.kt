@@ -350,6 +350,37 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
         )
     }
 
+    /**
+     * Some players announce an AudioEffect session before starting playback.
+     * Admit that positive Session Mode ID without replacing the app's other
+     * sessions; the AudioFlinger scanner remains authoritative for cleanup.
+     */
+    @Synchronized
+    fun addSessionFromEarlyOpenIntent(intent: Intent): Boolean {
+        if (app.isGlobalMode) return false
+        val sessionId = intent.getIntExtra(AudioEffect.EXTRA_AUDIO_SESSION, AudioEffect.ERROR)
+        if (sessionId <= 0) return false
+        val packageName = intent.getStringExtra(AudioEffect.EXTRA_PACKAGE_NAME)
+            ?.takeIf(String::isNotBlank) ?: return false
+        val uid = context.getUidFromPackage(packageName)
+        if (uid < 10_000 || uid == android.os.Process.myUid()) return false
+
+        playbackActivity.forget(sessionId)
+        val existing = sessionList[sessionId]
+        if (existing != null) {
+            if (existing.uid != uid || existing.packageName != packageName) {
+                Timber.w("Ignoring early open for occupied session %d", sessionId)
+                return false
+            }
+            applyPlaybackActivity()
+            return true
+        }
+
+        Timber.d("Pre-registering session from early open: sid=%d; %s", sessionId, packageName)
+        addSession(sessionId, uid, packageName)
+        return sessionList[sessionId]?.let { it.uid == uid && it.packageName == packageName } == true
+    }
+
     fun removeSessionByIntent(intent: Intent) {
         val sessionId = intent.getIntExtra(AudioEffect.EXTRA_AUDIO_SESSION, AudioEffect.ERROR)
         val packageName = intent.getStringExtra(AudioEffect.EXTRA_PACKAGE_NAME)
