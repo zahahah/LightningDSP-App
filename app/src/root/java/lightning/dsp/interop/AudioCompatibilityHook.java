@@ -44,8 +44,63 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
             });
 
     /** Called only after open, before the caller can start its stream. Never on a PCM callback. */
-    private static void prepareSession(int sessionId) {
+    private static final String OWNER_DESCRIPTOR = "lightning.dsp.UnifiedSessionOwner";
+    private static final int OWNER_CODE = android.os.IBinder.FIRST_CALL_TRANSACTION + 731;
+    private static final android.os.Binder reuseOwner = new android.os.Binder() {
+        @Override protected boolean onTransact(int code, android.os.Parcel data, android.os.Parcel reply, int flags)
+                throws android.os.RemoteException {
+            if (code != OWNER_CODE) return super.onTransact(code, data, reply, flags);
+            data.enforceInterface(OWNER_DESCRIPTOR);
+            android.os.IBinder ack = data.readStrongBinder();
+            if (ack == null) return false;
+            android.os.Parcel confirmation = android.os.Parcel.obtain();
+            try {
+                confirmation.writeInterfaceToken(OWNER_DESCRIPTOR);
+                return ack.transact(OWNER_CODE, confirmation, null, android.os.IBinder.FLAG_ONEWAY);
+            } finally { confirmation.recycle(); }
+        }
+    };
+    private static volatile ScheduledFuture<?> reuseHeartbeat;
+    private static volatile Future<?> reuseRenewal;
+    private static volatile int unifiedSessionId;
+
+    private static synchronized void retainUnifiedSession(int sessionId) {
+        unifiedSessionId = sessionId;
+        if (reuseHeartbeat != null && !reuseHeartbeat.isDone()) return;
+        reuseHeartbeat = libraryScanWorker.scheduleWithFixedDelay(() -> {
+            if (!requested() || !reuseRequested()) {
+                ScheduledFuture<?> task = reuseHeartbeat;
+                if (task != null) task.cancel(false);
+                return;
+            }
+            Future<?> pending = reuseRenewal;
+            if (pending != null && !pending.isDone()) return;
+            try {
+                reuseRenewal = preparationWorker.submit(() -> {
+                    Application app = (Application) XposedHelpers.callStaticMethod(
+                            XposedHelpers.findClass("android.app.ActivityThread", null), "currentApplication");
+                    if (app == null) return;
+                    Bundle extras = new Bundle();
+                    extras.putLong("deadline", SystemClock.elapsedRealtime() + 1500);
+                    extras.putBoolean("unified", true);
+                    extras.putBinder("owner", reuseOwner);
+                    app.getContentResolver().call(Uri.parse("content://com.lightning.dsp.compatibility"),
+                            "retain", Integer.toString(unifiedSessionId), extras);
+                });
+            } catch (Throwable ignored) { /* Bounded worker busy: lease expires, never block audio. */ }
+        }, 2, 2, TimeUnit.SECONDS);
+    }
+
+    private static boolean reuseRequested() {
+        try {
+            Class<?> props = XposedHelpers.findClass("android.os.SystemProperties", null);
+            return "1".equals(XposedHelpers.callStaticMethod(props, "get", "debug.ldsp.aaudio_reuse_session", "0"));
+        } catch (Throwable unavailable) { return false; }
+    }
+
+    private static void prepareSession(int sessionId, boolean unified) {
         if (sessionId <= 0 || !requested()) return;
+        if (unified) retainUnifiedSession(sessionId);
         Future<?> pending = null;
         AtomicReference<String> phase = new AtomicReference<>("worker_dispatch");
         try {
@@ -56,6 +111,10 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
                         XposedHelpers.findClass("android.app.ActivityThread", null), "currentApplication");
                 Bundle extras = new Bundle();
                 extras.putLong("deadline", deadline);
+                if (unified) {
+                    extras.putBoolean("unified", true);
+                    extras.putBinder("owner", reuseOwner);
+                }
                 if (app == null || SystemClock.elapsedRealtime() >= deadline) return false;
                 phase.set("provider_call");
                 Bundle result = app.getContentResolver().call(

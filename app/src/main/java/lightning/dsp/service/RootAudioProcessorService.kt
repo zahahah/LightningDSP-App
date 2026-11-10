@@ -106,6 +106,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
 
     override fun onCreate() {
         super.onCreate()
+        app.rootSessionDatabase.startUnifiedSessionRetention()
 
         if (isRoot()) backgroundScope.launch(Dispatchers.IO) {
             val compatibilityRestored = AAudioCompatibilityOption.restore(applicationContext)
@@ -229,6 +230,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
     override fun onDestroy() {
         super.onDestroy()
         isServiceDisposing = true
+        app.rootSessionDatabase.stopUnifiedSessionRetention()
         val oldSessionDumpManager = sessionDumpManager
         sessionDumpManager = null
         oldSessionDumpManager?.destroy()

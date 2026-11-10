@@ -165,3 +165,29 @@ process share effects, and Android documents that allocated or specified AAudio
 session IDs may increase latency. Keep the option off except for targeted
 testing; host tests prove only wrapper decisions, not device latency, sound
 quality, safe behavior for every app, or JL Mod stability.
+
+## Unified-session idle retention
+
+The first successful pinned AAudio stream now identifies itself to the app. A
+process-local Binder answers a one-way callback challenge; the provider verifies
+the callback's actual Binder UID/PID against its caller, links owner death, and
+issues a six-second lease. Binder death and opt-out enqueue main-thread effect
+reconciliation; a bounded 500ms owner watcher withdraws expired exemptions even
+when no new audio dump arrives. It stops when no claims remain and only touches
+effects when the exemption set changes. A bounded background worker renews it every two
+seconds, outside stream and PCM callbacks, so a restarted LightningDSP service
+can recover ownership without waiting for a new native pin. An unavailable or
+busy provider never blocks the audio thread during renewal.
+
+Only Session Mode receives this exemption, with both compatibility/reuse options
+enabled, a live authenticated owner lease, and a current independent framework
+player record matching session/UID/package. The effect may remain enabled while
+that player is idle, but the active-app list still requires actual playback. A
+missing framework player removes the effect normally; the process claim can
+re-enroll on the next matching player. Global coverage, app DSP opt-out, explicit
+app session IDs, and unrelated app idle cleanup are unchanged. The first pinned
+open remains serialized through the existing bounded preparation so concurrent
+opens cannot bypass that first barrier. This does not guarantee first-frame DSP
+after the framework truly destroys a player, after a service restart, or for
+non-AAudio paths; these still require a fresh validated attachment and runtime
+testing.

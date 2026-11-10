@@ -25,6 +25,42 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
      * for a session currently owned by the mixer-coverage controller. */
     private val supplementalSessionReservations = mutableSetOf<Int>()
     private val playbackActivity = SessionPlaybackActivity()
+    private val unifiedSessions = UnifiedSessionRetention()
+    @Volatile var unifiedSessionRetentionEnabled: () -> Boolean = { false }
+
+    private val retentionLifecycle = UnifiedSessionRetentionLifecycle()
+    private val retentionHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val retentionWatch = object : Runnable {
+        override fun run() {
+            if (retentionLifecycle.current() == null) return
+            if (unifiedSessions.reconcile(!app.isGlobalMode && unifiedSessionRetentionEnabled()))
+                applyPlaybackActivity()
+            if (unifiedSessions.hasClaims()) retentionHandler.postDelayed(this, 500L)
+        }
+    }
+
+    /** Binder/death and option callbacks only enqueue reconciliation on the database's main thread. */
+    fun reconcileUnifiedSessionRetention() {
+        val generation = retentionLifecycle.current() ?: return
+        retentionHandler.post {
+            if (!retentionLifecycle.accepts(generation)) return@post
+            retentionHandler.removeCallbacks(retentionWatch)
+            retentionWatch.run()
+        }
+    }
+
+    @Synchronized fun startUnifiedSessionRetention() { retentionLifecycle.start() }
+
+    /** Teardown never reapplies preferences or enables effects. New provider claims are refused. */
+    @Synchronized fun stopUnifiedSessionRetention() {
+        retentionLifecycle.stop()
+        retentionHandler.removeCallbacks(retentionWatch)
+        unifiedSessions.clear()
+    }
+
+    @Synchronized fun registerUnifiedSession(id: Int, uid: Int, pid: Int, alive: () -> Boolean): Boolean =
+        (retentionLifecycle.current() != null && !app.isGlobalMode && unifiedSessionRetentionEnabled() && unifiedSessions.claim(id, uid, pid, alive))
+            .also { if (it) reconcileUnifiedSessionRetention() }
     private val playbackSuspended = mutableSetOf<Int>()
     private val confirmedInactiveRemovals = mutableSetOf<Int>()
     val needsPlaybackActivityConfirmation: Boolean get() = playbackActivity.needsConfirmation
@@ -115,22 +151,29 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
     }
 
     private fun shouldProcess(id: Int, uid: Int, packageName: String): Boolean =
-        id <= 0 || playbackActivity.shouldProcess(id, uid, packageName)
+        id <= 0 || (!app.isGlobalMode && unifiedSessionRetentionEnabled() &&
+            unifiedSessions.shouldRetain(id, uid, packageName)) || playbackActivity.shouldProcess(id, uid, packageName)
 
     /** Ownership includes idle/prepared engines; notifications must expose playback only. */
     fun playingSessions(): Array<IEffectSession> = sessionList.filter { (id, session) ->
         id > 0 && playbackActivity.isPlaying(id, session.uid, session.packageName)
     }.values.toTypedArray()
 
-    fun markPlaybackUnavailable() = playbackActivity.markUnavailable()
+    fun markPlaybackUnavailable() {
+        unifiedSessions.markUnavailable()
+        reconcileUnifiedSessionRetention()
+        playbackActivity.markUnavailable()
+    }
 
     fun updatePlaybackActivity(dump: ISessionInfoDump) = onSessionDumpUpdated(dump)
 
     override fun onSessionDumpUpdated(dump: ISessionInfoDump) {
+        unifiedSessions.update(dump.sessions, !app.isGlobalMode && unifiedSessionRetentionEnabled())
         playbackActivity.update(dump.sessions, SystemClock.uptimeMillis(), sessionList.keys.toSet())
         val inactive = playbackActivity.confirmedInactiveSessions()
         sessionList.toMap().forEach { (id, session) ->
-            if (app.isEnhancedProcessing && inactive[id] == (session.uid to session.packageName)) {
+            if (app.isEnhancedProcessing && inactive[id] == (session.uid to session.packageName) &&
+                !unifiedSessions.shouldRetain(id, session.uid, session.packageName)) {
                 Timber.d("Removing inactive audio session %d (%s)", id, session.packageName)
                 confirmedInactiveRemovals += id
                 removeSession(id)
@@ -141,6 +184,8 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
 
     /** Explicit lifecycle/mode reset; collector failures must not call this. */
     fun clearPlaybackActivity() {
+        retentionHandler.removeCallbacks(retentionWatch)
+        unifiedSessions.clear()
         playbackActivity.clear()
         applyPlaybackActivity()
     }
@@ -178,7 +223,7 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
     }
     override fun shouldAddSession(id: Int, uid: Int, packageName: String) =
         synchronized(this) {
-            id !in supplementalSessionReservations && playbackActivity.shouldProcess(id, uid, packageName)
+            id !in supplementalSessionReservations && shouldProcess(id, uid, packageName)
         }
 
     override fun onSessionRemoved(item: IEffectSession) {

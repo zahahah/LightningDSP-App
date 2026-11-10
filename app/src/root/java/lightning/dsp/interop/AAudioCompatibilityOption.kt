@@ -23,6 +23,9 @@ object AAudioCompatibilityOption {
         return AAudioCompatibilityTransaction.apply(old, enabled, ::write) { value ->
             context.getSharedPreferences(Constants.PREF_APP, Context.MODE_PRIVATE).edit()
                 .putBoolean(context.getString(R.string.key_audioformat_aaudio_compat), value).commit()
+        }.also {
+            if (!enabled) (context.applicationContext as? lightning.dsp.MainApplication)
+                ?.rootSessionDatabase?.reconcileUnifiedSessionRetention()
         }
     }
 

@@ -246,6 +246,7 @@ int main() {
     assert(sessionBuilder->session == AAUDIO_SESSION_ID_NONE);
     assert(audioStream.session == 101);
     assert(preparationsForTest == beforePreparation + 1);
+    assert(!preparedReuseForTest);
     setSession(sessionBuilder, AAUDIO_SESSION_ID_NONE);
     expect(sessionBuilder, {AAUDIO_PERFORMANCE_MODE_NONE});
     assert(audioStream.session == 102 && pinnedSession == AAUDIO_SESSION_ID_NONE);
@@ -282,16 +283,20 @@ int main() {
     assert(audioStream.session == 103);
     assert(pinnedSession == 103 && firstReuseBuilder->session == AAUDIO_SESSION_ID_NONE);
     assert(preparationsForTest == beforePinnedPreparation + 1);
+    assert(preparedReuseForTest);
 
     AAudioStreamBuilder* nextReuseBuilder = nullptr;
     createBuilder(&nextReuseBuilder);
     setDirection(nextReuseBuilder, AAUDIO_DIRECTION_OUTPUT);
     setPerformance(nextReuseBuilder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
     setSession(nextReuseBuilder, AAUDIO_SESSION_ID_NONE);
+    const auto beforeRenewal = renewalsForTest;
     expect(nextReuseBuilder, {AAUDIO_PERFORMANCE_MODE_NONE});
+    assert(renewalsForTest == beforeRenewal + 1);
     assert(audioStream.session == 103);
     assert(pinnedSession == 103 && nextReuseBuilder->session == AAUDIO_SESSION_ID_NONE);
     assert(preparationsForTest == beforePinnedPreparation + 1);
+    assert(preparedReuseForTest);
 
     setSession(nextReuseBuilder, 777);
     expect(nextReuseBuilder, {AAUDIO_PERFORMANCE_MODE_NONE});
@@ -314,6 +319,7 @@ int main() {
     assert(audioStream.session == 104);
     assert(pinnedSession == 104 && defaultSessionBuilder->session == AAUDIO_SESSION_ID_NONE);
     assert(preparationsForTest == beforeDefaultSessionPreparation + 1);
+    assert(preparedReuseForTest);
 
     AAudioStreamBuilder* nextDefaultSessionBuilder = nullptr;
     createBuilder(&nextDefaultSessionBuilder);
@@ -323,6 +329,19 @@ int main() {
     assert(audioStream.session == 104);
     assert(pinnedSession == 104 && nextDefaultSessionBuilder->session == AAUDIO_SESSION_ID_NONE);
     assert(preparationsForTest == beforeDefaultSessionPreparation + 1);
+    assert(preparedReuseForTest);
+    // Turning reuse off/on does not require allocating a new pin. The next reused
+    // open can restart the non-blocking Java lease worker, without a new prewarm.
+    const auto renewalsBeforeToggle = renewalsForTest;
+    const auto preparationsBeforeToggle = preparationsForTest;
+    reuseSessionProperty = "0";
+    expect(nextDefaultSessionBuilder, {AAUDIO_PERFORMANCE_MODE_NONE});
+    assert(renewalsForTest == renewalsBeforeToggle);
+    reuseSessionProperty = "1";
+    expect(nextDefaultSessionBuilder, {AAUDIO_PERFORMANCE_MODE_NONE});
+    assert(audioStream.session == 104);
+    assert(renewalsForTest == renewalsBeforeToggle + 1);
+    assert(preparationsForTest == preparationsBeforeToggle);
     deleteBuilder(nextDefaultSessionBuilder);
     deleteBuilder(defaultSessionBuilder);
     reuseSessionProperty = "0";

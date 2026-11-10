@@ -20,17 +20,37 @@ internal object CompatibilityPreparationBridge {
 class CompatibilityPreparationProvider : ContentProvider() {
     private val slots = Semaphore(2)
     private val admission = CompatibilityPreparationAdmission()
+    private val renewalAdmission = CompatibilityPreparationAdmission()
+    private val unifiedOwners = UnifiedSessionOwnerProof {
+        (context?.applicationContext as? lightning.dsp.MainApplication)
+            ?.rootSessionDatabase?.reconcileUnifiedSessionRetention()
+    }
     override fun onCreate() = true
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle {
         val uid = Binder.getCallingUid()
+        val pid = Binder.getCallingPid()
         val deadline = minOf(extras?.getLong("deadline", 0) ?: 0, SystemClock.elapsedRealtime() + 2_000)
         val session = arg?.toIntOrNull() ?: return result(false)
-        if (deadline <= SystemClock.elapsedRealtime() || method != "prepare" || session <= 0 || uid % 100000 !in 10000..19999 ||
+        if (deadline <= SystemClock.elapsedRealtime() || method !in setOf("prepare", "retain") || session <= 0 || uid % 100000 !in 10000..19999 ||
             Looper.myLooper() == Looper.getMainLooper() || !slots.tryAcquire()) return result(false)
         try {
             val now = SystemClock.elapsedRealtime()
-            if (!admission.admit(uid, now)) return result(false)
+            if (method == "prepare" && !admission.admit(uid, now)) return result(false)
+            if (method == "retain" && !renewalAdmission.admit(pid, now)) return result(false)
             val handler = CompatibilityPreparationBridge.handler ?: return result(false)
+            val app = context?.applicationContext as? lightning.dsp.MainApplication ?: return result(false)
+            app.rootSessionDatabase.unifiedSessionRetentionEnabled = {
+                AAudioCompatibilityOption.requested(app) && AAudioSessionReuseOption.requested(app)
+            }
+            if (extras?.getBoolean("unified", false) == true && !app.isGlobalMode) {
+                if (!app.rootSessionDatabase.unifiedSessionRetentionEnabled()) return result(false)
+                val owner = extras.getBinder("owner") ?: return result(false)
+                val alive = unifiedOwners.verify(owner, uid, pid, deadline) ?: return result(false)
+                if (!app.rootSessionDatabase.registerUnifiedSession(session, uid, pid, alive)) return result(false)
+            } else if (method == "retain") return result(false)
+            // Global Mode still uses the existing validated pre-start preparation path;
+            // only the idle-retention exemption is Session Mode specific.
+            if (method == "retain") return result(true)
             val completed = CountDownLatch(1)
             var prepared = false
             handler(uid, session, deadline) { success -> prepared = success; completed.countDown() }

@@ -55,8 +55,9 @@ std::atomic<bool> preparationReady{false};
 JavaVM* preparationVm = nullptr;
 jclass preparationClass = nullptr;
 jmethodID preparationMethod = nullptr;
+jmethodID retentionMethod = nullptr;
 bool canPrepareStream() { return preparationReady.load(std::memory_order_acquire); }
-void prepareOpenedStream(AAudioStream* stream) {
+void prepareOpenedStream(AAudioStream* stream, bool reusedSession) {
     if (!stream || !originalGetSession || !preparationReady.load(std::memory_order_acquire)) return;
     const auto id = originalGetSession(stream);
     if (id <= 0) return;
@@ -64,14 +65,31 @@ void prepareOpenedStream(AAudioStream* stream) {
     const bool attach = preparationVm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) == JNI_EDETACHED;
     if (attach && preparationVm->AttachCurrentThread(&env, nullptr) != JNI_OK) return;
     if (!env) return;
-    env->CallStaticVoidMethod(preparationClass, preparationMethod, static_cast<jint>(id));
+    env->CallStaticVoidMethod(preparationClass, preparationMethod, static_cast<jint>(id), static_cast<jboolean>(reusedSession));
     if (env->ExceptionCheck()) env->ExceptionClear();
     if (attach) preparationVm->DetachCurrentThread();
 }
+void renewOpenedStream(AAudioStream* stream) {
+    if (!stream || !originalGetSession || !preparationReady.load(std::memory_order_acquire)) return;
+    const auto id = originalGetSession(stream);
+    if (id <= 0) return;
+    JNIEnv* env = nullptr;
+    const bool attach = preparationVm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) == JNI_EDETACHED;
+    if (attach && preparationVm->AttachCurrentThread(&env, nullptr) != JNI_OK) return;
+    if (!env) return;
+    // This Java callback only schedules bounded background renewal, never provider IPC.
+    env->CallStaticVoidMethod(preparationClass, retentionMethod, static_cast<jint>(id));
+    if (env->ExceptionCheck()) env->ExceptionClear();
+    if (attach) preparationVm->DetachCurrentThread();
+}
+
 #else
 bool canPrepareStream() { return true; }
 unsigned preparationsForTest = 0;
-void prepareOpenedStream(AAudioStream* stream) { if (originalGetSession && originalGetSession(stream) > 0) ++preparationsForTest; }
+bool preparedReuseForTest = false;
+unsigned renewalsForTest = 0;
+void renewOpenedStream(AAudioStream*) { ++renewalsForTest; }
+void prepareOpenedStream(AAudioStream* stream, bool reusedSession) { if (originalGetSession && originalGetSession(stream) > 0) { ++preparationsForTest; preparedReuseForTest = reusedSession; } }
 #endif
 std::mutex buildersMutex;
 struct BuilderState {
@@ -215,11 +233,14 @@ BuilderState* findBuilder(AAudioStreamBuilder* builder) {
             firstPinnedSession = true;
         }
     }
-    if (sessionLock.owns_lock()) sessionLock.unlock();
+    // Keep the first allocation serialized through its bounded preparation, so
+    // another eligible open cannot start on the pinned ID before this barrier.
     // Subsequent streams share the established chain. Reissuing preparation on
     // every brief sound can synchronously stall each open, so only the first
     // stream asks the app/controller to prewarm this stable session.
-    if (status == AAUDIO_OK && (!reuseRequested || firstPinnedSession)) prepareOpenedStream(candidate);
+    if (status == AAUDIO_OK && (!reuseRequested || firstPinnedSession)) prepareOpenedStream(candidate, firstPinnedSession);
+    if (status == AAUDIO_OK && reuseExistingSession) renewOpenedStream(candidate);
+    if (sessionLock.owns_lock()) sessionLock.unlock();
     *stream = candidate;
     if (diagnostic) __android_log_print(ANDROID_LOG_INFO, "LightningDSP_AAudio",
         "normal request pid=%d result=%d session=%d reused=%d", getpid(), status,
@@ -555,12 +576,15 @@ Java_lightning_dsp_interop_AudioCompatibilityHook_nativeSetPreparationCallback(J
     // Installed once during package initialization, before app audio construction.
     std::lock_guard<std::mutex> lock(preparationRegistration);
     if (preparationReady.load(std::memory_order_acquire)) return;
-    jmethodID method = env->GetStaticMethodID(cls, "prepareSession", "(I)V");
+    jmethodID method = env->GetStaticMethodID(cls, "prepareSession", "(IZ)V");
     if (!method || env->ExceptionCheck()) { env->ExceptionClear(); return; }
+    jmethodID renew = env->GetStaticMethodID(cls, "retainUnifiedSession", "(I)V");
+    if (!renew || env->ExceptionCheck()) { env->ExceptionClear(); return; }
     jclass global = static_cast<jclass>(env->NewGlobalRef(cls));
     if (!global) return;
     env->GetJavaVM(&preparationVm);
     preparationMethod = method;
+    retentionMethod = renew;
     preparationClass = global;
     preparationReady.store(true, std::memory_order_release);
 }

@@ -47,15 +47,17 @@ class SessionPlaybackIntegrationTest {
         assertTrue(service.contains("app.rootSessionDatabase.playingSessions()"))
     }
 
-    @Test fun confirmedInactiveSessionsAreRemovedAndNotImmediatelyReattached() {
+    @Test fun ordinaryInactiveSessionsAreRemovedAndUnifiedRetentionIsNarrow() {
         val database = source("session/root/RootSessionDatabase")
-        assertTrue(database.contains("id <= 0 || playbackActivity.shouldProcess"))
+        assertTrue(database.contains("playbackActivity.shouldProcess(id, uid, packageName)"))
+        assertTrue(database.contains("!app.isGlobalMode && unifiedSessionRetentionEnabled()"))
+        assertTrue(database.contains("unifiedSessions.shouldRetain(id, uid, packageName)"))
         val update = database.substringAfter("override fun onSessionDumpUpdated").substringBefore("fun clearPlaybackActivity")
         assertTrue(update.contains("playbackActivity.confirmedInactiveSessions()"))
         assertTrue(update.contains("removeSession(id)"))
         assertTrue(update.contains("app.isEnhancedProcessing && inactive[id]"))
         val addGate = database.substringAfter("override fun shouldAddSession").substringBefore("override fun onSessionRemoved")
-        assertTrue(addGate.contains("playbackActivity.shouldProcess(id, uid, packageName)"))
+        assertTrue(addGate.contains("shouldProcess(id, uid, packageName)"))
         assertTrue(addGate.contains("id !in supplementalSessionReservations"))
     }
 
