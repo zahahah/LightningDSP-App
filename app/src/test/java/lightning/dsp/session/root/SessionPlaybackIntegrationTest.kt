@@ -44,7 +44,7 @@ class SessionPlaybackIntegrationTest {
         assertTrue(service.contains("if (dump != null)"))
         assertTrue(service.contains("else app.rootSessionDatabase.updatePlaybackActivity(dump)"))
         assertTrue(service.contains("manager.requestPlaybackActivityConfirmation(dump != null && app.rootSessionDatabase.needsPlaybackActivityConfirmation)"))
-        assertTrue(service.contains("app.rootSessionDatabase.playingSessions()"))
+        assertTrue(service.contains("app.rootSessionDatabase.activeProcessingSessions()"))
     }
 
     @Test fun ordinaryInactiveSessionsAreRemovedAndUnifiedRetentionIsNarrow() {

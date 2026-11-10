@@ -67,3 +67,9 @@ internal class SessionPlaybackActivity(
         const val INACTIVE_SESSION_GRACE_MILLIS = 10_000L
     }
 }
+
+/** Notification projection includes active playback and deliberately retained focused sessions. */
+internal object SessionProcessingProjection {
+    fun includes(id: Int, processingEnabled: Boolean, playing: Boolean, focusedRetention: Boolean): Boolean =
+        id > 0 && processingEnabled && (playing || focusedRetention)
+}

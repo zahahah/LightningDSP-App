@@ -22,8 +22,11 @@ class FocusedSessionOptionContractTest {
     }
 
     @Test fun focusUsesRealWindowsAndDoesNotDependOnVolumeManagerOrPermissionExpansion() {
+        val manifest = read("src/root/AndroidManifest.xml")
         val tracker = read("src/root/java/lightning/dsp/interop/ScopedAppFocusTracker.java")
         val provider = read("src/root/java/lightning/dsp/interop/CompatibilityPreparationProvider.kt")
+        assertTrue(manifest.contains("android:forceQueryable=\"true\""))
+        assertTrue(manifest.contains("android:exported=\"true\""))
         assertTrue(tracker.contains("addOnWindowFocusChangeListener"))
         assertTrue(tracker.contains("removeOnWindowFocusChangeListener"))
         assertTrue(tracker.contains("activity.hasWindowFocus()"))
@@ -32,5 +35,13 @@ class FocusedSessionOptionContractTest {
         assertTrue(provider.contains("getPackagesForUid(uid)?.singleOrNull()"))
         assertTrue(provider.contains("unifiedOwners.verify(owner, uid, pid, deadline)"))
         assertTrue(provider.contains("AAudioFocusedSessionOption.requested(app)"))
+    }
+
+    @Test fun activeProcessingIncludesFocusedRetentionButNotOrdinaryIdleOrDisabledSessions() {
+        val projection = read("src/main/java/lightning/dsp/session/root/SessionPlaybackActivity.kt")
+        val database = read("src/main/java/lightning/dsp/session/root/RootSessionDatabase.kt")
+        assertTrue(projection.contains("playing || focusedRetention"))
+        assertTrue(database.contains("focusedRetention = shouldKeepUnified(id, session.uid, session.packageName)"))
+        assertTrue(database.contains("processingEnabled = enabled && isPackageDspEnabled(session.packageName)"))
     }
 }

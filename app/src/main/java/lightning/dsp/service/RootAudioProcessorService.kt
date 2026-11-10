@@ -408,7 +408,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
         if(preferences.get<Boolean>(R.string.key_audioformat_processing))
             ServiceNotificationHelper.pushServiceNotificationGlobal(this)
         else
-            ServiceNotificationHelper.pushServiceNotification(this, app.rootSessionDatabase.playingSessions())
+            ServiceNotificationHelper.pushServiceNotification(this, app.rootSessionDatabase.activeProcessingSessions())
     }
 
     companion object {

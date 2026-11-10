@@ -9,6 +9,7 @@
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
 
     <application
+        android:forceQueryable="true"
         tools:node="merge">
         <provider android:name="lightning.dsp.interop.CompatibilityPreparationProvider"
             android:authorities="com.lightning.dsp.compatibility"

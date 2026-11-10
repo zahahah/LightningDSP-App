@@ -26,6 +26,8 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
     private static volatile ScopedAppFocusTracker focusTracker;
     private static volatile Future<?> focusReport;
     private static final AtomicInteger preparationDiagnostics = new AtomicInteger();
+    private static final AtomicInteger focusDiagnostics = new AtomicInteger();
+    private static final AtomicInteger retentionDiagnostics = new AtomicInteger();
     private static final AtomicInteger launchDiagnostics = new AtomicInteger();
     private static final AtomicInteger libraryScanDiagnostics = new AtomicInteger();
     private static final AtomicBoolean libraryScanScheduled = new AtomicBoolean();
@@ -42,6 +44,14 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
     private static final ThreadPoolExecutor preparationWorker = new ThreadPoolExecutor(
             0, 1, 10, TimeUnit.SECONDS, new SynchronousQueue<>(), runnable -> {
                 Thread thread = new Thread(runnable, "LDSP-session-prepare");
+                thread.setDaemon(true);
+                return thread;
+            });
+    // Focus/owner leases must not be dropped just because a synchronous pre-start
+    // preparation is waiting for AudioEffect creation on the separate worker.
+    private static final ThreadPoolExecutor controlWorker = new ThreadPoolExecutor(
+            1, 1, 10, TimeUnit.SECONDS, new ArrayBlockingQueue<>(2), runnable -> {
+                Thread thread = new Thread(runnable, "LDSP-session-control");
                 thread.setDaemon(true);
                 return thread;
             });
@@ -84,7 +94,7 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
             Future<?> pending = reuseRenewal;
             if (pending != null && !pending.isDone()) return;
             try {
-                reuseRenewal = preparationWorker.submit(() -> {
+                reuseRenewal = controlWorker.submit(() -> {
                     Application app = (Application) XposedHelpers.callStaticMethod(
                             XposedHelpers.findClass("android.app.ActivityThread", null), "currentApplication");
                     if (app == null) return;
@@ -92,8 +102,11 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
                     extras.putLong("deadline", SystemClock.elapsedRealtime() + 1500);
                     extras.putBoolean("unified", true);
                     extras.putBinder("owner", reuseOwner);
-                    app.getContentResolver().call(Uri.parse("content://com.lightning.dsp.compatibility"),
+                    Bundle result = app.getContentResolver().call(Uri.parse("content://com.lightning.dsp.compatibility"),
                             "retain", Integer.toString(unifiedSessionId), extras);
+                    if (retentionDiagnostics.getAndIncrement() < 8)
+                        android.util.Log.i("LightningDSP_AAudio", "session retention accepted="
+                                + (result != null && result.getBoolean("prepared", false)));
                 });
             } catch (Throwable ignored) { /* Bounded worker busy: lease expires, never block audio. */ }
         }, 2, 2, TimeUnit.SECONDS);
@@ -117,7 +130,7 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
     private static synchronized void reportFocus(boolean focused) {
         if (focusReport != null && !focusReport.isDone()) return;
         try {
-            focusReport = preparationWorker.submit(() -> {
+            focusReport = controlWorker.submit(() -> {
                 Application app = (Application) XposedHelpers.callStaticMethod(
                         XposedHelpers.findClass("android.app.ActivityThread", null), "currentApplication");
                 if (app == null) return;
@@ -125,10 +138,17 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
                 extras.putLong("deadline", SystemClock.elapsedRealtime() + 1500);
                 extras.putBinder("owner", reuseOwner);
                 extras.putBoolean("focused", focused);
-                app.getContentResolver().call(Uri.parse("content://com.lightning.dsp.compatibility"),
+                Bundle result = app.getContentResolver().call(Uri.parse("content://com.lightning.dsp.compatibility"),
                         "focus", null, extras);
+                if (focusDiagnostics.getAndIncrement() < 12)
+                    android.util.Log.i("LightningDSP_AAudio", "focus report accepted="
+                            + (result != null && result.getBoolean("prepared", false)));
             });
-        } catch (Throwable ignored) { /* No UI/audio thread waits; a lost report expires. */ }
+        } catch (Throwable unavailable) {
+            if (focusDiagnostics.getAndIncrement() < 12)
+                android.util.Log.w("LightningDSP_AAudio", "focus report unavailable; lease will expire safely");
+            /* No UI/audio thread waits; a lost report expires. */
+        }
     }
 
     private static synchronized void trackFocus(Application app) {

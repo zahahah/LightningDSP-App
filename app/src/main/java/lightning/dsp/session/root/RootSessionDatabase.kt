@@ -167,9 +167,14 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
     private fun shouldProcess(id: Int, uid: Int, packageName: String): Boolean =
         id <= 0 || shouldKeepUnified(id, uid, packageName) || playbackActivity.shouldProcess(id, uid, packageName)
 
-    /** Ownership includes idle/prepared engines; notifications must expose playback only. */
-    fun playingSessions(): Array<IEffectSession> = sessionList.filter { (id, session) ->
-        id > 0 && playbackActivity.isPlaying(id, session.uid, session.packageName)
+    /** Idle ownership stays hidden; focused pre-warmed sessions are active processing by design. */
+    fun activeProcessingSessions(): Array<IEffectSession> = sessionList.filter { (id, session) ->
+        SessionProcessingProjection.includes(
+            id = id,
+            processingEnabled = enabled && isPackageDspEnabled(session.packageName),
+            playing = playbackActivity.isPlaying(id, session.uid, session.packageName),
+            focusedRetention = shouldKeepUnified(id, session.uid, session.packageName),
+        )
     }.values.toTypedArray()
 
     fun markPlaybackUnavailable() {
