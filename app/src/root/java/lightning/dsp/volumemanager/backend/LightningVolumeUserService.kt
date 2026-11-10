@@ -42,7 +42,7 @@ class LightningVolumeUserService : IVolumePlaybackService.Stub() {
                     PrintStream(ParcelFileDescriptor.AutoCloseOutputStream(responses)).use { output ->
                         ParcelFileDescriptor.AutoCloseOutputStream(receipt).use { receiptOutput ->
                             LightningDspVolumeRoot.run(input, output) { clean ->
-                                VolumeCleanupReceipt.write(receiptOutput, nonce, clean) { receipt.fileDescriptor.sync() }
+                                VolumeCleanupReceipt.write(receiptOutput, nonce, clean) { runCatching { receipt.fileDescriptor.sync() } }
                             }
                         }
                     }

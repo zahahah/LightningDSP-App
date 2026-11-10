@@ -37,7 +37,7 @@ object LightningDspVolumeRoot {
         val nonce = args.single()
         require(VolumeCleanupReceipt.validNonce(nonce))
         val receipt = java.io.FileOutputStream(java.io.FileDescriptor.err)
-        val journal = VolumeRecoveryJournal.Writer(receipt) { receipt.fd.sync() }
+        val journal = VolumeRecoveryJournal.Writer(receipt) { runCatching { receipt.fd.sync() } }
         var server: VolumeProcessIdentity? = null
         run(System.`in`, System.out,
             prepareRecovery = { audio ->
@@ -59,7 +59,7 @@ object LightningDspVolumeRoot {
                 check(identity.uid == uid) { "Player process identity changed" }
                 journal.beforeClient(nonce, identity)
             }) { clean ->
-            VolumeCleanupReceipt.write(receipt, nonce, clean) { receipt.fd.sync() }
+            VolumeCleanupReceipt.write(receipt, nonce, clean) { runCatching { receipt.fd.sync() } }
         }
     }
 
