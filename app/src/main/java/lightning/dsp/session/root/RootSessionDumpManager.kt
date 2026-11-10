@@ -1,8 +1,10 @@
 package lightning.dsp.session.root
 
 import android.content.*
+import android.media.session.MediaController
 import android.os.Handler
 import android.os.Looper
+import lightning.dsp.MainApplication
 import lightning.dsp.session.dump.DumpManager
 import lightning.dsp.session.dump.data.ISessionInfoDump
 import lightning.dsp.session.shared.BaseSessionManager
@@ -29,6 +31,14 @@ class RootSessionDumpManager(context: Context) : BaseSessionManager(context)
         if (!disposed) onSessionDump?.invoke(sessionDump)
     }
 
+    override fun onActiveSessionsChanged(controllers: MutableList<MediaController>?) {
+        super.onActiveSessionsChanged(controllers)
+        if (disposed) return
+        val packages = controllers.orEmpty().mapNotNull { it.packageName }.toSet()
+        (context.applicationContext as? MainApplication)?.rootSessionDatabase
+            ?.setMediaAvailablePackages(packages)
+    }
+
     /** One fresh confirmation per pending inactivity transition, never a polling loop. */
     fun requestPlaybackActivityConfirmation(required: Boolean) {
         if (!required || disposed) {
@@ -50,6 +60,8 @@ class RootSessionDumpManager(context: Context) : BaseSessionManager(context)
         disposed = true
         requestPlaybackActivityConfirmation(false)
         onSessionDump = null
+        (context.applicationContext as? MainApplication)?.rootSessionDatabase
+            ?.setMediaAvailablePackages(emptySet())
         super.destroy()
     }
 

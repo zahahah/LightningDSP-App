@@ -31,7 +31,7 @@ import lightning.dsp.interop.LightningDspRemoteEngine
 import lightning.dsp.interop.GlobalMixerFallbackController
 import lightning.dsp.interop.AAudioCompatibilityOption
 import lightning.dsp.interop.AAudioSessionReuseOption
-import lightning.dsp.interop.AAudioFocusedSessionOption
+import lightning.dsp.interop.KeepEffectsReadyOption
 import lightning.dsp.model.IEffectSession
 import lightning.dsp.model.room.AppBlocklistDatabase
 import lightning.dsp.model.room.AppBlocklistRepository
@@ -108,11 +108,14 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
     override fun onCreate() {
         super.onCreate()
         app.rootSessionDatabase.startUnifiedSessionRetention()
+        app.rootSessionDatabase.setKeepEffectsReadyEnabled(
+            KeepEffectsReadyOption.requested(applicationContext) && !app.isGlobalMode
+        )
 
         if (isRoot()) backgroundScope.launch(Dispatchers.IO) {
             val compatibilityRestored = AAudioCompatibilityOption.restore(applicationContext)
             val sessionReuseRestored = AAudioSessionReuseOption.restore(applicationContext)
-            val focusedSessionRestored = AAudioFocusedSessionOption.restore(applicationContext)
+            val focusedSessionRestored = KeepEffectsReadyOption.restore(applicationContext)
             if (!compatibilityRestored || !sessionReuseRestored || !focusedSessionRestored)
                 Timber.w("AAudio compatibility request could not be restored")
         }
@@ -161,6 +164,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
         }
 
         StatusNotificationGroup.serviceStarted(this, Notifications.ID_SERVICE_STATUS)
+        app.rootSessionDatabase.onProcessingStateChanged = { updateServiceNotification() }
 
         // Preserve power without creating/clearing contexts before factory discovery.
         onSharedPreferenceChanged(preferences.preferences, getString(R.string.key_powered_on))
@@ -232,6 +236,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
     override fun onDestroy() {
         super.onDestroy()
         isServiceDisposing = true
+        app.rootSessionDatabase.onProcessingStateChanged = null
         app.rootSessionDatabase.stopUnifiedSessionRetention()
         val oldSessionDumpManager = sessionDumpManager
         sessionDumpManager = null
@@ -296,8 +301,11 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
         when (key) {
             getString(R.string.key_audioformat_processing) -> {
                 if (isRoot()) backgroundScope.launch(Dispatchers.IO) {
-                    AAudioFocusedSessionOption.restore(applicationContext)
+                    KeepEffectsReadyOption.restore(applicationContext)
                 }
+                app.rootSessionDatabase.setKeepEffectsReadyEnabled(
+                    KeepEffectsReadyOption.requested(applicationContext) && !app.isGlobalMode
+                )
                 if (!app.isGlobalMode) {
                     // The global baseline must never coexist with ordinary Session Mode engines.
                     app.rootSessionDatabase.removeSession(0)
@@ -317,7 +325,21 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
                 mixerFallback?.requestCheck()
                 updateServiceNotification()
             }
+            getString(R.string.key_audioformat_keep_effects_ready) -> {
+                val enabled = KeepEffectsReadyOption.requested(applicationContext) && !app.isGlobalMode
+                app.rootSessionDatabase.setKeepEffectsReadyEnabled(enabled)
+                if (isRoot()) backgroundScope.launch(Dispatchers.IO) {
+                    KeepEffectsReadyOption.restore(applicationContext)
+                }
+                updateServiceNotification()
+            }
             getString(R.string.key_audioformat_all_mixers) -> mixerFallback?.requestCheck()
+            getString(R.string.key_audioformat_aaudio_compat),
+            getString(R.string.key_audioformat_aaudio_reuse_session) -> {
+                if (isRoot()) backgroundScope.launch(Dispatchers.IO) {
+                    KeepEffectsReadyOption.restore(applicationContext)
+                }
+            }
             getString(R.string.key_powered_on) -> {
                 app.rootSessionDatabase.enabled = sharedPreferences?.getBoolean(key, true) ?: true
                 mixerFallback?.requestCheck()

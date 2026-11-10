@@ -180,8 +180,8 @@ seconds, outside stream and PCM callbacks, so a restarted LightningDSP service
 can recover ownership without waiting for a new native pin. An unavailable or
 busy provider never blocks the audio thread during renewal.
 
-Only Session Mode receives this exemption, with compatibility/reuse and the
-default-off **Keep effects ready while focused** option enabled, a live
+Only Session Mode receives this AAudio-owner exemption, with compatibility/reuse
+and the default-off **Keep effects ready** option enabled, a live
 authenticated owner lease, a current focused window of the same uniquely resolved
 app package, and a current independent framework player record matching
 session/UID/package. The effect may remain enabled while
@@ -201,15 +201,20 @@ Focus reports use the same bounded owner proof, but have their own six-second
 freshness limit renewed only by another focus report, never by audio heartbeats.
 A missed immediate loss report can retain an idle effect until that focus limit
 expires and the next bounded reconciliation tick runs. The UI and audio may live in different processes of the same
-unique package. Shared-UID package ambiguity is rejected. No Volume Manager,
-accessibility service, cross-app UI inspection, or new Android permission is
-required. Missing focus returns to normal idle suspension, never creates a new
-session or bypasses the per-app DSP power setting. Window focus and audible
-continuity still require device validation, including multiwindow, lockscreen,
-and in-app dialogs that take focus.
+unique package. Shared-UID package ambiguity is rejected. This AAudio-owner
+focus path does not require the Volume Manager, accessibility service, or
+cross-app UI inspection. The general **Keep effects ready** option uses Usage
+Access, granted by root while the option is enabled, to recognize a focused app
+without requiring Vector/LSPosed selection. Missing focus returns to normal idle
+suspension, never creates a new session or bypasses the per-app DSP power
+setting. Window focus and audible continuity still require device validation,
+including multiwindow, lockscreen, and in-app dialogs that take focus.
 
 This separates the controls: **Reuse AAudio session** selects one eligible ID;
-**Keep effects ready while focused** authorizes idle effect retention. With the
-new option off, normal idle suspension applies. This intentionally replaces the
+**Keep effects ready** authorizes Session Mode retention for already-known app
+sessions while the app is focused or has active media controls, and additionally
+allows the separately authenticated AAudio owner lease when compatibility and
+reuse are enabled. With the new option off, normal idle suspension applies.
+This intentionally replaces the
 test-34 prototype's attempted unconditional idle exemption, which failed to
 authenticate its owner because its one-way ACK had no caller PID.

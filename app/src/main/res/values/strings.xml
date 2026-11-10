@@ -315,8 +315,8 @@
     <string name="audio_format_aaudio_reuse_session">Reuse AAudio session</string>
     <string name="audio_format_aaudio_reuse_session_summary">Requires Improve app compatibility. Reuses the effect session when selected apps reopen streams; may increase latency or affect audio behavior.</string>
     <string name="audio_format_aaudio_reuse_session_restart">Restart selected apps to apply this change.</string>
-    <string name="audio_format_aaudio_focus_hold">Keep effects ready while focused</string>
-    <string name="audio_format_aaudio_focus_hold_summary">Session Mode only. Requires Reuse AAudio session and selected apps in Vector/LSPosed. Keeps a verified session ready while the app has window focus; may use more battery.</string>
+    <string name="audio_format_keep_effects_ready">Keep effects ready</string>
+    <string name="audio_format_keep_effects_ready_summary">Session Mode only. Keeps known sessions ready for the focused app or apps with active media controls. Usage Access is granted with root; battery use may increase.</string>
     <string name="audio_format_aaudio_compat_failed">Could not update compatibility mode. Check root access.</string>
     <string name="audio_format_aaudio_compat_unknown">Unable to verify compatibility mode. Check root access and reopen settings.</string>
     <string name="audio_format_enhanced_processing_on">Scanning enabled for broader app compatibility</string>

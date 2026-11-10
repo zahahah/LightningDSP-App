@@ -27,7 +27,7 @@ class UnifiedSessionOwnerProtocolTest {
         val service = File(app, "src/main/java/lightning/dsp/service/RootAudioProcessorService.kt").readText()
         val teardown = service.substringAfter("override fun onDestroy()")
         assertTrue(teardown.indexOf("stopUnifiedSessionRetention()") < teardown.indexOf("clearSessions()"))
-        val stop = database.substringAfter("fun stopUnifiedSessionRetention()").substringBefore("fun registerUnifiedSession")
+        val stop = database.substringAfter("fun stopUnifiedSessionRetention()").substringBefore("/** General Session Mode retention")
         assertTrue(stop.contains("unifiedSessions.clear()"))
         assertTrue(!stop.contains("applyPlaybackActivity()"))
         assertTrue(provider.indexOf("val handler = CompatibilityPreparationBridge.handler") <

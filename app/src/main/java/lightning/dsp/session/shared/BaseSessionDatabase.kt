@@ -22,6 +22,7 @@ abstract class BaseSessionDatabase(protected val context: Context) {
     protected abstract fun createSession(id: Int, uid: Int, packageName: String): IEffectSession?
     protected abstract fun onSessionRemoved(item: IEffectSession)
     protected open fun onSessionDumpUpdated(dump: ISessionInfoDump) {}
+    protected open fun shouldRetainMissingSession(id: Int, session: IEffectSession): Boolean = false
 
     fun destroy()
     {
@@ -44,7 +45,7 @@ abstract class BaseSessionDatabase(protected val context: Context) {
         onSessionDumpUpdated(dump)
 
         val removedSessions = sessionList.filter {
-            !dump.sessions.contains(it.key)
+            !dump.sessions.contains(it.key) && !shouldRetainMissingSession(it.key, it.value)
         }
         val addedSessions = dump.sessions.filter {
             !sessionList.contains(it.key) && !excludedUids.contains(it.value.uid)

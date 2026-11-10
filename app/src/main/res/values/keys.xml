@@ -47,6 +47,7 @@
     <string name="key_audioformat_aaudio_compat" translatable="false">audioformat_aaudio_compat</string>
     <string name="key_audioformat_aaudio_reuse_session" translatable="false">audioformat_aaudio_reuse_session</string>
     <string name="key_audioformat_aaudio_focus_hold" translatable="false">audioformat_aaudio_focus_hold</string>
+    <string name="key_audioformat_keep_effects_ready" translatable="false">audioformat_keep_effects_ready</string>
     <string name="key_audioformat_optimization_benchmark" translatable="false">audioformat_optimization_benchmark</string>
 
     <!-- Device profiles -->

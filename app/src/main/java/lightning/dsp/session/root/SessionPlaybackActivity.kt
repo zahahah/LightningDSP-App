@@ -68,7 +68,7 @@ internal class SessionPlaybackActivity(
     }
 }
 
-/** Notification projection includes active playback and deliberately retained focused sessions. */
+/** Notification projection includes active playback and deliberately retained sessions. */
 internal object SessionProcessingProjection {
     fun includes(id: Int, processingEnabled: Boolean, playing: Boolean, focusedRetention: Boolean): Boolean =
         id > 0 && processingEnabled && (playing || focusedRetention)

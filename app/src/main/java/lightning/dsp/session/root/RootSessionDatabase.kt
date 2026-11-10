@@ -28,9 +28,20 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
     private val unifiedSessions = UnifiedSessionRetention()
     private val unifiedFocus = UnifiedSessionFocus { SystemClock.elapsedRealtime() }
     @Volatile var unifiedSessionRetentionEnabled: () -> Boolean = { false }
+    @Volatile private var keepEffectsReadyEnabled = false
+    @Volatile private var foregroundPackage: String? = null
+    @Volatile private var mediaAvailablePackages: Set<String> = emptySet()
+    @Volatile var onProcessingStateChanged: (() -> Unit)? = null
 
     private val retentionLifecycle = UnifiedSessionRetentionLifecycle()
     private val retentionHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val foregroundAppObserver = ForegroundAppObserver(
+        context,
+        onForegroundPackageChanged = { packageName ->
+            retentionHandler.post { updateForegroundPackage(packageName) }
+        },
+    )
+
     private val retentionWatch = object : Runnable {
         override fun run() {
             if (retentionLifecycle.current() == null) return
@@ -61,6 +72,40 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
         retentionHandler.removeCallbacks(retentionWatch)
         unifiedSessions.clear()
         unifiedFocus.clear()
+        foregroundAppObserver.stop()
+        keepEffectsReadyEnabled = false
+        foregroundPackage = null
+        mediaAvailablePackages = emptySet()
+    }
+
+    /** General Session Mode retention; independent of AAudio and Vector/LSPosed selection. */
+    fun setKeepEffectsReadyEnabled(enabled: Boolean) {
+        val effective = enabled && !app.isGlobalMode
+        keepEffectsReadyEnabled = effective
+        if (effective) foregroundAppObserver.start() else foregroundAppObserver.stop()
+        retentionHandler.post {
+            if (!effective) foregroundPackage = null
+            applyPlaybackActivity()
+            onProcessingStateChanged?.invoke()
+        }
+    }
+
+    /** Active media controllers are available only when Android exposes them to our listener. */
+    fun setMediaAvailablePackages(packages: Set<String>) {
+        val normalized = packages.filter(String::isNotBlank).toSet()
+        retentionHandler.post {
+            if (mediaAvailablePackages == normalized) return@post
+            mediaAvailablePackages = normalized
+            applyPlaybackActivity()
+            onProcessingStateChanged?.invoke()
+        }
+    }
+
+    private fun updateForegroundPackage(packageName: String?) {
+        if (!keepEffectsReadyEnabled || foregroundPackage == packageName) return
+        foregroundPackage = packageName
+        applyPlaybackActivity()
+        onProcessingStateChanged?.invoke()
     }
 
     @Synchronized fun registerUnifiedSession(id: Int, uid: Int, pid: Int, alive: () -> Boolean): Boolean =
@@ -164,16 +209,32 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
         !app.isGlobalMode && unifiedSessionRetentionEnabled() && unifiedFocus.isFocused(uid, packageName) &&
             unifiedSessions.shouldRetain(id, uid, packageName)
 
-    private fun shouldProcess(id: Int, uid: Int, packageName: String): Boolean =
-        id <= 0 || shouldKeepUnified(id, uid, packageName) || playbackActivity.shouldProcess(id, uid, packageName)
+    private fun shouldKeepEffectsReady(id: Int, packageName: String): Boolean =
+        KeepEffectsReadyPolicy.shouldRetain(
+            id = id,
+            packageName = packageName,
+            enabled = keepEffectsReadyEnabled,
+            globalMode = app.isGlobalMode,
+            foregroundPackage = foregroundPackage,
+            mediaAvailablePackages = mediaAvailablePackages,
+        )
 
-    /** Idle ownership stays hidden; focused pre-warmed sessions are active processing by design. */
+    override fun shouldRetainMissingSession(id: Int, session: IEffectSession): Boolean =
+        shouldKeepUnified(id, session.uid, session.packageName) ||
+            shouldKeepEffectsReady(id, session.packageName)
+
+    private fun shouldProcess(id: Int, uid: Int, packageName: String): Boolean =
+        id <= 0 || shouldKeepUnified(id, uid, packageName) || shouldKeepEffectsReady(id, packageName) ||
+            playbackActivity.shouldProcess(id, uid, packageName)
+
+    /** Idle ownership stays hidden; explicitly ready-retained sessions appear as active DSP. */
     fun activeProcessingSessions(): Array<IEffectSession> = sessionList.filter { (id, session) ->
         SessionProcessingProjection.includes(
             id = id,
             processingEnabled = enabled && isPackageDspEnabled(session.packageName),
             playing = playbackActivity.isPlaying(id, session.uid, session.packageName),
-            focusedRetention = shouldKeepUnified(id, session.uid, session.packageName),
+            focusedRetention = shouldKeepUnified(id, session.uid, session.packageName) ||
+                shouldKeepEffectsReady(id, session.packageName),
         )
     }.values.toTypedArray()
 
@@ -191,7 +252,8 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
         val inactive = playbackActivity.confirmedInactiveSessions()
         sessionList.toMap().forEach { (id, session) ->
             if (app.isEnhancedProcessing && inactive[id] == (session.uid to session.packageName) &&
-                !shouldKeepUnified(id, session.uid, session.packageName)) {
+                !shouldKeepUnified(id, session.uid, session.packageName) &&
+                !shouldKeepEffectsReady(id, session.packageName)) {
                 Timber.d("Removing inactive audio session %d (%s)", id, session.packageName)
                 confirmedInactiveRemovals += id
                 removeSession(id)
@@ -206,6 +268,7 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
         unifiedSessions.clear()
         unifiedFocus.clear()
         playbackActivity.clear()
+        mediaAvailablePackages = emptySet()
         applyPlaybackActivity()
     }
 
@@ -231,6 +294,7 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
             recordPlaybackSuspension(id, session.uid, session.packageName)
             Timber.d("Session %d playback processing %s", id, if (allowed) "resumed" else "suspended")
         }
+        onProcessingStateChanged?.invoke()
     }
 
     override fun shouldAcceptSessionDump(id: Int, session: AudioSessionDumpEntry): Boolean {

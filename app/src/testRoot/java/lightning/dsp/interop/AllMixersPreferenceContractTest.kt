@@ -34,7 +34,7 @@ class AllMixersPreferenceContractTest {
         val scanning = settings.indexOfFirst { it.getAttributeNS(androidNamespace, "key") == "@string/key_audioformat_enhanced_processing" }
         val compat = settings.indexOfFirst { it.getAttributeNS(androidNamespace, "key") == "@string/key_audioformat_aaudio_compat" }
         val reuse = settings.indexOfFirst { it.getAttributeNS(androidNamespace, "key") == "@string/key_audioformat_aaudio_reuse_session" }
-        assertEquals(scanning + 1, compat)
+        assertEquals(scanning + 2, compat)
         assertEquals(compat + 1, reuse)
         assertEquals("false", settings[compat].getAttributeNS(androidNamespace, "persistent"))
         assertEquals("false", settings[reuse].getAttributeNS(androidNamespace, "persistent"))
