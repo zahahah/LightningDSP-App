@@ -12,7 +12,10 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 /** One UI dispatches its volume panel from SystemUI even when a controller proxy is installed. */
 public final class SamsungVolumePanelHook implements IXposedHookLoadPackage {
     private static final String SYSTEM_UI = "com.android.systemui";
-    private static final String VOLUME_DIALOG_CONTROL = "com.android.systemui.volume.VolumeDialogControl";
+    private static final String[] VOLUME_DIALOG_CONTROLLER_CLASSES = {
+        "com.android.systemui.volume.VolumeDialogControllerImpl",
+        "com.android.systemui.volume.VolumeDialogControl"
+    };
     private static final String LEASE_PROPERTY = "debug.lightningdsp.volume_panel_lease_ms";
     private static final long LEASE_TTL_MS = 6_000L;
     private static final int FLAG_SHOW_UI = 1;
@@ -32,9 +35,13 @@ public final class SamsungVolumePanelHook implements IXposedHookLoadPackage {
     @Override public void handleLoadPackage(XC_LoadPackage.LoadPackageParam info) {
         if (!SYSTEM_UI.equals(info.packageName)) return;
         try {
-            Class<?> control = XposedHelpers.findClassIfExists(VOLUME_DIALOG_CONTROL, info.classLoader);
+            Class<?> control = null;
+            for (String targetClass : VOLUME_DIALOG_CONTROLLER_CLASSES) {
+                control = XposedHelpers.findClassIfExists(targetClass, info.classLoader);
+                if (control != null) break;
+            }
             if (control == null) {
-                XposedBridge.log("LightningDSP Samsung volume panel: VolumeDialogControl not found; native behavior retained");
+                XposedBridge.log("LightningDSP Samsung volume panel: VolumeDialogControllerImpl not found; native behavior retained");
                 return;
             }
             int hooks = XposedBridge.hookAllMethods(control, "onVolumeChangedW", new XC_MethodHook() {
