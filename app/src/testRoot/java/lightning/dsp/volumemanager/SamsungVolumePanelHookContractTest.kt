@@ -16,6 +16,7 @@ class SamsungVolumePanelHookContractTest {
             "src/root/java/lightning/dsp/volumemanager/backend/VolumePanelSuppressionLease.kt").readText()
         val root = File(app,
             "src/root/java/lightning/dsp/volumemanager/backend/LightningDspVolumeRoot.kt").readText()
+        assertTrue(hook.contains("com.android.systemui.volume.VolumeDialogControllerImpl"))
         assertTrue(hook.contains("com.android.systemui.volume.VolumeDialogControl"))
         assertTrue(hook.contains("hookAllMethods(control, \"onVolumeChangedW\""))
         assertTrue(hook.contains("if (!suppressionActive()"))

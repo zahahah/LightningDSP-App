@@ -168,7 +168,11 @@ object LightningDspVolumeRoot {
                 // Samsung One UI may dispatch the native panel independently of the
                 // registered IVolumeController. Keep a short lease only while the
                 // root-managed overlay is enabled; SystemUI fails open after expiry.
-                val shouldSuppressSamsungPanel = uid == 0 && settings.optBoolean("panel_enabled")
+                val shouldSuppressSamsungPanel = VolumePanelSuppressionLease.shouldSuppress(
+                    uid == 0 && Build.MANUFACTURER.equals("samsung", ignoreCase = true),
+                    settings.optBoolean("activate"), settings.optBoolean("panel_enabled"),
+                    panelController != null && panelError == null, panelBypass.get()
+                )
                 val panelLeaseNow = SystemClock.uptimeMillis()
                 if (!panelLeaseWritten || shouldSuppressSamsungPanel != panelLeaseEnabled ||
                     (shouldSuppressSamsungPanel && panelLeaseNow - lastPanelLeaseRefreshAt >= VolumePanelSuppressionLease.REFRESH_INTERVAL_MS)) {

@@ -1,6 +1,7 @@
 package lightning.dsp.volumemanager.backend;
 
 import android.os.Process;
+import android.os.Build;
 import android.os.SystemClock;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
@@ -12,7 +13,10 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 /** One UI dispatches its volume panel from SystemUI even when a controller proxy is installed. */
 public final class SamsungVolumePanelHook implements IXposedHookLoadPackage {
     private static final String SYSTEM_UI = "com.android.systemui";
-    private static final String VOLUME_DIALOG_CONTROL = "com.android.systemui.volume.VolumeDialogControl";
+    private static final String[] VOLUME_DIALOG_CONTROLLERS = {
+        "com.android.systemui.volume.VolumeDialogControllerImpl",
+        "com.android.systemui.volume.VolumeDialogControl"
+    };
     private static final String LEASE_PROPERTY = "debug.lightningdsp.volume_panel_lease_ms";
     private static final long LEASE_TTL_MS = 6_000L;
     private static final int FLAG_SHOW_UI = 1;
@@ -30,9 +34,17 @@ public final class SamsungVolumePanelHook implements IXposedHookLoadPackage {
     }
 
     @Override public void handleLoadPackage(XC_LoadPackage.LoadPackageParam info) {
-        if (!SYSTEM_UI.equals(info.packageName)) return;
+        if (!SYSTEM_UI.equals(info.packageName) || !"samsung".equalsIgnoreCase(Build.MANUFACTURER)) return;
         try {
-            Class<?> control = XposedHelpers.findClassIfExists(VOLUME_DIALOG_CONTROL, info.classLoader);
+            Class<?> control = null;
+            for (String name : VOLUME_DIALOG_CONTROLLERS) {
+                Class<?> candidate = XposedHelpers.findClassIfExists(name, info.classLoader);
+                if (candidate == null) continue;
+                for (java.lang.reflect.Method method : candidate.getDeclaredMethods()) {
+                    if (method.getName().equals("onVolumeChangedW")) { control = candidate; break; }
+                }
+                if (control != null) break;
+            }
             if (control == null) {
                 XposedBridge.log("LightningDSP Samsung volume panel: VolumeDialogControl not found; native behavior retained");
                 return;
