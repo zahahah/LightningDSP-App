@@ -1,12 +1,13 @@
 # App Mixer Mode — isolated POC design and blocker
 
-**Status: HARD BLOCKED — design/test protocol only. No route or effect was created.**
+**Status: UI/data prototype implemented; audio mixer/effect validation remains HARD BLOCKED. No route or effect was created.**
 
-This directory is deliberately outside the Android application source sets. It is a
-manual experiment plan, not a product feature, does not run automatically, and makes
-no changes to Global Mode, Session Mode, app preferences, or audio routing. There is
-no implementation claim: the two runtime assertions below cannot be safely made in
-this work session.
+The POC adds a visible selection-only prototype to the Root Volume Manager. Its
+preferences are stored under the isolated `app_mixer_mode_poc` namespace, default
+every app to included, and persist excluded package names when toggled. It never
+calls the existing per-session DSP toggle or any routing/policy API. Global Mode
+and Session Mode remain exactly as previously configured; the new selection is not
+connected to a DSP backend and is not an audio-processing claim.
 
 ## Question and hypothesis
 
@@ -88,6 +89,9 @@ background service, auto-registration, default-on path, or production integratio
 | LightningDSP binds to that exact output | Effect chain reports same output identity; selected-only signal change; effect remains disabled until explicit action | **Not tested — API mismatch / hard blocked** |
 | Global and Session remain unchanged | Compare persisted settings and active effect sessions before/after; no global/session engine mutation | **Not tested — no runtime actions performed** |
 
+The selection UI and preference transitions are implemented and unit-tested. The
+audio claims in this matrix remain unproven.
+
 ## Requirements to unblock
 
 - Target device/image and Android API level/build fingerprint; ensure it exposes
@@ -124,9 +128,11 @@ validate the exact API level on the eventual test image before claiming support.
 
 ## Scope and verification record
 
-Only this design artifact is added; no Android production source, module tree,
-manifest, permission, device state, or running audio path was touched. The doc is a
-manual test plan and cannot establish runtime isolation or effect behavior. The
-required full unit/build checks apply to the untouched app tree; their results are
-reported separately with the task evidence, and are not evidence that this POC
-works on-device.
+The experimental Volume Manager entry point and preference model are included in
+the Root app source set so the UI can be compiled and iterated on. The UI writes
+only the isolated prototype preference; it does not call app DSP power, alter the
+Global/Session setting, register AudioPolicy, route audio, or attach effects. No
+device state or audio path was touched. Unit tests cover default inclusion and
+exclude/reinclude state transitions. This is a functional UI/data preference
+prototype only: it does not exclude audio from Global Mode or prove output/effect
+isolation. Runtime claims remain unverified pending the gated test above.
