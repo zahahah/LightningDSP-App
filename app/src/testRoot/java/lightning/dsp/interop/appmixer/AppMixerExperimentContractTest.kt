@@ -7,6 +7,19 @@ class AppMixerExperimentContractTest {
     private fun args(uid: String = "10322", seconds: String = "30") = arrayOf(
         "--manual-routing-test", "--uids=$uid", "--seconds=$seconds", "--acknowledge-audio-interruption")
 
+    @Test fun appMixerUsesBoundedPeriodAlignedBuffersInsteadOfLargeFixedFloor() {
+        assertEquals(240, AppMixerLatencyPolicy.framesPerBurst("240"))
+        assertEquals(240, AppMixerLatencyPolicy.framesPerBurst(null))
+        assertEquals(120, AppMixerLatencyPolicy.framesPerBurst("1"))
+        assertEquals(960, AppMixerLatencyPolicy.framesPerBurst("4096"))
+        assertEquals(960, AppMixerLatencyPolicy.stereoPcmBytes(240))
+        assertEquals(1920, AppMixerLatencyPolicy.trackBufferBytes(1280, 240))
+        assertEquals(8192, AppMixerLatencyPolicy.trackBufferBytes(8192, 240))
+        assertEquals(1920, AppMixerLatencyPolicy.playbackBufferFrames(2886))
+        assertEquals(960, AppMixerLatencyPolicy.playbackBufferFrames(960))
+        assertThrows(IllegalArgumentException::class.java) { AppMixerLatencyPolicy.playbackBufferFrames(0) }
+    }
+
     @Test fun explicitAppUidsAreRequiredAndDeduplicated() {
         assertEquals(setOf(10322, 110654), AppMixerExperimentConfig.parse(args("10322,110654,10322")).uids)
         for (uids in listOf("0", "1000", "2000", "99000", "10322,0", "", "-89678", "not-a-uid", "2147483648", List(17) { "10322" }.joinToString(","))) {

@@ -66,7 +66,10 @@ platform objects, including their PCM and buffer-queue callback identities.
 For mono/stereo PCM buffer-queue sources targeting an output mix, player creation
 adds Android configuration as an optional interface when it is not already
 requested. Before returning a successfully created, still-unrealized player, it
-requests `SL_ANDROID_PERFORMANCE_NONE`. An amended creation failure with a null
+requests `SL_ANDROID_PERFORMANCE_LATENCY_EFFECTS`, which preserves the low-latency
+preference while allowing software/hardware effects. If the implementation rejects
+that mode, it retries with `SL_ANDROID_PERFORMANCE_NONE`, which also permits effects
+but makes no latency promise. An amended creation failure with a null
 object gets exactly one retry with the caller's original arguments. A nonnull
 partial object is returned with the platform failure, never destroyed or retried
 by the hook. Missing configuration or a failed setter leaves the original player

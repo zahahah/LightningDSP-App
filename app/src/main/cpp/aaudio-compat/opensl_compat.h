@@ -85,12 +85,24 @@ inline SLresult createPlayer(SLEngineItf self, SLObjectItf* player, SLDataSource
         SLAndroidConfigurationItf configuration = nullptr;
         auto status = (*candidate)->GetInterface(candidate, SL_IID_ANDROIDCONFIGURATION, &configuration);
         if (status == SL_RESULT_SUCCESS && !configuration) status = SL_RESULT_FEATURE_UNSUPPORTED;
+        SLuint32 performance = SL_ANDROID_PERFORMANCE_LATENCY_EFFECTS;
         if (status == SL_RESULT_SUCCESS) {
-            const SLuint32 performance = SL_ANDROID_PERFORMANCE_NONE;
             status = (*configuration)->SetConfiguration(configuration, SL_ANDROID_KEY_PERFORMANCE_MODE,
                 &performance, sizeof(performance));
+            if (status != SL_RESULT_SUCCESS) {
+                // Some older/vendor OpenSL implementations do not recognize the
+                // latency-with-effects mode. Retry with NONE, which still permits
+                // effects and is safer than leaving the default latency-only path.
+                performance = SL_ANDROID_PERFORMANCE_NONE;
+                status = (*configuration)->SetConfiguration(configuration,
+                    SL_ANDROID_KEY_PERFORMANCE_MODE, &performance, sizeof(performance));
+                if (report) report("OpenSL latency-effects unsupported; fallback to no performance requirement", status);
+            } else if (report) {
+                report("OpenSL latency-effects request", status);
+            }
+        } else if (report) {
+            report("OpenSL configuration unavailable", status);
         }
-        if (report) report("OpenSL player normal request", status);
     }
     return result;
 }

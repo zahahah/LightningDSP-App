@@ -19,7 +19,7 @@ static const SLEngineItf_* realEngine = &engineFunctions;
 static const SLAndroidConfigurationItf_* realConfig = &configFunctions;
 static bool optIn = true, failAmended = false, dirtyFailure = false, noConfig = false;
 static int createCalls = 0, configCalls = 0, recorderCalls = 0, forwarded = 0;
-static bool setterFails = false, successNull = false, nullConfiguration = false;
+static bool setterFails = false, latencyEffectsUnsupported = false, successNull = false, nullConfiguration = false;
 static SLuint32 lastCount = 0, performance = SL_ANDROID_PERFORMANCE_LATENCY;
 static slObjectCallback registered = nullptr;
 static void* registeredContext = nullptr;
@@ -61,8 +61,11 @@ static SLresult fakeRecorder(SLEngineItf self, SLObjectItf* out, SLDataSource*, 
 }
 static SLresult fakeSet(SLAndroidConfigurationItf self, const SLchar* key, const void* value, SLuint32 size) {
     assert(self == &realConfig); assert(!std::strcmp(reinterpret_cast<const char*>(key), reinterpret_cast<const char*>(SL_ANDROID_KEY_PERFORMANCE_MODE))); assert(size == sizeof(SLuint32));
-    ++configCalls; if (setterFails) return SL_RESULT_FEATURE_UNSUPPORTED;
-    performance = *static_cast<const SLuint32*>(value); return SL_RESULT_SUCCESS;
+    ++configCalls;
+    const auto requestedPerformance = *static_cast<const SLuint32*>(value);
+    if (setterFails || (latencyEffectsUnsupported && requestedPerformance == SL_ANDROID_PERFORMANCE_LATENCY_EFFECTS))
+        return SL_RESULT_FEATURE_UNSUPPORTED;
+    performance = requestedPerformance; return SL_RESULT_SUCCESS;
 }
 static void userCallback(SLObjectItf self, const void* context, SLuint32, SLresult, SLuint32, void*) {
     callbackSelf = self; callbackContext = context;
@@ -89,7 +92,7 @@ int main() {
     SLObjectItf player = nullptr;
     auto call = [&] { createCalls = configCalls = 0; return (*e)->CreateAudioPlayer(e, &player, &source, &sink, 0, nullptr, nullptr); };
     assert(call() == SL_RESULT_SUCCESS && createCalls == 1 && configCalls == 1 && lastCount == 1);
-    assert(player == &realPlayer && performance == SL_ANDROID_PERFORMANCE_NONE);
+    assert(player == &realPlayer && performance == SL_ANDROID_PERFORMANCE_LATENCY_EFFECTS);
     // The real player/config interface remains intact: caller can explicitly override later.
     const SLuint32 latency = SL_ANDROID_PERFORMANCE_LATENCY;
     realConfig->SetConfiguration(&realConfig, SL_ANDROID_KEY_PERFORMANCE_MODE, &latency, sizeof(latency)); assert(performance == latency);
@@ -103,7 +106,11 @@ int main() {
     failAmended = true; assert(call() == SL_RESULT_SUCCESS && createCalls == 2 && configCalls == 0);
     dirtyFailure = true; assert(call() == SL_RESULT_FEATURE_UNSUPPORTED && createCalls == 1 && player == &realPlayer);
     failAmended = dirtyFailure = false; noConfig = true; assert(call() == SL_RESULT_SUCCESS && configCalls == 0); noConfig = false;
-    setterFails = true; assert(call() == SL_RESULT_SUCCESS && configCalls == 1 && player == &realPlayer); setterFails = false;
+    latencyEffectsUnsupported = true;
+    assert(call() == SL_RESULT_SUCCESS && configCalls == 2 && player == &realPlayer);
+    assert(performance == SL_ANDROID_PERFORMANCE_NONE);
+    latencyEffectsUnsupported = false;
+    setterFails = true; assert(call() == SL_RESULT_SUCCESS && configCalls == 2 && player == &realPlayer); setterFails = false;
     successNull = true; assert(call() == SL_RESULT_SUCCESS && configCalls == 0 && player == nullptr); successNull = false;
     nullConfiguration = true; assert(call() == SL_RESULT_SUCCESS && configCalls == 0 && player == &realPlayer); nullConfiguration = false;
     objectFunctions.Resume = [](SLObjectItf self, auto...) -> SLresult { assert(self == &realObject); ++forwarded; return SL_RESULT_SUCCESS; };

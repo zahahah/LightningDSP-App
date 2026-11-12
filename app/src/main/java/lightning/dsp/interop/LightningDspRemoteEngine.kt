@@ -307,6 +307,15 @@ class LightningDspRemoteEngine(
         if (disposed) null else runCatching { Refine.unsafeCast<AudioEffect>(attached).id }.getOrNull()
     }
 
+    /** Compact startup evidence for callers that must fail closed before routing. */
+    internal fun sessionPreparationStatus(): String = buildString {
+        append("session=").append(sessionId)
+        append(" id=").append(effectIdOrNull() ?: "?")
+        append(" control=").append(canControlEndpoint())
+        append(" enabled=").append(enabled)
+        append(" ready=").append(sessionStartupFence?.ready == true)
+    }
+
     internal fun canControlEndpoint(): Boolean = !disposed && !supplementalInvalidated &&
         (effect?.let { runCatching { Refine.unsafeCast<AudioEffect>(it).hasControl() }.getOrDefault(false) } == true)
 

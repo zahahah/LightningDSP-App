@@ -55,4 +55,24 @@ class AppMixerIntegrationContractTest {
         assertTrue(helper.contains("if (prepareExternalEffect == null)"))
         assertTrue(helper.contains("else Long.MAX_VALUE"))
     }
+
+    @Test fun appMixerDoesNotAbandonSlowDspPreparationAndReportsEndpointState() {
+        val preparer = read("root/java/lightning/dsp/interop/appmixer/AppMixerEffectPreparer.kt")
+        val engine = read("main/java/lightning/dsp/interop/LightningDspRemoteEngine.kt")
+        assertTrue(preparer.contains("PREPARATION_TIMEOUT_MS = 20L * 1_000L"))
+        assertTrue(preparer.contains("DSP state preparation timed out"))
+        assertTrue(preparer.contains("DSP state preparation was rejected"))
+        assertTrue(engine.contains("sessionPreparationStatus()"))
+        assertTrue(engine.contains("append(\" control=\").append(canControlEndpoint())"))
+        assertTrue(preparer.contains("power=\${runCatching(shouldEnable)"))
+    }
+
+    @Test fun appMixerUsesNormalPlaybackThreadForSoftwareSessionEffect() {
+        val helper = read("root/java/lightning/dsp/interop/appmixer/AppMixerRoutingExperiment.kt")
+        val track = helper.substringAfter("player = AudioTrack.Builder()")
+            .substringBefore("check(player.state == AudioTrack.STATE_INITIALIZED")
+        assertTrue(track.contains("AudioTrack.PERFORMANCE_MODE_NONE"))
+        assertFalse(track.contains("AudioTrack.PERFORMANCE_MODE_LOW_LATENCY"))
+        assertTrue(helper.contains("Android rejects software") && helper.contains("session effects on FAST playback threads"))
+    }
 }

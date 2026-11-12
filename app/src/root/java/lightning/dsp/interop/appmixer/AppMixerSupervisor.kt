@@ -75,7 +75,7 @@ internal class AppMixerSupervisor(
             val session = sessionLine.removePrefix("APP_MIXER:SESSION ").toIntOrNull()
             if (session == null || session <= 0) return failure("helper published an invalid playback session")
             effect = try { prepareEffect(session) } catch (error: Exception) {
-                return failure("DSP preparation threw ${error.javaClass.simpleName}: ${error.message.orEmpty().take(160)}")
+                return failure("DSP preparation threw ${error.javaClass.simpleName}: ${error.message.orEmpty().take(220)}")
             } ?: return failure("DSP preparation did not complete")
             if (!mayRoute()) return failure("mode, power, or selected-app inventory changed during startup")
             process.outputStream.write("READY\n".toByteArray(Charsets.US_ASCII))

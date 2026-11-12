@@ -115,7 +115,10 @@ object LightningDspVolumeRoot {
         val snapshots = PlaybackSnapshotGate()
         val replayGuard = SystemVolumeOperationReplayGuard()
         val panelBypass = AtomicBoolean(false)
+        val remotePanelAllowed = AtomicBoolean(false)
         var panelController: LightningDspRootVolumeController? = null
+        var remoteVolumeController: LightningDspRemoteVolumeController? = null
+        var remoteVolumeAttempted = false
         var panelControllerAttempted = false
         var panelError: String? = null
         var callback: AudioManager.AudioPlaybackCallback? = null
@@ -165,6 +168,7 @@ object LightningDspVolumeRoot {
                         panelBypass.set(settings.optBoolean("panel_bypass"))
                     }
                 }
+                remotePanelAllowed.set(settings.optBoolean("activate") && settings.optBoolean("panel_enabled"))
                 // Samsung One UI may dispatch the native panel independently of the
                 // registered IVolumeController. Keep a short lease only while the
                 // root-managed overlay is enabled; SystemUI fails open after expiry.
@@ -296,12 +300,29 @@ object LightningDspVolumeRoot {
                             applyError = panelError
                         }
                     }
+                    if (panelController != null && !remoteVolumeAttempted &&
+                        RemoteVolumeEventPolicy.shouldObserve(Build.MANUFACTURER)) {
+                        remoteVolumeAttempted = true
+                        // Optional system API: if unsupported, keep the existing local
+                        // controller and SystemUI's remote panel untouched.
+                        remoteVolumeController = runCatching {
+                            LightningDspRemoteVolumeController.install(context, { !remotePanelAllowed.get() || panelBypass.get() }) {
+                                output.println("{\"show_panel\":true}")
+                                output.flush()
+                            }
+                        }.getOrNull()
+                    }
                 } else {
+                    val remoteCloseError = runCatching { remoteVolumeController?.close() }.exceptionOrNull()
+                    if (remoteCloseError == null) {
+                        remoteVolumeController = null
+                        remoteVolumeAttempted = false
+                    }
                     val restoreError = runCatching { panelController?.close() }.exceptionOrNull()
                     if (restoreError == null) {
                         panelController = null
                         panelControllerAttempted = false
-                        panelError = null
+                        panelError = if (remoteCloseError == null) null else "Cannot unregister remote volume callback"
                     } else {
                         panelError = "Cannot restore system volume panel: ${restoreError.cause?.javaClass?.simpleName ?: restoreError.javaClass.simpleName}"
                     }
@@ -373,6 +394,7 @@ object LightningDspVolumeRoot {
             output.println(JSONObject().put("error", "Privileged playback access unavailable: ${error.cause?.javaClass?.simpleName ?: error.javaClass.simpleName}"))
             output.flush()
         } finally {
+            remotePanelAllowed.set(false)
             // Do not leave Samsung's SystemUI panel suppressed if this root bridge exits.
             runCatching {
                 val properties = Class.forName("android.os.SystemProperties")
@@ -403,6 +425,7 @@ object LightningDspVolumeRoot {
                 }
             }
             if (runCatching { panelController?.close() }.isFailure) cleanupConfirmed = false
+            if (runCatching { remoteVolumeController?.close() }.isFailure) cleanupConfirmed = false
             runCatching { callback?.let { audio?.unregisterAudioPlaybackCallback(it) } }
             callbackThread.quitSafely()
             // Receipt is written through an already-owned FD, never a privileged path.

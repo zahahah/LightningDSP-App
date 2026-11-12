@@ -125,6 +125,8 @@ object AppMixerRoutingExperiment {
         val createSink = policyType.getMethod("createAudioRecordSink", mixType)
         val format = AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT)
             .setSampleRate(48000).setChannelMask(AudioFormat.CHANNEL_OUT_STEREO).build()
+        val relayFrames = AppMixerLatencyPolicy.framesPerBurst(
+            audio.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER))
         val ruleBuilderType = Class.forName("android.media.audiopolicy.AudioMixingRule\$Builder")
         val uidRule = ruleType.getField("RULE_MATCH_UID").getInt(null)
         fun buildRule(uids: Set<Int>): Any {
@@ -168,11 +170,24 @@ object AppMixerRoutingExperiment {
             val minimumBytes = AudioTrack.getMinBufferSize(48000,
                 AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT)
             check(minimumBytes > 0) { "PCM playback configuration unavailable: $minimumBytes" }
-            val bytes = maxOf(8192, minimumBytes)
+            val bytes = AppMixerLatencyPolicy.trackBufferBytes(minimumBytes, relayFrames)
             player = AudioTrack.Builder().setAudioAttributes(AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
-                .setAudioFormat(format).setTransferMode(AudioTrack.MODE_STREAM).setBufferSizeInBytes(bytes).build()
+                .setAudioFormat(format).setTransferMode(AudioTrack.MODE_STREAM)
+                // LightningDSP is a software effect. Android rejects software
+                // session effects on FAST playback threads, so keep this relay
+                // track on the normal mixer instead of requesting low latency.
+                .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_NONE)
+                .setBufferSizeInBytes(bytes).build()
             check(player.state == AudioTrack.STATE_INITIALIZED && player.audioSessionId > 0)
+            // Keep the allocated capacity but reduce the effective write queue.
+            // Unsupported devices retain the framework default rather than failing
+            // the effect or discarding captured audio.
+            runCatching {
+                val target = AppMixerLatencyPolicy.playbackBufferFrames(player.bufferCapacityInFrames)
+                val actual = player.setBufferSizeInFrames(target)
+                System.err.println("App Mixer playback buffer: requested=$target actual=$actual frames")
+            }
             if (prepareExternalEffect == null) effect = createDiagnosticEffect(player.audioSessionId)
             else prepareExternalEffect(player.audioSessionId)
             checkNoExistingEffects(allowOwnDiagnostic = true)
@@ -203,7 +218,7 @@ object AppMixerRoutingExperiment {
                 SystemClock.elapsedRealtime() + config.seconds * 1000L else Long.MAX_VALUE
             val source = recorder
             val target = player
-            val counts = AppMixerPcmRelay.run(ShortArray(960),
+            val counts = AppMixerPcmRelay.run(ShortArray(relayFrames * AppMixerLatencyPolicy.CHANNELS),
                 shouldContinue = { !stop.get() && SystemClock.elapsedRealtime() < deadline },
                 read = { source.read(it, 0, it.size, AudioRecord.READ_NON_BLOCKING) },
                 write = { block, offset, count -> target.write(block, offset, count, AudioTrack.WRITE_NON_BLOCKING) },

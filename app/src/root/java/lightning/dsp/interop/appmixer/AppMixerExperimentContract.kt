@@ -75,6 +75,36 @@ internal object AppMixerPcmRelay {
     }
 }
 
+/** Keep the relay quantum aligned with the device's output period instead of buffering 40+ ms. */
+internal object AppMixerLatencyPolicy {
+    const val CHANNELS = 2
+    const val BYTES_PER_SAMPLE = 2
+    const val DEFAULT_FRAMES_PER_BURST = 240 // 5 ms at 48 kHz
+    const val MIN_FRAMES_PER_BURST = 120
+    const val MAX_FRAMES_PER_BURST = 960
+    const val TARGET_PLAYBACK_BUFFER_FRAMES = 1920 // 40 ms at 48 kHz
+
+    fun playbackBufferFrames(capacityFrames: Int): Int {
+        require(capacityFrames > 0)
+        return minOf(capacityFrames, TARGET_PLAYBACK_BUFFER_FRAMES)
+    }
+
+    fun framesPerBurst(outputFramesPerBuffer: String?): Int =
+        outputFramesPerBuffer?.toIntOrNull()?.coerceIn(MIN_FRAMES_PER_BURST, MAX_FRAMES_PER_BURST)
+            ?: DEFAULT_FRAMES_PER_BURST
+
+    fun stereoPcmBytes(frames: Int): Int {
+        require(frames in 1..(MAX_FRAMES_PER_BURST * 2))
+        return frames * CHANNELS * BYTES_PER_SAMPLE
+    }
+
+    fun trackBufferBytes(minimumBytes: Int, framesPerBurst: Int): Int {
+        require(minimumBytes > 0)
+        // Two periods give AudioTrack a scheduling margin without the old fixed 8 KiB floor.
+        return maxOf(minimumBytes, stereoPcmBytes(framesPerBurst * 2))
+    }
+}
+
 /** Bounded pipe framing; EOF, malformed and overlong commands all fail closed. */
 internal object AppMixerControlProtocol {
     fun readCommand(input: java.io.Reader, maxLength: Int = 16): String? {
