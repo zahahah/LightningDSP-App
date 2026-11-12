@@ -2,6 +2,7 @@ package lightning.dsp.session.root
 
 import android.content.*
 import android.media.session.MediaController
+import android.media.session.PlaybackState
 import android.os.Handler
 import android.os.Looper
 import lightning.dsp.MainApplication
@@ -18,6 +19,11 @@ class RootSessionDumpManager(context: Context) : BaseSessionManager(context)
     private var confirmationGeneration = 0L
     private var disposed = false
     private var onDumpMethodChanged: (() -> Unit)? = null
+    private data class ObservedMediaController(
+        val callback: MediaController.Callback,
+        var playbackState: PlaybackState?,
+    )
+    private val mediaControllers = linkedMapOf<MediaController, ObservedMediaController>()
 
     fun setOnSessionDump(callback: ((sessionDump: ISessionInfoDump?) -> Unit)?) {
         onSessionDump = callback
@@ -34,9 +40,36 @@ class RootSessionDumpManager(context: Context) : BaseSessionManager(context)
     override fun onActiveSessionsChanged(controllers: MutableList<MediaController>?) {
         super.onActiveSessionsChanged(controllers)
         if (disposed) return
-        val packages = controllers.orEmpty().mapNotNull { it.packageName }.toSet()
+        val current = controllers.orEmpty().toList()
+        confirmationHandler.post {
+            if (disposed) return@post
+            val currentSet = current.toSet()
+            mediaControllers.keys.filterNot(currentSet::contains).toList().forEach { controller ->
+                mediaControllers.remove(controller)?.let { controller.unregisterCallback(it.callback) }
+            }
+            current.forEach { controller ->
+                if (controller in mediaControllers) return@forEach
+                val callback = object : MediaController.Callback() {
+                    override fun onPlaybackStateChanged(state: PlaybackState?) {
+                        if (disposed) return
+                        mediaControllers[controller]?.playbackState = state
+                        publishMediaPlayingPackages()
+                    }
+                }
+                mediaControllers[controller] = ObservedMediaController(callback, controller.playbackState)
+                controller.registerCallback(callback, confirmationHandler)
+            }
+            publishMediaPlayingPackages()
+        }
+    }
+
+    private fun publishMediaPlayingPackages() {
+        val packages = mediaControllers.entries.asSequence()
+            .filter { it.value.playbackState?.state == PlaybackState.STATE_PLAYING }
+            .mapNotNull { it.key.packageName }
+            .toSet()
         (context.applicationContext as? MainApplication)?.rootSessionDatabase
-            ?.setMediaAvailablePackages(packages)
+            ?.setMediaPlayingPackages(packages)
     }
 
     /** One fresh confirmation per pending inactivity transition, never a polling loop. */
@@ -60,8 +93,10 @@ class RootSessionDumpManager(context: Context) : BaseSessionManager(context)
         disposed = true
         requestPlaybackActivityConfirmation(false)
         onSessionDump = null
+        mediaControllers.forEach { (controller, observed) -> controller.unregisterCallback(observed.callback) }
+        mediaControllers.clear()
         (context.applicationContext as? MainApplication)?.rootSessionDatabase
-            ?.setMediaAvailablePackages(emptySet())
+            ?.setMediaPlayingPackages(emptySet())
         super.destroy()
     }
 

@@ -1,6 +1,7 @@
 package lightning.dsp.session.root
 
 import lightning.dsp.model.AudioSessionDumpEntry
+import lightning.dsp.session.dump.data.SessionOwnerRef
 
 /** Process-scoped opt-in hints never substitute for a current framework player record. */
 internal class UnifiedSessionRetention(private val limit: Int = 32) {
@@ -25,12 +26,20 @@ internal class UnifiedSessionRetention(private val limit: Int = 32) {
         return true
     }
 
-    @Synchronized fun update(sessions: Map<Int, AudioSessionDumpEntry>, enabled: Boolean) {
+    @Synchronized fun update(sessions: Map<Int, AudioSessionDumpEntry>, enabled: Boolean,
+                             ownerRefs: Set<SessionOwnerRef>? = null) {
         if (!enabled) { clear(); return }
         pruneDead()
         verified = claims.mapNotNull { (id, owner) ->
-            sessions[id]?.takeIf { it.uid == owner.uid && it.isUsageRecordable() }
-                ?.let { id to (it.uid to it.packageName) }
+            val entry = sessions[id]
+            if (entry != null) {
+                entry.takeIf { it.uid == owner.uid && it.isUsageRecordable() }
+                    ?.let { id to (it.uid to it.packageName) }
+            } else {
+                verified[id]?.takeIf { previous -> previous.first == owner.uid &&
+                    ownerRefs?.contains(SessionOwnerRef(id, owner.pid, owner.uid)) == true }
+                    ?.let { id to it }
+            }
         }.toMap()
     }
 

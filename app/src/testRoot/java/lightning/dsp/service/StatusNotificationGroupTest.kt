@@ -66,7 +66,7 @@ class StatusNotificationGroupTest {
     @Test fun allNotificationUpdatesAndBothServiceLifecyclesRefreshTheLiveGroup() {
         val helper = File(app,
             "src/main/java/lightning/dsp/utils/notifications/ServiceNotificationHelper.kt").readText()
-        assertEquals(2, Regex("StatusNotificationGroup.refresh\\(context\\)").findAll(helper).count())
+        assertEquals(3, Regex("StatusNotificationGroup.refresh\\(context\\)").findAll(helper).count())
         val dspService = File(app, "src/main/java/lightning/dsp/service/RootAudioProcessorService.kt").readText()
         val mixerService = File(app,
             "src/root/java/lightning/dsp/volumemanager/backend/LightningDspVolumeService.kt").readText()

@@ -26,6 +26,10 @@ internal class SessionPlaybackActivity(
         previousPlaying.filterKeys { it !in sessions && it in retainedSessions }.forEach { (id, identity) ->
             next[id] = Observation(identity.first, identity.second, now, false)
         }
+        next.entries.filter { it.key !in sessions && it.key in retainedSessions }.forEach { (id, observation) ->
+            if (now >= observation.since && now - observation.since >= graceMillis)
+                next[id] = observation.copy(suspended = true)
+        }
         for ((id, entry) in sessions) {
             if (id <= 0 || entry.playbackActive == true) {
                 next.remove(id)
@@ -44,7 +48,8 @@ internal class SessionPlaybackActivity(
                 previous != null && now - since >= graceMillis)
         }
         inactive = next
-        needsConfirmation = sessions.any { (id, entry) -> entry.playbackActive == false && next[id]?.suspended == false }
+        needsConfirmation = next.any { (id, observation) -> !observation.suspended &&
+            (id !in sessions || sessions[id]?.playbackActive == false) }
     }
 
     fun shouldProcess(id: Int, uid: Int, packageName: String): Boolean = inactive[id]
@@ -56,6 +61,9 @@ internal class SessionPlaybackActivity(
     fun confirmedInactiveSessions(): Map<Int, Pair<Int, String>> = inactive
         .filterValues { it.suspended }
         .mapValues { (_, observation) -> observation.uid to observation.packageName }
+
+    fun awaitingMissingConfirmation(id: Int, uid: Int, packageName: String): Boolean = inactive[id]
+        ?.let { !it.suspended && it.uid == uid && it.packageName == packageName } == true
 
     fun markUnavailable() { observationAvailable = false }
 

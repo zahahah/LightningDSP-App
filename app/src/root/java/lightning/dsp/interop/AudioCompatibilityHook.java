@@ -4,6 +4,7 @@ import android.content.pm.ApplicationInfo;
 import android.os.Process;
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.os.Looper;
 import android.app.Application;
 import android.net.Uri;
 import java.util.concurrent.*;
@@ -21,8 +22,10 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 /** Native opt-in applies only inside user apps explicitly scoped by Vector/LSPosed. */
 public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
     private static final String PROPERTY = "debug.ldsp.aaudio_compat";
+    private static final String SESSION_PREPARATION_PROPERTY = "debug.ldsp.session_prepare";
     private static final AtomicBoolean launchHookInstalled = new AtomicBoolean();
     private static final AtomicBoolean focusHookInstalled = new AtomicBoolean();
+    private static final AtomicBoolean audioTrackHookInstalled = new AtomicBoolean();
     private static volatile ScopedAppFocusTracker focusTracker;
     private static volatile Future<?> focusReport;
     private static final AtomicInteger preparationDiagnostics = new AtomicInteger();
@@ -30,6 +33,7 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
     private static final AtomicInteger retentionDiagnostics = new AtomicInteger();
     private static final AtomicInteger launchDiagnostics = new AtomicInteger();
     private static final AtomicInteger libraryScanDiagnostics = new AtomicInteger();
+    private static final AtomicInteger audioTrackPreparationDiagnostics = new AtomicInteger();
     private static final AtomicBoolean libraryScanScheduled = new AtomicBoolean();
     private static native boolean nativeReady();
     private static native boolean nativeAAudioReady();
@@ -218,6 +222,64 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
             // Missing provider, rejected request or timeout never prevents playback.
         }
     }
+
+    /**
+     * Prepare the per-session insert before AudioTrack.play can submit its first buffers.
+     * This is opt-in through Keep Effects Ready and only runs in apps explicitly scoped
+     * to this module by Vector/LSPosed. Never wait on the app main thread.
+     */
+    private static boolean prepareAudioTrackSession(int sessionId) {
+        if (sessionId <= 0 || !sessionPreparationRequested() || Looper.myLooper() == Looper.getMainLooper())
+            return false;
+        final long startedAt = SystemClock.elapsedRealtime();
+        try {
+            Application app = (Application) XposedHelpers.callStaticMethod(
+                    XposedHelpers.findClass("android.app.ActivityThread", null), "currentApplication");
+            if (app == null) return false;
+            Bundle extras = new Bundle();
+            extras.putLong("deadline", startedAt + 1800);
+            Bundle result = app.getContentResolver().call(
+                    Uri.parse("content://com.lightning.dsp.compatibility"),
+                    "prepare_session", Integer.toString(sessionId), extras);
+            boolean ready = result != null && result.getBoolean("prepared", false);
+            if (audioTrackPreparationDiagnostics.getAndIncrement() < 24)
+                android.util.Log.i("LightningDSP_SessionPrepare", "AudioTrack session=" + sessionId
+                        + " ready=" + ready + " elapsedMs=" + (SystemClock.elapsedRealtime() - startedAt));
+            return ready;
+        } catch (Throwable unavailable) {
+            if (audioTrackPreparationDiagnostics.getAndIncrement() < 24)
+                android.util.Log.w("LightningDSP_SessionPrepare", "AudioTrack preparation unavailable; original playback continues");
+            return false;
+        }
+    }
+
+    private static boolean sessionPreparationRequested() {
+        try {
+            Class<?> props = XposedHelpers.findClass("android.os.SystemProperties", null);
+            return "1".equals(XposedHelpers.callStaticMethod(props, "get", SESSION_PREPARATION_PROPERTY, "0"));
+        } catch (Throwable unavailable) { return false; }
+    }
+
+    private static void installAudioTrackPreparationHook() {
+        if (!audioTrackHookInstalled.compareAndSet(false, true)) return;
+        try {
+            XposedHelpers.findAndHookMethod("android.media.AudioTrack", null, "play", new XC_MethodHook(Integer.MIN_VALUE) {
+                @Override protected void beforeHookedMethod(MethodHookParam param) {
+                    if (!sessionPreparationRequested()) return;
+                    try {
+                        Object value = XposedHelpers.callMethod(param.thisObject, "getAudioSessionId");
+                        if (value instanceof Number) prepareAudioTrackSession(((Number) value).intValue());
+                    } catch (Throwable unavailable) {
+                        if (audioTrackPreparationDiagnostics.getAndIncrement() < 24)
+                            android.util.Log.w("LightningDSP_SessionPrepare", "AudioTrack session ID unavailable; original playback continues");
+                    }
+                }
+            });
+        } catch (Throwable unavailable) {
+            audioTrackHookInstalled.set(false);
+            XposedBridge.log("LightningDSP session preparation: AudioTrack hook unavailable; original playback retained");
+        }
+    }
     private static native boolean nativeObserverReady();
 
     /** Catch app audio DSOs loaded before Vector registered its linker callback. */
@@ -300,8 +362,15 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
                 (info.appInfo.flags & ApplicationInfo.FLAG_SYSTEM) != 0 ||
                 info.packageName == null || info.packageName.equals("android") ||
                 info.packageName.equals("system") || info.packageName.startsWith("com.lightning.dsp")) return;
-        if (!requested()) {
-            XposedBridge.log("LightningDSP AAudio: disabled; native library not loaded");
+        boolean aaudioRequested = requested();
+        boolean sessionPreparationEnabled = sessionPreparationRequested();
+        if (!aaudioRequested && !sessionPreparationEnabled) {
+            XposedBridge.log("LightningDSP audio compatibility: disabled; hooks not installed");
+            return;
+        }
+        if (sessionPreparationEnabled) installAudioTrackPreparationHook();
+        if (!aaudioRequested) {
+            XposedBridge.log("LightningDSP session preparation: enabled for scoped app");
             return;
         }
         installLaunchHook();

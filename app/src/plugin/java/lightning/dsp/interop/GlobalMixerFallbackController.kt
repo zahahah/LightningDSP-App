@@ -8,5 +8,6 @@ internal class GlobalMixerFallbackController(context: Context, shouldRun: () -> 
     fun preferencesChanged() = Unit
     fun setExcludedUids(uids: Set<Int>) = Unit
     fun hasOwnedSessions() = false
+    suspend fun awaitClosed(timeoutMillis: Long) = true
     override fun close() = Unit
 }

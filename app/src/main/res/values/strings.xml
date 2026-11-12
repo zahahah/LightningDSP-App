@@ -302,6 +302,8 @@
     <string name="audio_format_processing_legacy">Global mode</string>
     <string name="audio_format_processing_global">Global Mode</string>
     <string name="audio_format_processing_global_summary">Apply effects to the output mix selected by Android</string>
+    <string name="audio_format_processing_app_mixer" translatable="false">App Mixer Mode (experimental)</string>
+    <string name="audio_format_processing_app_mixer_summary" translatable="false">Experimental: relays included MEDIA/GAME PCM through one effect. FAST/MMAP, direct/offload, protected audio, isolated UIDs and other usages may bypass or fail. Shared-UID apps cannot be separated. Switching may interrupt audio and adds latency; rollback varies by device.</string>
     <string name="audio_format_processing_session">Session Mode</string>
     <string name="audio_format_processing_session_summary">Apply effects to individual app sessions</string>
     <string name="audio_format_all_mixers">Cover additional sessions</string>
@@ -313,10 +315,8 @@
     <string name="audio_format_aaudio_compat_summary">Requires selecting incompatible apps in Vector or LSPosed.</string>
     <string name="audio_format_aaudio_compat_restart">Restart selected apps to apply this change. Audio latency may increase.</string>
     <string name="audio_format_aaudio_reuse_session">Reuse AAudio session</string>
-    <string name="audio_format_aaudio_reuse_session_summary">Requires Improve app compatibility. Reuses the effect session when selected apps reopen streams; may increase latency or affect audio behavior.</string>
+    <string name="audio_format_aaudio_reuse_session_summary">Requires Improve app compatibility. Reuses the session when selected apps reopen AAudio streams. In Session Mode, keeps its effects ready while the app is focused. May increase latency or affect audio behavior.</string>
     <string name="audio_format_aaudio_reuse_session_restart">Restart selected apps to apply this change.</string>
-    <string name="audio_format_keep_effects_ready">Keep effects ready</string>
-    <string name="audio_format_keep_effects_ready_summary">Session Mode only. Keeps known sessions ready for the focused app or apps with active media controls. Usage Access is granted with root; battery use may increase.</string>
     <string name="audio_format_aaudio_compat_failed">Could not update compatibility mode. Check root access.</string>
     <string name="audio_format_aaudio_compat_unknown">Unable to verify compatibility mode. Check root access and reopen settings.</string>
     <string name="audio_format_enhanced_processing_on">Scanning enabled for broader app compatibility</string>

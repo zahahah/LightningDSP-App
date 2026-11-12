@@ -44,6 +44,13 @@
             app:iconSpaceReserved="false" />
 
         <lightning.dsp.preference.MaterialSwitchPreference
+            android:key="@string/key_audioformat_processing_app_mixer_option"
+            android:persistent="false"
+            android:title="@string/audio_format_processing_app_mixer"
+            android:summary="@string/audio_format_processing_app_mixer_summary"
+            app:iconSpaceReserved="false" />
+
+        <lightning.dsp.preference.MaterialSwitchPreference
             android:key="@string/key_audioformat_all_mixers"
             android:defaultValue="@bool/default_audioformat_all_mixers"
             android:title="@string/audio_format_all_mixers"
@@ -56,14 +63,6 @@
             android:title="@string/audio_format_enhanced_processing"
             android:summaryOff="@string/audio_format_enhanced_processing_off"
             android:summaryOn="@string/audio_format_enhanced_processing_on"
-            app:iconSpaceReserved="false" />
-
-        <lightning.dsp.preference.MaterialSwitchPreference
-            android:key="@string/key_audioformat_keep_effects_ready"
-            android:defaultValue="@bool/default_audioformat_keep_effects_ready"
-            android:title="@string/audio_format_keep_effects_ready"
-            android:summary="@string/audio_format_keep_effects_ready_summary"
-            android:persistent="false"
             app:iconSpaceReserved="false" />
 
         <lightning.dsp.preference.MaterialSwitchPreference

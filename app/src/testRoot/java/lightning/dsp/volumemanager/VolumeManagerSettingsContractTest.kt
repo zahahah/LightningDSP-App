@@ -84,6 +84,17 @@ class VolumeManagerSettingsContractTest {
         assertTrue(dspCard.contains("DspRoundControl("))
     }
 
+    @Test fun perAppPowerChangesDoNotShowDebugToasts() {
+        val composeUi = ui("LightningVolumeComposeUi")
+        val appTrack = composeUi.substringAfter("private fun AppVolumeTrack(")
+            .substringBefore("private fun AppOptions(")
+        val database = File(app, "src/main/java/lightning/dsp/session/root/RootSessionDatabase.kt").readText()
+
+        assertTrue(appTrack.contains("LightningDspVolumeManager.setAppDspEnabled(app.packageName, dspEnabled)"))
+        assertFalse(appTrack.contains("Toast"))
+        assertFalse(database.contains("LDSP load fail (session="))
+    }
+
     @Test fun experimentBuildPublishesOnlyRootUniversalApk() {
         val repository = sequenceOf(File("."), File(".."))
             .first { File(it, ".github/workflows/build.yml").isFile }
@@ -205,9 +216,10 @@ class VolumeManagerSettingsContractTest {
         assertTrue(composeUi.contains("AppSearchField(searchQuery"))
     }
 
-    @Test fun systemAppFilterLivesInSettingsAndFloatingPanelHasNoFilterOrSearchControl() {
+    @Test fun systemAppFilterAffectsOnlyManagerListNotFloatingPanel() {
         val activity = ui("LightningDspVolumeManagerActivity")
         val composeUi = ui("LightningVolumeComposeUi")
+        val managerScreen = composeUi.substringBefore("/** Compact centered mixer used by the always-on-top window")
         val floatingPanel = composeUi.substringAfter("internal fun LightningVolumeFloatingPanel(")
             .substringBefore("@Composable\nprivate fun AppSearchField")
         val resources = File(app, "src/root/res/values/lightning_volume_manager.xml").readText()
@@ -218,8 +230,10 @@ class VolumeManagerSettingsContractTest {
         assertTrue(activity.contains("preferences.getBoolean(\"hide_system_apps\", false)"))
         assertTrue(activity.contains("putBoolean(\"hide_system_apps\", checked).apply()"))
         assertTrue(resources.contains("ldsp_vm_hide_system_apps"))
-        assertTrue(composeUi.contains("if (key == \"hide_system_apps\") hideSystemApps"))
-        assertTrue(composeUi.contains("(!hideSystemApps || !it.systemApp)"))
+        assertTrue(managerScreen.contains("if (key == \"hide_system_apps\") hideSystemApps"))
+        assertTrue(managerScreen.contains("(!hideSystemApps || !app.systemApp)"))
+        assertFalse(floatingPanel.contains("hide_system_apps"))
+        assertFalse(floatingPanel.contains("hideSystemApps"))
         assertTrue(systemControlsItem >= 0 && systemControlsItem < searchItem)
         assertTrue(composeUi.contains("Modifier.fillMaxWidth().height(56.dp),\n                                verticalAlignment = Alignment.CenterVertically"))
         assertFalse(composeUi.contains("AppCatalogFilters"))

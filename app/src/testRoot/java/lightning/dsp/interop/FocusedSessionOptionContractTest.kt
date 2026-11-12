@@ -9,34 +9,20 @@ class FocusedSessionOptionContractTest {
     private val app = sequenceOf(File("."), File("app")).first { File(it, "src/root/AndroidManifest.xml").isFile }
     private fun read(path: String) = File(app, path).readText()
 
-    @Test fun keepEffectsReadyIsSessionOnlyIndependentOfAAudioAndKeepsRealSessions() {
-        val defaults = read("src/main/res/values/defaults.xml")
-        val ui = read("src/main/java/lightning/dsp/fragment/settings/SettingsAudioFormatFragment.kt")
+    @Test fun focusRetentionIsScopedToVerifiedReusedAAudioSession() {
         val xml = read("src/main/res/xml/app_audio_format_preferences.xml")
-        val database = read("src/main/java/lightning/dsp/session/root/RootSessionDatabase.kt")
-        val policy = read("src/main/java/lightning/dsp/session/root/KeepEffectsReadyPolicy.kt")
-        val manager = read("src/main/java/lightning/dsp/session/root/RootSessionDumpManager.kt")
-        val manifest = read("src/root/AndroidManifest.xml")
+        val ui = read("src/main/java/lightning/dsp/fragment/settings/SettingsAudioFormatFragment.kt")
         val option = read("src/root/java/lightning/dsp/interop/KeepEffectsReadyOption.kt")
-        val observer = read("src/main/java/lightning/dsp/session/root/ForegroundAppObserver.kt")
-        assertTrue(defaults.contains("name=\"default_audioformat_keep_effects_ready\" translatable=\"false\">false"))
-        assertTrue(ui.contains("isVisible = isRoot() && !preferences.get<Boolean>(R.string.key_audioformat_processing)"))
-        assertTrue(ui.contains("isEnabled = isVisible"))
-        assertFalse(ui.contains("keepEffectsReady?.isEnabled = isVisible && AAudioCompatibilityOption"))
-        assertTrue(xml.indexOf("key_audioformat_enhanced_processing\"") < xml.indexOf("key_audioformat_keep_effects_ready\""))
-        assertTrue(manifest.contains("android.permission.PACKAGE_USAGE_STATS"))
-        assertTrue(option.contains("cmd appops set --user"))
-        assertTrue(option.contains("PREVIOUS_USAGE_ACCESS_MODE"))
+        val focused = read("src/root/java/lightning/dsp/interop/AAudioFocusedSessionOption.kt")
+        val database = read("src/main/java/lightning/dsp/session/root/RootSessionDatabase.kt")
+        assertFalse(xml.contains("key_audioformat_keep_effects_ready"))
+        assertFalse(ui.contains("keepEffectsReady"))
         assertTrue(option.contains("restorePreviousUsageAccess(context)"))
-        assertTrue(observer.contains("usageStats?.queryEvents(begin, currentTime)"))
-        assertTrue(observer.contains("UsageEvents.Event.ACTIVITY_RESUMED"))
-        assertTrue(database.contains("shouldRetainMissingSession"))
-        assertTrue(policy.contains("packageName in mediaAvailablePackages"))
-        assertTrue(manager.contains("setMediaAvailablePackages(packages)"))
-        assertTrue(database.contains("!app.isGlobalMode && unifiedSessionRetentionEnabled() && unifiedFocus.isFocused(uid, packageName)"))
+        assertTrue(option.contains("val preparationValue = \"0\""))
+        assertTrue(focused.contains("AAudioSessionReuseOption.requested(context)"))
+        assertTrue(focused.contains("AAudioCompatibilityOption.requested(context)"))
         assertTrue(database.contains("unifiedSessions.shouldRetain(id, uid, packageName)"))
-        assertTrue(database.contains("playbackActivity.isPlaying(id, session.uid, session.packageName)"))
-        assertTrue(database.contains("enabled && isPackageDspEnabled(session.packageName) && allowed"))
+        assertTrue(database.contains("unifiedFocus.isFocused(uid, packageName)"))
     }
 
     @Test fun focusUsesRealWindowsAndDoesNotDependOnVolumeManagerOrPermissionExpansion() {
@@ -55,11 +41,14 @@ class FocusedSessionOptionContractTest {
         assertTrue(provider.contains("AAudioFocusedSessionOption.requested(app)"))
     }
 
-    @Test fun activeProcessingIncludesFocusedRetentionButNotOrdinaryIdleOrDisabledSessions() {
+    @Test fun focusedRetentionDoesNotReportIdleSessionsAsActivelyProcessing() {
         val projection = read("src/main/java/lightning/dsp/session/root/SessionPlaybackActivity.kt")
         val database = read("src/main/java/lightning/dsp/session/root/RootSessionDatabase.kt")
         assertTrue(projection.contains("playing || focusedRetention"))
-        assertTrue(database.contains("focusedRetention = shouldKeepUnified(id, session.uid, session.packageName)"))
+        assertTrue(database.contains("focusedRetention = false"))
         assertTrue(database.contains("processingEnabled = enabled && isPackageDspEnabled(session.packageName)"))
+        val processing = database.substringAfter("private fun shouldProcess(").substringBefore("fun activeProcessingSessions()")
+        assertFalse(processing.contains("shouldKeepEffectsReady("))
+        assertTrue(processing.contains("shouldKeepUnified("))
     }
 }

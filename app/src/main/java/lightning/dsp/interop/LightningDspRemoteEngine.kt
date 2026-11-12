@@ -84,6 +84,8 @@ class LightningDspRemoteEngine(
     ) else null
     @Volatile private var sessionStartupEligibility: (() -> Boolean)? = null
     @Volatile private var sessionStartupJob: Job? = null
+    private val sessionStartupCallbacks = mutableListOf<(Boolean) -> Unit>()
+    private val sessionStartupCallbackLock = Any()
 
     override var enabled: Boolean
         set(value) {
@@ -151,10 +153,41 @@ class LightningDspRemoteEngine(
     }
 
     /** Defer first session activation until every namespace has reached this effect. */
-    internal fun prepareInitialSessionState(shouldEnable: () -> Boolean) {
-        if (sessionStartupFence == null || disposed) return
+    internal fun prepareInitialSessionState(shouldEnable: () -> Boolean, onComplete: ((Boolean) -> Unit)? = null) {
+        val startup = sessionStartupFence
+        if (startup == null || disposed) {
+            onComplete?.invoke(false)
+            return
+        }
         sessionStartupEligibility = shouldEnable
+        if (startup.ready) {
+            val eligible = runCatching { shouldEnable() }.getOrDefault(false)
+            requestedEnabled = eligible
+            startup.requestEnabled(eligible)
+            onComplete?.invoke(eligible && enabled && canControlEndpoint())
+            return
+        }
+        if (onComplete != null) {
+            val alreadyReady = synchronized(sessionStartupCallbackLock) {
+                if (startup.ready) true else { sessionStartupCallbacks += onComplete; false }
+            }
+            if (alreadyReady) {
+                val eligible = runCatching { shouldEnable() }.getOrDefault(false)
+                requestedEnabled = eligible
+                startup.requestEnabled(eligible)
+                onComplete(eligible && enabled && canControlEndpoint())
+                return
+            }
+        }
         startSessionStartupPreparation()
+    }
+
+    private fun completeSessionStartupCallbacks(prepared: Boolean) {
+        val callbacks = synchronized(sessionStartupCallbackLock) {
+            sessionStartupCallbacks.toList().also { sessionStartupCallbacks.clear() }
+        }
+        val ready = prepared && requestedEnabled && enabled && canControlEndpoint()
+        callbacks.forEach { callback -> runCatching { callback(ready) } }
     }
 
     private fun startSessionStartupPreparation() {
@@ -163,7 +196,10 @@ class LightningDspRemoteEngine(
         sessionStartupJob = launchPreferenceSync {
             val retryDelays = longArrayOf(0L, 250L, 500L, 1_000L)
             for (retryDelay in retryDelays) {
-                if (disposed || startup.ready) return@launchPreferenceSync
+                if (disposed || startup.ready) {
+                    completeSessionStartupCallbacks(startup.ready && enabled && canControlEndpoint())
+                    return@launchPreferenceSync
+                }
                 if (retryDelay > 0) delay(retryDelay)
                 val generation = DspDesiredState.current()
                 val prepared = startup.prepare(generation) {
@@ -175,10 +211,12 @@ class LightningDspRemoteEngine(
                 if (prepared) {
                     Timber.i("Initial DSP state prepared for session %s; processing %s", sessionId,
                         if (requestedEnabled) "enabled" else "bypassed")
+                    completeSessionStartupCallbacks(true)
                     return@launchPreferenceSync
                 }
             }
             Timber.w("Initial DSP state was not confirmed for session %s; effect remains bypassed", sessionId)
+            completeSessionStartupCallbacks(false)
         }
     }
 
@@ -310,6 +348,7 @@ class LightningDspRemoteEngine(
             if (disposed) return@serialized
             disposed = true
             sessionStartupFence?.invalidate()
+            completeSessionStartupCallbacks(false)
             supplementalState.invalidate()
             context.unregisterLocalReceiver(broadcastReceiver)
             if (usesUnscopedNative) LightningDspControlClient.invalidateContext()

@@ -37,10 +37,12 @@ class GlobalMixerControllerContractTest {
         assertTrue(release.contains("release = LightningDspControlClient::releaseCoverageLease"))
         assertTrue(release.contains("owned.isNotEmpty()"))
     }
-    @Test fun inactiveOwnedCoverageIsRetainedWithoutCreatingInactiveSessions() {
+    @Test fun inactiveOwnedCoverageIsNotRetainedByAppFocusInSessionMode() {
         val s = controller
         assertTrue(s.contains("val plan = GlobalMixerCoverage.reconcile(snapshot"))
         assertTrue(s.contains("it.engine.canControlEndpoint() && it.session.uid !in excludedUids"))
+        assertTrue(s.contains("retainInactiveSessionIds = retainInactiveSessionIds"))
+        assertFalse(s.contains("shouldRetainSupplementalSessionWhileIdle"))
         assertTrue(s.contains("poll = snapshot.activeSessions > 0 || owned.isNotEmpty()"))
         assertTrue(s.contains("if (owned.size >= GlobalMixerCoverage.MAX_SUPPLEMENTAL_SESSIONS) break"))
         val creation = s.substringAfter("for (target in plan.newTargets)")
@@ -57,11 +59,31 @@ class GlobalMixerControllerContractTest {
         assertTrue(s.contains("LDSP_MIXER_READ_COMPLETE"))
         assertFalse(s.contains("audioserver"))
     }
+
+    @Test fun activePollingIsAHeartbeatRatherThanRepeatedTwoSecondSystemDumps() {
+        val s = controller
+        assertTrue(s.contains("ACTIVE_RECONCILE_INTERVAL_MS = 10_000L"))
+        assertTrue(s.contains("withTimeoutOrNull(ACTIVE_RECONCILE_INTERVAL_MS)"))
+        assertFalse(s.contains("withTimeoutOrNull(2_000)"))
+        assertTrue(s.contains("override fun onPlaybackConfigChanged(configs: MutableList<AudioPlaybackConfiguration>?) = requestCheck()"))
+    }
+
+    @Test fun sessionPreplayUsesKeepEffectsReadyAndAllowsDifferentSessionsFromOneApp() {
+        val s = controller
+        assertTrue(s.contains("private val preparationHandler: (Int, Int, Long, Boolean, (Boolean) -> Unit)"))
+        assertTrue(s.contains("!app.isGlobalMode && KeepEffectsReadyOption.requested(app)"))
+        assertTrue(s.contains("existing.waiters += PreparationWaiter(deadline, done)"))
+        assertFalse(s.contains("preparations.values.any { it.uid == uid }"))
+        assertTrue(s.contains("finishPreparation(target.id, request"))
+    }
+
     @Test fun featureIsServiceOwnedRootOnlyAndIndependentOfVolumeManager() {
         val service = source("main/java/lightning/dsp/service/RootAudioProcessorService.kt")
         val database = source("main/java/lightning/dsp/session/root/RootSessionDatabase.kt")
-        assertTrue(service.contains("if (isRoot()) {\n            mixerFallback = GlobalMixerFallbackController"))
+        assertTrue(service.contains("if (!isRoot() || isServiceDisposing || mixerFallback != null || app.isAppMixerMode ||"))
+        assertTrue(service.contains("mixerFallback = GlobalMixerFallbackController(this)"))
         assertTrue(service.contains("mixerFallback?.close()"))
+        assertTrue(service.contains("onRetentionPolicyChanged = { mixerFallback?.requestCheck() }"))
         assertTrue(service.contains("preferences.get<Boolean>(R.string.key_audioformat_all_mixers)"))
         assertTrue(service.contains("(!app.isGlobalMode || app.rootSessionDatabase.hasUsableGlobalSession())"))
         assertTrue(service.contains("mixerFallback?.hasOwnedSessions() != true"))
@@ -133,6 +155,13 @@ class GlobalMixerControllerContractTest {
             "teardown", "lease_barrier", "legacy_fence", "lease_release").forEach {
             assertTrue(it, s.contains("diagnosticPhase = \"$it\""))
         }
+    }
+
+    @Test fun closeExposesACompletionBarrierForFutureExclusiveOwners() {
+        val source = controller
+        assertTrue(source.contains("suspend fun awaitClosed(timeoutMillis: Long): Boolean"))
+        assertTrue(source.contains("closedAndDrained.complete(lease == null && owned.isEmpty())"))
+        assertTrue(source.indexOf("worker.join()") < source.indexOf("closedAndDrained.complete("))
     }
 
 }

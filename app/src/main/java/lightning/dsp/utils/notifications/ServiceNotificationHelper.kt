@@ -67,6 +67,16 @@ object ServiceNotificationHelper: KoinComponent {
         StatusNotificationGroup.refresh(context)
     }
 
+    fun pushServiceNotificationAppMixer(context: Context, status: String) {
+        context.getSystemService<NotificationManager>()
+            ?.notify(Notifications.ID_SERVICE_STATUS, createServiceNotificationAppMixer(context, status))
+        StatusNotificationGroup.refresh(context)
+    }
+
+    fun createServiceNotificationAppMixer(context: Context, status: String): Notification =
+        createServiceNotification(context, context.getString(R.string.audio_format_processing_app_mixer), status,
+            enabled = preferences.get<Boolean>(R.string.key_powered_on))
+
     fun createServiceNotificationGlobal(context: Context): Notification {
         val enabled = preferences.get<Boolean>(R.string.key_powered_on)
         return createServiceNotification(

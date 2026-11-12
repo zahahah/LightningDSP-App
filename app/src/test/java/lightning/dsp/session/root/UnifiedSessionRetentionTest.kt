@@ -1,12 +1,33 @@
 package lightning.dsp.session.root
 
 import lightning.dsp.model.AudioSessionDumpEntry
+import lightning.dsp.session.dump.data.SessionOwnerRef
 import org.junit.Assert.*
 import org.junit.Test
 
 class UnifiedSessionRetentionTest {
     private fun entry(uid: Int = 10123, pkg: String = "emulator", active: Boolean? = false) =
         AudioSessionDumpEntry(uid, pkg, "USAGE_GAME", "CONTENT_TYPE_MUSIC", active)
+
+    @Test fun missingPlayerCanRetainOnlyAPreviouslyVerifiedLiveOwnersExactFrameworkReference() {
+        val state = UnifiedSessionRetention()
+        var alive = true
+        state.claim(12, 10123, 42) { alive }
+        state.update(mapOf(12 to entry()), true)
+        state.update(emptyMap(), true, setOf(SessionOwnerRef(12, 42, 10123)))
+        assertTrue(state.shouldRetain(12, 10123, "emulator"))
+        state.update(emptyMap(), true, setOf(SessionOwnerRef(12, 43, 10123)))
+        assertFalse(state.shouldRetain(12, 10123, "emulator"))
+        state.update(emptyMap(), true, setOf(SessionOwnerRef(12, 42, 10123)))
+        assertFalse(state.shouldRetain(12, 10123, "emulator"))
+        state.update(mapOf(12 to entry()), true)
+        state.update(emptyMap(), true, null)
+        assertFalse(state.shouldRetain(12, 10123, "emulator"))
+        state.update(mapOf(12 to entry()), true)
+        alive = false
+        state.update(emptyMap(), true, setOf(SessionOwnerRef(12, 42, 10123)))
+        assertFalse(state.shouldRetain(12, 10123, "emulator"))
+    }
 
     @Test fun liveClaimNeedsIndependentSessionIdentityAndKeepsIdleOnly() {
         val state = UnifiedSessionRetention()

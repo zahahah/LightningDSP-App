@@ -11,11 +11,23 @@ class AudioCompatibilityLoadGateTest {
 
     @Test fun disabledOptionDoesNotLoadTheNativeHook() {
         val source = File(app, "src/root/java/lightning/dsp/interop/AudioCompatibilityHook.java").readText()
-        val guard = source.indexOf("if (!requested()) {")
-        val load = source.indexOf("System.loadLibrary(\"ldsp_aaudio_compat\")")
+        val handle = source.substringAfter("@Override public void handleLoadPackage(")
+        val guard = handle.indexOf("if (!aaudioRequested && !sessionPreparationEnabled)")
+        val load = handle.indexOf("System.loadLibrary(\"ldsp_aaudio_compat\")")
         assertTrue("the opt-in gate must precede native library loading", guard >= 0 && load > guard)
-        assertTrue(source.substring(guard, load).contains("return;"))
+        assertTrue(handle.substring(guard, load).contains("return;"))
         assertTrue(source.contains("return \"1\".equals(XposedHelpers.callStaticMethod"))
+    }
+
+    @Test fun sessionPreparationHooksAudioTrackBeforePlaybackWithoutLoadingTheNativePatch() {
+        val source = File(app, "src/root/java/lightning/dsp/interop/AudioCompatibilityHook.java").readText()
+        val handle = source.substringAfter("@Override public void handleLoadPackage(")
+        assertTrue(handle.indexOf("if (sessionPreparationEnabled) installAudioTrackPreparationHook();") <
+            handle.indexOf("System.loadLibrary(\"ldsp_aaudio_compat\")"))
+        assertTrue(source.contains("findAndHookMethod(\"android.media.AudioTrack\", null, \"play\""))
+        assertTrue(source.contains("beforeHookedMethod(MethodHookParam param)"))
+        assertTrue(source.contains("\"prepare_session\""))
+        assertTrue(source.contains("Looper.myLooper() == Looper.getMainLooper()"))
     }
 
     @Test fun nativeInitAlsoRequiresOptInBeforeInstallingHooks() {
@@ -30,7 +42,7 @@ class AudioCompatibilityLoadGateTest {
     @Test fun childLaunchAdapterPreservesTheScopedOptInAndNormalXposedChain() {
         val source = File(app, "src/root/java/lightning/dsp/interop/AudioCompatibilityHook.java").readText()
         val entry = source.substringAfter("@Override public void handleLoadPackage(")
-        assertTrue(entry.indexOf("if (!requested()) {") < entry.indexOf("installLaunchHook();"))
+        assertTrue(entry.indexOf("if (!aaudioRequested && !sessionPreparationEnabled)") < entry.indexOf("installLaunchHook();"))
         assertTrue(entry.indexOf("info.appInfo.flags & ApplicationInfo.FLAG_SYSTEM") < entry.indexOf("installLaunchHook();"))
         assertTrue(source.contains("findAndHookMethod(\"java.lang.ProcessImpl\", null, \"start\","))
         assertTrue(source.contains("String[].class, Map.class, String.class, ProcessBuilder.Redirect[].class,"))

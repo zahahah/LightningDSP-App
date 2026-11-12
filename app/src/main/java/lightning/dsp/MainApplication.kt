@@ -67,9 +67,11 @@ open class MainApplication : Application(), SharedPreferences.OnSharedPreference
 
     val rootSessionDatabase by lazy { RootSessionDatabase(this) }
     val isGlobalMode
-        get() = prefs.get<Boolean>(R.string.key_audioformat_processing)
+        get() = !isAppMixerMode && prefs.get<Boolean>(R.string.key_audioformat_processing)
+    val isAppMixerMode
+        get() = isRoot() && prefs.preferences.getBoolean(getString(R.string.key_audioformat_processing_app_mixer), false)
     val isEnhancedProcessing
-        get() = !isGlobalMode &&
+        get() = !isGlobalMode && !isAppMixerMode &&
                 prefs.get<Boolean>(R.string.key_audioformat_enhanced_processing) && hasDumpPermission()
 
     private val applicationScope = CoroutineScope(SupervisorJob())

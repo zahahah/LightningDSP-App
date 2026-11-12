@@ -12,18 +12,12 @@ import lightning.dsp.utils.extensions.PermissionExtensions.hasPackageUsagePermis
 /** Session Mode opt-in for retaining verified app sessions while focused or media-backed. */
 object KeepEffectsReadyOption {
     private const val LEGACY_PROPERTY = "debug.ldsp.aaudio_focus_hold"
+    private const val SESSION_PREPARATION_PROPERTY = "debug.ldsp.session_prepare"
     private const val PREVIOUS_USAGE_ACCESS_MODE = "keep_effects_ready_previous_usage_access_mode"
 
-    fun requested(context: Context): Boolean {
-        val preferences = preferences(context)
-        val key = context.getString(R.string.key_audioformat_keep_effects_ready)
-        if (preferences.contains(key)) return preferences.getBoolean(key, false)
-        val legacy = preferences.getBoolean(context.getString(R.string.key_audioformat_aaudio_focus_hold), false)
-        if (legacy) preferences.edit().putBoolean(key, true).remove(
-            context.getString(R.string.key_audioformat_aaudio_focus_hold)
-        ).apply()
-        return legacy
-    }
+    // The former package-wide retention option is retired. Keep this compatibility
+    // surface only to undo its app-op/property state on upgrade.
+    fun requested(context: Context): Boolean = false
 
     @Synchronized fun set(context: Context, enabled: Boolean): AAudioCompatibilityResult {
         if (enabled && !sessionMode(context)) return AAudioCompatibilityResult.FAILED
@@ -49,6 +43,7 @@ object KeepEffectsReadyOption {
             return AAudioCompatibilityResult.FAILED
         }
         if (!write(enabled && sessionMode(context), context)) {
+            write(oldRequested && sessionMode(context), context)
             if (newlyGranted) {
                 setUsageAccess(context, previousMode ?: "default")
                 preferences.edit().remove(PREVIOUS_USAGE_ACCESS_MODE).apply()
@@ -80,11 +75,9 @@ object KeepEffectsReadyOption {
     @Synchronized fun restore(context: Context): Boolean {
         return try {
             if (!RootShellImpl.hasRootShell()) return false
-            val enabled = requested(context)
-            val effective = enabled && sessionMode(context)
-            if (effective && !context.hasPackageUsagePermission() && !grantUsageAccessForFeature(context)) return false
-            if (!enabled && !restorePreviousUsageAccess(context)) return false
-            write(effective, context)
+            val propertiesRestored = write(false, context)
+            val usageRestored = restorePreviousUsageAccess(context)
+            propertiesRestored && usageRestored
         } catch (_: Exception) {
             false
         }
@@ -114,14 +107,17 @@ object KeepEffectsReadyOption {
     private fun preferences(context: Context) = context.getSharedPreferences(Constants.PREF_APP, Context.MODE_PRIVATE)
 
     private fun write(enabled: Boolean, context: Context): Boolean {
-        val aaudioFocusEnabled = enabled && AAudioCompatibilityOption.requested(context) &&
+        val aaudioFocusEnabled = sessionMode(context) && AAudioCompatibilityOption.requested(context) &&
             AAudioSessionReuseOption.requested(context)
         val legacyValue = if (aaudioFocusEnabled) "1" else "0"
+        val preparationValue = "0"
         val result = Shell.cmd(
-            "setprop $LEGACY_PROPERTY $legacyValue",
-            "getprop $LEGACY_PROPERTY",
+            "setprop $LEGACY_PROPERTY $legacyValue && " +
+                "setprop $SESSION_PREPARATION_PROPERTY $preparationValue && " +
+                "getprop $LEGACY_PROPERTY && getprop $SESSION_PREPARATION_PROPERTY",
         ).exec()
-        return result.isSuccess && result.out.lastOrNull()?.trim() == legacyValue
+        return result.isSuccess && result.out.getOrNull(0)?.trim() == legacyValue &&
+            result.out.getOrNull(1)?.trim() == preparationValue
     }
 
     private fun readUsageAccessMode(context: Context): String? {

@@ -14,12 +14,13 @@ import java.util.concurrent.TimeUnit
 
 /** A request is only a hint: the controller independently verifies UID, session and output. */
 internal object CompatibilityPreparationBridge {
-    @Volatile var handler: ((Int, Int, Long, (Boolean) -> Unit) -> Unit)? = null
+    @Volatile var handler: ((Int, Int, Long, Boolean, (Boolean) -> Unit) -> Unit)? = null
 }
 
 class CompatibilityPreparationProvider : ContentProvider() {
     private val slots = Semaphore(2)
     private val admission = CompatibilityPreparationAdmission()
+    private val sessionPlaybackAdmission = SessionPlaybackPreparationAdmission()
     private val renewalAdmission = CompatibilityPreparationAdmission()
     private val focusAdmission = CompatibilityPreparationAdmission()
     private val unifiedOwners = UnifiedSessionOwnerProof {
@@ -32,20 +33,54 @@ class CompatibilityPreparationProvider : ContentProvider() {
         val pid = Binder.getCallingPid()
         val deadline = minOf(extras?.getLong("deadline", 0) ?: 0, SystemClock.elapsedRealtime() + 2_000)
         val session = arg?.toIntOrNull() ?: 0
-        if (deadline <= SystemClock.elapsedRealtime() || method !in setOf("prepare", "retain", "focus") ||
+        if (deadline <= SystemClock.elapsedRealtime() || method !in setOf("prepare", "prepare_session", "retain", "focus") ||
             (method != "focus" && session <= 0) || uid % 100000 !in 10000..19999 ||
             Looper.myLooper() == Looper.getMainLooper() || !slots.tryAcquire()) return result(false)
         try {
             val now = SystemClock.elapsedRealtime()
             if (method == "prepare" && !admission.admit(uid, now)) return result(false)
+            if (method == "prepare_session" && !sessionPlaybackAdmission.admit(uid, session, now)) return result(false)
             if (method == "retain" && !renewalAdmission.admit(pid, now)) return result(false)
             if (method == "focus" && !focusAdmission.admit(pid, now)) return result(false)
-            val handler = CompatibilityPreparationBridge.handler ?: return result(false)
             val app = context?.applicationContext as? lightning.dsp.MainApplication ?: return result(false)
             app.rootSessionDatabase.unifiedSessionRetentionEnabled = {
                 AAudioCompatibilityOption.requested(app) && AAudioSessionReuseOption.requested(app) &&
                     AAudioFocusedSessionOption.requested(app)
             }
+            if (method == "prepare_session") {
+                if (app.isGlobalMode || !KeepEffectsReadyOption.requested(app)) return result(false)
+                // AudioTrack.play() is a pre-start hint, not ownership proof. First reuse a
+                // session already registered by the normal scanner. If it is new, route it
+                // through the mixer inspector, which independently verifies UID/session/output.
+                val packageName = app.packageManager.getPackagesForUid(uid)?.singleOrNull() ?: return result(false)
+                val completed = CountDownLatch(1)
+                var prepared = false
+                app.rootSessionDatabase.prepareExistingSessionBeforePlayback(uid, packageName, session, deadline) { success ->
+                    if (success) {
+                        prepared = true
+                        completed.countDown()
+                    } else {
+                        val handler = CompatibilityPreparationBridge.handler
+                        if (handler == null) {
+                            completed.countDown()
+                        } else {
+                            val dispatched = runCatching {
+                                handler.invoke(uid, session, deadline, true) { inspected ->
+                                    prepared = inspected
+                                    completed.countDown()
+                                }
+                            }.isSuccess
+                            if (!dispatched) {
+                                prepared = false
+                                completed.countDown()
+                            }
+                        }
+                    }
+                }
+                val ready = completed.await(maxOf(0, deadline - SystemClock.elapsedRealtime()), TimeUnit.MILLISECONDS) && prepared
+                return result(ready)
+            }
+            val handler = CompatibilityPreparationBridge.handler ?: return result(false)
             if (method == "focus") {
                 if (app.isGlobalMode || !app.rootSessionDatabase.unifiedSessionRetentionEnabled()) return result(false)
                 // Focus crosses process boundaries only within one unambiguously identified package.
@@ -66,7 +101,7 @@ class CompatibilityPreparationProvider : ContentProvider() {
             if (method == "retain") return result(true)
             val completed = CountDownLatch(1)
             var prepared = false
-            handler(uid, session, deadline) { success -> prepared = success; completed.countDown() }
+            handler(uid, session, deadline, false) { success -> prepared = success; completed.countDown() }
             val ready = completed.await(maxOf(0, deadline - SystemClock.elapsedRealtime()), TimeUnit.MILLISECONDS) && prepared
             if (ready) admission.succeeded(uid, now)
             return result(ready)

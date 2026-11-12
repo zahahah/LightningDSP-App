@@ -4,6 +4,7 @@ import android.content.Context
 import lightning.dsp.model.AudioSessionDumpEntry
 import lightning.dsp.session.dump.data.AudioServiceDump
 import lightning.dsp.session.dump.data.ISessionInfoDump
+import lightning.dsp.session.dump.data.SessionOwnerRef
 import lightning.dsp.session.dump.utils.AudioFlingerServiceDumpUtils
 import lightning.dsp.session.dump.utils.AudioServicePlaybackActivity
 import lightning.dsp.session.dump.utils.DumpUtils
@@ -61,7 +62,10 @@ class AudioServiceDumpProvider : ISessionDumpProvider {
         }
 
         Timber.d("Dump processed")
-        return AudioServiceDump(sessions)
+        val refs = globalSessionRefs?.mapNotNull { ref ->
+            ref.uid?.let { uid -> SessionOwnerRef(ref.sid, ref.pid, uid) }
+        }?.toSet()
+        return AudioServiceDump(sessions, refs)
     }
 
     override fun dumpString(context: Context): String {

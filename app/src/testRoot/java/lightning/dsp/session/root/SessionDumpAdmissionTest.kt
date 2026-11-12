@@ -20,6 +20,6 @@ class SessionDumpAdmissionTest {
         assertTrue(destroy.indexOf("sessionDumpManager = null") < destroy.indexOf("oldSessionDumpManager?.destroy()"))
         assertTrue(destroy.indexOf("oldSessionDumpManager?.destroy()") < destroy.indexOf("app.rootSessionDatabase.clearSessions()"))
         assertTrue(source.split("SessionDumpAdmission.allows(!isServiceDisposing && sessionDumpManager === manager, !app.isGlobalMode)").size == 3)
-        assertTrue(source.contains("if (isServiceDisposing || sessionDumpManager != null || app.isGlobalMode) return"))
+        assertTrue(source.contains("if (isServiceDisposing || sessionDumpManager != null || app.isGlobalMode || app.isAppMixerMode) return"))
     }
 }

@@ -155,7 +155,6 @@ import lightning.dsp.utils.extensions.ContextExtensions.sendLocalBroadcast
 import lightning.dsp.volumemanager.backend.AppVolume
 import lightning.dsp.volumemanager.backend.LightningDspVolumeManager
 import lightning.dsp.volumemanager.backend.VolumeManagerState
-import lightning.dsp.volumemanager.backend.AppMixerModeSelection
 import lightning.dsp.MainApplication
 import lightning.dsp.volumemanager.backend.SHOW_MEDIA_CONTROLS_KEY
 import lightning.dsp.volumemanager.backend.SessionDspButtonVisibilityPolicy
@@ -221,12 +220,7 @@ internal fun LightningVolumeManagerScreen(
     var showAll by rememberSaveable { mutableStateOf(false) }
     var searchExpanded by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
-    var showAppMixerPrototype by rememberSaveable { mutableStateOf(false) }
     val panelPrefs = remember(context) { context.getSharedPreferences("lightningdsp_volume_panel", Context.MODE_PRIVATE) }
-    val appMixerPrefs = remember(context) { context.getSharedPreferences(AppMixerModeSelection.PREFERENCES_NAME, Context.MODE_PRIVATE) }
-    var excludedByAppMixer by remember(appMixerPrefs) {
-        mutableStateOf(appMixerPrefs.getStringSet(AppMixerModeSelection.EXCLUDED_PACKAGES_KEY, emptySet()).orEmpty().toSet())
-    }
     val audioPrefs = remember(context) { context.getSharedPreferences(Constants.PREF_APP, Context.MODE_PRIVATE) }
     val savedAppOrder by rememberAppVolumeOrder(panelPrefs)
     var showDspCard by remember { mutableStateOf(panelPrefs.getBoolean("show_dsp_card", true)) }
@@ -261,15 +255,6 @@ internal fun LightningVolumeManagerScreen(
             panelPrefs.unregisterOnSharedPreferenceChangeListener(listener)
             audioPrefs.unregisterOnSharedPreferenceChangeListener(audioModeListener)
         }
-    }
-    DisposableEffect(appMixerPrefs) {
-        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == null || key == AppMixerModeSelection.EXCLUDED_PACKAGES_KEY) {
-                excludedByAppMixer = appMixerPrefs.getStringSet(AppMixerModeSelection.EXCLUDED_PACKAGES_KEY, emptySet()).orEmpty().toSet()
-            }
-        }
-        appMixerPrefs.registerOnSharedPreferenceChangeListener(listener)
-        onDispose { appMixerPrefs.unregisterOnSharedPreferenceChangeListener(listener) }
     }
     val dark = androidx.compose.foundation.isSystemInDarkTheme()
     val scheme = if (android.os.Build.VERSION.SDK_INT >= 31) {
@@ -387,10 +372,6 @@ internal fun LightningVolumeManagerScreen(
                             IconButton(onClick = onSettings) {
                                 Icon(Icons.Default.Settings, contentDescription = "Volume Manager settings")
                             }
-                            IconButton(onClick = { showAppMixerPrototype = true }) {
-                                Icon(Icons.Default.GraphicEq,
-                                    contentDescription = "Open experimental App Mixer Mode preferences")
-                            }
                         } else {
                             IconButton(onClick = onClose) {
                                 Icon(Icons.Default.Close, contentDescription = "Close floating mixer")
@@ -420,21 +401,6 @@ internal fun LightningVolumeManagerScreen(
                 if (!compact) {
                     item(key = "manager_controls") {
                         ManagerStatus(state = state, onEnabledChange = onManagerEnabledChange)
-                    }
-                    item(key = "app_mixer_mode_prototype") {
-                        Surface(color = MaterialTheme.colorScheme.surfaceContainerLow,
-                            shape = RoundedCornerShape(16.dp)) {
-                            Row(Modifier.fillMaxWidth().padding(start = 14.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f).padding(end = 8.dp)) {
-                                    Text("App Mixer Mode (experimental)", fontWeight = FontWeight.SemiBold)
-                                    Text("Global with exceptions · selection only; no audio routing",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                                TextButton(onClick = { showAppMixerPrototype = true }) { Text("Apps") }
-                            }
-                        }
                     }
                     if (state.enabled && !Settings.canDrawOverlays(context)) {
                         item(key = "overlay_permission") {
@@ -627,66 +593,6 @@ internal fun LightningVolumeManagerScreen(
             }
         }
     }
-    if (showAppMixerPrototype) {
-        AppMixerModePrototypeDialog(
-            apps = allApps,
-            excludedPackages = excludedByAppMixer,
-            onIncludedChange = { packageName, included ->
-                val current = appMixerPrefs.getStringSet(AppMixerModeSelection.EXCLUDED_PACKAGES_KEY, emptySet()).orEmpty().toSet()
-                val updated = AppMixerModeSelection.withIncluded(packageName, included, current)
-                appMixerPrefs.edit().putStringSet(AppMixerModeSelection.EXCLUDED_PACKAGES_KEY, updated).apply()
-                excludedByAppMixer = updated
-            },
-            onDismiss = { showAppMixerPrototype = false },
-        )
-    }
-}
-
-@Composable
-private fun AppMixerModePrototypeDialog(
-    apps: List<AppVolume>,
-    excludedPackages: Set<String>,
-    onIncludedChange: (String, Boolean) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("App Mixer Mode (experimental)") },
-        text = {
-            Column {
-                Text(
-                    "Global with exceptions: apps are included by default. This prototype stores selection only; it does not change audio routing or DSP processing.",
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(bottom = 8.dp),
-                )
-                LazyColumn(Modifier.heightIn(max = 420.dp)) {
-                    items(apps, key = { "app-mixer:${it.packageName}" }) { app ->
-                        val included = AppMixerModeSelection.isIncluded(app.packageName, excludedPackages)
-                        Row(
-                            Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                                Text(app.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(app.packageName, style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                            Switch(
-                                checked = included,
-                                onCheckedChange = { onIncludedChange(app.packageName, it) },
-                                modifier = Modifier.semantics {
-                                    contentDescription = if (included) "Exclude ${app.label} from App Mixer prototype"
-                                        else "Include ${app.label} in App Mixer prototype"
-                                },
-                            )
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
-    )
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -792,7 +698,6 @@ internal fun LightningVolumeFloatingPanel(
     val audioPrefs = remember(context) { context.getSharedPreferences(Constants.PREF_APP, Context.MODE_PRIVATE) }
     val savedAppOrder by rememberAppVolumeOrder(panelPrefs)
     var showDspCard by remember { mutableStateOf(panelPrefs.getBoolean("show_dsp_card", true)) }
-    var hideSystemApps by remember { mutableStateOf(panelPrefs.getBoolean("hide_system_apps", false)) }
     var showMediaButtons by remember { mutableStateOf(panelPrefs.getBoolean(SHOW_MEDIA_CONTROLS_KEY, false)) }
     var showSessionDspButtons by remember { mutableStateOf(panelPrefs.getBoolean("show_session_dsp_controls", false)) }
     var alwaysShowSessionDspButtons by remember { mutableStateOf(panelPrefs.getBoolean("always_show_session_dsp_controls", true)) }
@@ -809,7 +714,6 @@ internal fun LightningVolumeFloatingPanel(
             if (key == null || key.startsWith(FLOATING_HIDDEN_PREFIX)) hiddenAppIds = readFloatingHiddenAppIds(panelPrefs)
             when (key) {
                 "show_dsp_card" -> showDspCard = panelPrefs.getBoolean("show_dsp_card", true)
-                "hide_system_apps" -> hideSystemApps = panelPrefs.getBoolean("hide_system_apps", false)
                 SHOW_MEDIA_CONTROLS_KEY -> showMediaButtons = panelPrefs.getBoolean(SHOW_MEDIA_CONTROLS_KEY, false)
                 "show_session_dsp_controls" -> showSessionDspButtons = panelPrefs.getBoolean("show_session_dsp_controls", false)
                 "always_show_session_dsp_controls" -> alwaysShowSessionDspButtons = panelPrefs.getBoolean("always_show_session_dsp_controls", true)
@@ -833,8 +737,8 @@ internal fun LightningVolumeFloatingPanel(
     val appOrder = savedAppOrder.include(allApps.map { it.packageName })
     val appById = allApps.associateBy { it.packageName }
     val activeIds = if (state.enabled && state.perAppEnabled) {
-        allApps.filter { (it.active || (showMediaButtons && it.retainedPausedMedia)) && it.packageName !in hiddenAppIds &&
-            (!hideSystemApps || !it.systemApp) }.map { it.packageName }
+        allApps.filter { (it.active || (showMediaButtons && it.retainedPausedMedia)) && it.packageName !in hiddenAppIds }
+            .map { it.packageName }
     } else emptyList()
     val activeApps = appOrder.displayOrder(activeIds).mapNotNull(appById::get)
     val showAppDspButtons = SessionDspButtonVisibilityPolicy.shouldShow(

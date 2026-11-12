@@ -23,6 +23,8 @@ import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import lightning.dsp.BuildConfig
 import lightning.dsp.MainApplication
 import lightning.dsp.R
@@ -32,6 +34,8 @@ import lightning.dsp.interop.GlobalMixerFallbackController
 import lightning.dsp.interop.AAudioCompatibilityOption
 import lightning.dsp.interop.AAudioSessionReuseOption
 import lightning.dsp.interop.KeepEffectsReadyOption
+import lightning.dsp.interop.LightningDspControlClient
+import lightning.dsp.interop.appmixer.AppMixerModeController
 import lightning.dsp.model.IEffectSession
 import lightning.dsp.model.room.AppBlocklistDatabase
 import lightning.dsp.model.room.AppBlocklistRepository
@@ -61,7 +65,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
     private lateinit var audioManager: AudioManager
 
     // Termination flags
-    private var isServiceDisposing = false
+    @Volatile private var isServiceDisposing = false
 
     private val backgroundScope = MainScope()
     private var backgroundStartup: Job? = null
@@ -71,6 +75,10 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
     // Enhanced processing
     private var sessionDumpManager: RootSessionDumpManager? = null
     private var mixerFallback: GlobalMixerFallbackController? = null
+    private var appMixer: AppMixerModeController? = null
+    private var appMixerStatus = "Starting; route coverage is unverified."
+    // A retirement timeout must keep this lease fenced, not restore other engines.
+    private var uncertainMixerLease: AutoCloseable? = null
 
     // Preferences
     private val preferences: Preferences.App by inject()
@@ -132,10 +140,15 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
         audioManager = getSystemService<AudioManager>()!!
         notificationManager = getSystemService<NotificationManager>()!!
         if (isRoot()) {
-            mixerFallback = GlobalMixerFallbackController(this) {
-                !isServiceDisposing && app.rootSessionDatabase.enabled &&
-                    preferences.get<Boolean>(R.string.key_audioformat_all_mixers) &&
-                    (!app.isGlobalMode || app.rootSessionDatabase.hasUsableGlobalSession())
+            ensureMixerFallback()
+            appMixer = AppMixerModeController(this, ::acquireMixerExclusive) { message ->
+                backgroundScope.launch {
+                    appMixerStatus = message
+                    if (app.isAppMixerMode) {
+                        updateServiceNotification()
+                        android.widget.Toast.makeText(applicationContext, message, android.widget.Toast.LENGTH_LONG).show()
+                    }
+                }
             }
         }
 
@@ -143,7 +156,11 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
         blockedApps.observeForever(blockedAppObserver)
 
         // Launch foreground service
-        val notification = if (app.isGlobalMode)
+        val notification = if (app.isAppMixerMode)
+            ServiceNotificationHelper.createServiceNotificationAppMixer(this, appMixerStatus)
+        else if (app.rootSessionDatabase.isMixerSessionLeaseHeld())
+            ServiceNotificationHelper.createServiceNotificationAppMixer(this, MIXER_CLEANUP_PENDING)
+        else if (app.isGlobalMode)
             ServiceNotificationHelper.createServiceNotificationGlobal(this)
         else
             ServiceNotificationHelper.createServiceNotification(this, arrayOf())
@@ -165,6 +182,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
 
         StatusNotificationGroup.serviceStarted(this, Notifications.ID_SERVICE_STATUS)
         app.rootSessionDatabase.onProcessingStateChanged = { updateServiceNotification() }
+        app.rootSessionDatabase.onRetentionPolicyChanged = { mixerFallback?.requestCheck() }
 
         // Preserve power without creating/clearing contexts before factory discovery.
         onSharedPreferenceChanged(preferences.preferences, getString(R.string.key_powered_on))
@@ -205,7 +223,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
                 Timber.wtf("onStartCommand: intent.action is null")
             }
             ACTION_START_ENHANCED_PROCESSING -> {
-                if(!app.isEnhancedProcessing) {
+                if(!app.isEnhancedProcessing && !app.isAppMixerMode) {
                     Timber.e("onStartCommand: ACTION_START_ENHANCED_PROCESSING received, but isEnhancedProcessing is false")
                 }
                 sendLocalBroadcast(Intent(Constants.ACTION_SERVICE_STARTED))
@@ -240,10 +258,13 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
         super.onDestroy()
         isServiceDisposing = true
         app.rootSessionDatabase.onProcessingStateChanged = null
+        app.rootSessionDatabase.onRetentionPolicyChanged = null
         app.rootSessionDatabase.stopUnifiedSessionRetention()
         val oldSessionDumpManager = sessionDumpManager
         sessionDumpManager = null
         oldSessionDumpManager?.destroy()
+        appMixer?.close()
+        appMixer = null
         mixerFallback?.close()
         mixerFallback = null
         backgroundStartup?.cancel()
@@ -295,14 +316,26 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
 
     private fun removeClosedSession(intent: Intent) {
         app.rootSessionDatabase.removeSessionByIntent(intent)
-        if (app.rootSessionDatabase.sessionList.isEmpty() && mixerFallback?.hasOwnedSessions() != true) {
+        if (!app.isAppMixerMode && app.rootSessionDatabase.sessionList.isEmpty() && mixerFallback?.hasOwnedSessions() != true) {
             stopSelf()
         }
     }
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
         when (key) {
-            getString(R.string.key_audioformat_processing) -> {
+            getString(R.string.key_audioformat_processing),
+            getString(R.string.key_audioformat_processing_app_mixer) -> {
+                appMixer?.request(app.isAppMixerMode && app.rootSessionDatabase.enabled)
+                if (app.isAppMixerMode) {
+                    // Disable previously retained engines immediately while the relay handoff drains.
+                    app.rootSessionDatabase.enabled = app.rootSessionDatabase.enabled
+                    sessionDumpManager?.destroy()
+                    sessionDumpManager = null
+                    app.rootSessionDatabase.clearPlaybackActivity()
+                    updateServiceNotification()
+                    return
+                }
+                ensureMixerFallback()
                 if (isRoot()) backgroundScope.launch(Dispatchers.IO) {
                     KeepEffectsReadyOption.restore(applicationContext)
                 }
@@ -331,6 +364,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
             getString(R.string.key_audioformat_keep_effects_ready) -> {
                 val enabled = KeepEffectsReadyOption.requested(applicationContext) && !app.isGlobalMode
                 app.rootSessionDatabase.setKeepEffectsReadyEnabled(enabled)
+                mixerFallback?.requestCheck()
                 if (isRoot()) backgroundScope.launch(Dispatchers.IO) {
                     KeepEffectsReadyOption.restore(applicationContext)
                 }
@@ -345,6 +379,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
             }
             getString(R.string.key_powered_on) -> {
                 app.rootSessionDatabase.enabled = sharedPreferences?.getBoolean(key, true) ?: true
+                appMixer?.request(app.isAppMixerMode && app.rootSessionDatabase.enabled)
                 mixerFallback?.requestCheck()
                 updateServiceNotification()
             }
@@ -397,11 +432,11 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
     }
 
     private fun initializeProcessingIfNeeded() {
-        if (!app.isGlobalMode && sessionDumpManager == null) setupEnhancedProcessing()
+        if (!app.isGlobalMode && !app.isAppMixerMode && sessionDumpManager == null) setupEnhancedProcessing()
     }
 
     private fun setupEnhancedProcessing() {
-        if (isServiceDisposing || sessionDumpManager != null || app.isGlobalMode) return
+        if (isServiceDisposing || sessionDumpManager != null || app.isGlobalMode || app.isAppMixerMode) return
         val manager = RootSessionDumpManager(this)
         sessionDumpManager = manager
         manager.setOnSessionDump { dump ->
@@ -429,14 +464,79 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
         updateServiceNotification()
     }
 
+    private fun ensureMixerFallback() {
+        if (!isRoot() || isServiceDisposing || mixerFallback != null || app.isAppMixerMode ||
+            app.rootSessionDatabase.isMixerSessionLeaseHeld()) return
+        mixerFallback = GlobalMixerFallbackController(this) {
+            !isServiceDisposing && !app.isAppMixerMode && !app.rootSessionDatabase.isMixerSessionLeaseHeld() &&
+                app.rootSessionDatabase.enabled && preferences.get<Boolean>(R.string.key_audioformat_all_mixers) &&
+                (!app.isGlobalMode || app.rootSessionDatabase.hasUsableGlobalSession())
+        }
+    }
+
+    /** Called by the relay worker, never the service main thread. */
+    private fun acquireMixerExclusive(): AutoCloseable? = runBlocking {
+        val owners = withContext(Dispatchers.Main) {
+            if (isServiceDisposing || !app.isAppMixerMode || !app.rootSessionDatabase.enabled) {
+                Timber.w("App Mixer handoff refused before retirement: disposing=%s mode=%s processing=%s",
+                    isServiceDisposing, app.isAppMixerMode, app.rootSessionDatabase.enabled)
+                return@withContext null
+            }
+            sessionDumpManager?.destroy()
+            sessionDumpManager = null
+            val retiring = mixerFallback.also { mixerFallback = null; it?.close() }
+            val sessionLease = app.rootSessionDatabase.acquireMixerSessionLease() ?: return@withContext null
+            retiring to sessionLease
+        } ?: return@runBlocking null
+        val (retiring, sessionLease) = owners
+        val (lease, retired) = sessionLease
+        if ((retiring != null && !retiring.awaitClosed(8_000)) || LightningDspControlClient.isCoverageLeaseActive()) {
+            uncertainMixerLease = lease
+            Timber.e("App Mixer refused: supplemental retirement/coverage lease is still active; admission remains fenced")
+            return@runBlocking null
+        }
+        val drained = withTimeoutOrNull(8_000) {
+            while (retired.any { !it.isClosed() }) delay(25)
+            true
+        } == true
+        if (!drained) {
+            uncertainMixerLease = lease
+            Timber.e("App Mixer refused: %d previous session effect(s) did not close; admission remains fenced", retired.count { !it.isClosed() })
+            return@runBlocking null
+        }
+        if (isServiceDisposing || !app.isAppMixerMode || !app.rootSessionDatabase.enabled) {
+            lease.close()
+            return@runBlocking null
+        }
+        AutoCloseable {
+            lease.close()
+            backgroundScope.launch {
+                if (!isServiceDisposing && !app.isAppMixerMode) {
+                    ensureMixerFallback()
+                    initializeProcessingIfNeeded()
+                    sessionDumpManager?.pollOnce(true)
+                    if (app.isGlobalMode && !app.rootSessionDatabase.hasUsableGlobalSession())
+                        app.rootSessionDatabase.addSession(0, android.os.Process.myUid(), packageName)
+                    mixerFallback?.requestCheck()
+                    updateServiceNotification()
+                }
+            }
+        }
+    }
+
     private fun updateServiceNotification() {
-        if(preferences.get<Boolean>(R.string.key_audioformat_processing))
+        if (app.isAppMixerMode)
+            ServiceNotificationHelper.pushServiceNotificationAppMixer(this, appMixerStatus)
+        else if (app.rootSessionDatabase.isMixerSessionLeaseHeld())
+            ServiceNotificationHelper.pushServiceNotificationAppMixer(this, MIXER_CLEANUP_PENDING)
+        else if(preferences.get<Boolean>(R.string.key_audioformat_processing))
             ServiceNotificationHelper.pushServiceNotificationGlobal(this)
         else
             ServiceNotificationHelper.pushServiceNotification(this, app.rootSessionDatabase.activeProcessingSessions())
     }
 
     companion object {
+        private const val MIXER_CLEANUP_PENDING = "Previous App Mixer cleanup is pending or uncertain; other DSP is held off."
         const val SESSION_CLOSE_GRACE_MILLIS = 10_000L
         const val ACTION_START_ENHANCED_PROCESSING = BuildConfig.APPLICATION_ID + ".root.service.START_ENHANCED"
         const val ACTION_START_BACKGROUND = BuildConfig.APPLICATION_ID + ".root.service.START_BACKGROUND"

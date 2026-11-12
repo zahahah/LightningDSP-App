@@ -33,11 +33,12 @@ internal object GlobalMixerCoverage {
     data class OwnedAttachment(val session: Session, val effectId: Int, val controllable: Boolean)
     data class Reconciliation(val obsolete: List<Int>, val newTargets: List<Session>)
 
-    /** Pure decision shared with the controller: retain validated owners before filling free slots. */
+    /** Retain validated active owners and only explicitly approved idle owners before filling free slots. */
     fun reconcile(snapshot: Snapshot, owned: List<OwnedAttachment>, enabled: Boolean = true,
-                  excludedUid: Int? = null): Reconciliation {
+                  excludedUid: Int? = null, retainInactiveSessionIds: Set<Int> = emptySet()): Reconciliation {
         val retained = owned.filter { enabled && it.controllable &&
-            snapshot.retainsAttachment(it.session, it.effectId) }
+            snapshot.retainsAttachment(it.session, it.effectId) &&
+            (it.session.id in snapshot.playingSessionIds || it.session.id in retainInactiveSessionIds) }
         val retainedIds = retained.map { it.session.id }.toSet()
         val obsolete = owned.filter { it.session.id !in retainedIds }.map { it.session.id }
         // Do not truncate before the controller checks retry eligibility: an exhausted
@@ -215,7 +216,8 @@ internal object GlobalMixerCoverage {
                     it.groupValues[1].isEmpty() && normalRow?.matches(it.value) == true,
                     it.groupValues[8].toInt(16),
                     it.groupValues[9].toLong(16), it.groupValues[10].toInt(),
-                    Regex("\\s([A-Za-z])\\s+0x([0-9a-fA-F]+)\\s").find(it.value)!!.groupValues[2].toLong(16),
+                    (Regex("\\s([A-Za-z])\\s+0x([0-9a-fA-F]+)\\s").find(it.value)
+                        ?: throw IllegalArgumentException("Unsupported track state")).groupValues[2].toLong(16),
                     Regex("\\sP\\s+0x").containsMatchIn(it.value))
             }.toList()
             require(tracks.size == total && tracks.count { it.active } == active)

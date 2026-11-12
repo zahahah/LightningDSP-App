@@ -2,7 +2,8 @@ package lightning.dsp.session.dump.data
 
 import lightning.dsp.model.AudioSessionDumpEntry
 
-data class AudioServiceDump(override val sessions: HashMap<Int /* sid */, AudioSessionDumpEntry>) :
+data class AudioServiceDump(override val sessions: HashMap<Int /* sid */, AudioSessionDumpEntry>,
+    override val ownerRefs: Set<SessionOwnerRef>? = null) :
     ISessionInfoDump
 {
     override fun toString(): String {

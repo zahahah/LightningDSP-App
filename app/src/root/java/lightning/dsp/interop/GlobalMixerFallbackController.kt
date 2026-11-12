@@ -40,6 +40,13 @@ internal class GlobalMixerFallbackController(
     context: Context,
     private val shouldRun: () -> Boolean,
 ) : AutoCloseable {
+    private companion object {
+        // Playback/device callbacks trigger prompt reconciliation. This is only a
+        // lost-callback safety check, and each pass reads two full system dumps twice.
+        const val ACTIVE_RECONCILE_INTERVAL_MS = 10_000L
+        const val SESSION_PREPLAY_IDLE_GRACE_MS = 1_500L
+    }
+
     private val app = context.applicationContext as MainApplication
     private val audio = app.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val handler = Handler(Looper.getMainLooper())
@@ -52,6 +59,7 @@ internal class GlobalMixerFallbackController(
     private var revision = 0L
     private var excludedUids: Set<Int> = emptySet()
     private var closed = false
+    private val closedAndDrained = CompletableDeferred<Boolean>()
     private var poll = false
     private var retryNotBefore = 0L
     private var lease: Long? = null
@@ -81,21 +89,61 @@ internal class GlobalMixerFallbackController(
         override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>?) = requestCheck()
         override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>?) = requestCheck()
     }
-    private data class Preparation(val uid: Int, val expires: Long, val done: (Boolean) -> Unit)
+    private data class PreparationWaiter(val deadline: Long, val done: (Boolean) -> Unit)
+    private class Preparation(
+        val uid: Int,
+        var expires: Long,
+        val sessionPlayback: Boolean,
+        done: (Boolean) -> Unit,
+        deadline: Long,
+    ) {
+        val waiters = mutableListOf(PreparationWaiter(deadline, done))
+        var timeout: Runnable? = null
+    }
     private val preparations = mutableMapOf<Int, Preparation>()
     private val neverStarted = mutableMapOf<Int, Long>()
-    private val preparationHandler: (Int, Int, Long, (Boolean) -> Unit) -> Unit = { uid, id, deadline, done ->
+    private val preparationHandler: (Int, Int, Long, Boolean, (Boolean) -> Unit) -> Unit = { uid, id, deadline, sessionPlayback, done ->
         handler.post {
-            if (deadline <= SystemClock.elapsedRealtime() || closed || !shouldRun() || !AAudioCompatibilityOption.requested(app) ||
-                preparations.size >= 2 || id in preparations || preparations.values.any { it.uid == uid }) done(false)
+            val requestEnabled = if (sessionPlayback)
+                !app.isGlobalMode && KeepEffectsReadyOption.requested(app)
+            else AAudioCompatibilityOption.requested(app)
+            val now = SystemClock.elapsedRealtime()
+            val existing = preparations[id]
+            if (deadline <= now || closed || !shouldRun() || !requestEnabled) done(false)
+            else if (existing != null) {
+                // One Android session can be started by several tracks. Coalesce duplicate
+                // requests rather than rejecting every later session from the same app.
+                if (existing.uid == uid && existing.sessionPlayback == sessionPlayback && existing.expires > now) {
+                    existing.waiters += PreparationWaiter(deadline, done)
+                    existing.expires = maxOf(existing.expires, deadline)
+                    schedulePreparationTimeout(id, existing)
+                } else done(false)
+            } else if (preparations.size >= 2) done(false)
             else {
-                val pending = Preparation(uid, deadline, done)
+                val pending = Preparation(uid, deadline, sessionPlayback, done, deadline)
                 preparations[id] = pending
-                handler.postDelayed({
-                    if (preparations[id] === pending) { preparations.remove(id); done(false) }
-                }, maxOf(0, deadline - SystemClock.elapsedRealtime()))
+                schedulePreparationTimeout(id, pending)
                 requests.trySend(Unit)
             }
+        }
+    }
+
+    private fun schedulePreparationTimeout(id: Int, pending: Preparation) {
+        pending.timeout?.let(handler::removeCallbacks)
+        val timeout = Runnable {
+            if (preparations[id] === pending) finishPreparation(id, pending, false)
+        }
+        pending.timeout = timeout
+        handler.postDelayed(timeout, maxOf(0L, pending.expires - SystemClock.elapsedRealtime()))
+    }
+
+    private fun finishPreparation(id: Int, pending: Preparation, prepared: Boolean) {
+        if (preparations[id] !== pending) return
+        preparations.remove(id)
+        pending.timeout?.let(handler::removeCallbacks)
+        val now = SystemClock.elapsedRealtime()
+        pending.waiters.forEach { waiter ->
+            runCatching { waiter.done(prepared && waiter.deadline > now) }
         }
     }
     private val worker: Job
@@ -106,7 +154,7 @@ internal class GlobalMixerFallbackController(
         audio.registerAudioDeviceCallback(devicesCallback, handler)
         worker = scope.launch {
             while (!closed) {
-                if (poll) withTimeoutOrNull(2_000) { requests.receive() } else requests.receive()
+                if (poll) withTimeoutOrNull(ACTIVE_RECONCILE_INTERVAL_MS) { requests.receive() } else requests.receive()
                 if (closed) break
                 delay(maxOf(75L, retryNotBefore - SystemClock.elapsedRealtime()))
                 try {
@@ -151,10 +199,13 @@ internal class GlobalMixerFallbackController(
 
     fun hasOwnedSessions(): Boolean = owned.isNotEmpty()
 
-    private fun admissionCurrent(target: GlobalMixerCoverage.Session, snapshot: GlobalMixerCoverage.Snapshot): Boolean =
-        target.id in snapshot.playingSessionIds || preparations[target.id]?.let {
-            CompatibilityPreparationAdmission.current(target.uid, it.uid, it.expires, SystemClock.elapsedRealtime())
-        } == true
+    private fun admissionCurrent(target: GlobalMixerCoverage.Session, snapshot: GlobalMixerCoverage.Snapshot): Boolean {
+        val pending = preparations[target.id] ?: return target.id in snapshot.playingSessionIds
+        if (pending.uid != target.uid) return false
+        return target.id in snapshot.playingSessionIds ||
+            (CompatibilityPreparationAdmission.current(target.uid, pending.uid, pending.expires, SystemClock.elapsedRealtime()) &&
+                (!pending.sessionPlayback || (!app.isGlobalMode && KeepEffectsReadyOption.requested(app))))
+    }
 
     private fun baseline() = (app.rootSessionDatabase.sessionList[0] as? RemoteEffectSession)?.effect
     private fun current(expected: Long, global: LightningDspRemoteEngine?) =
@@ -188,12 +239,14 @@ internal class GlobalMixerFallbackController(
         }
         neverStarted.keys.removeAll(snapshot.playingSessionIds)
         val expiredIdle = neverStarted.filterValues { it <= SystemClock.elapsedRealtime() }.keys.toList()
-        remove(expiredIdle)
+        remove(expiredIdle.filter { id ->
+            val session = owned[id]?.session ?: return@filter true
+            app.isGlobalMode || !app.rootSessionDatabase.shouldRetainUnifiedSupplement(id, session.uid)
+        })
         expiredIdle.forEach(neverStarted::remove)
         inspectedPreparations.forEach { (id, pending) ->
             if (preparations[id] === pending && !snapshot.reason.startsWith("Topology changing") && snapshot.targets.none { it.id == id && it.uid == pending.uid } && id !in owned) {
-                preparations.remove(id)
-                pending.done(false)
+                finishPreparation(id, pending, false)
             }
         }
         poll = snapshot.activeSessions > 0 || owned.isNotEmpty()
@@ -204,10 +257,18 @@ internal class GlobalMixerFallbackController(
         remove(disabledOwned)
         // Withdraw before adding anything. A global chain reserves its actual output even
         // when the framework suspended it due to a positive-session effect.
+        val retainInactiveSessionIds = if (app.isGlobalMode) {
+            snapshot.retainableSessions.mapTo(mutableSetOf()) { it.id }
+        } else {
+            snapshot.retainableSessions.filter {
+                app.rootSessionDatabase.shouldRetainUnifiedSupplement(it.id, it.uid)
+            }.mapTo(mutableSetOf()) { it.id }
+        } + preparations.filter { (id, request) -> request.expires > SystemClock.elapsedRealtime() &&
+            snapshot.retainableSessions.any { it.id == id && it.uid == request.uid } }.keys
         val plan = GlobalMixerCoverage.reconcile(snapshot, owned.values.map {
             GlobalMixerCoverage.OwnedAttachment(it.session, it.effectId,
                 it.engine.canControlEndpoint() && it.session.uid !in excludedUids)
-        }, excludedUid = android.os.Process.myUid()).let { coverage ->
+        }, excludedUid = android.os.Process.myUid(), retainInactiveSessionIds = retainInactiveSessionIds).let { coverage ->
             coverage.copy(newTargets = coverage.newTargets.filter {
                 it.uid !in excludedUids && isAppDspEnabled(it.uid)
             })
@@ -261,7 +322,14 @@ internal class GlobalMixerFallbackController(
                 continue
             }
             owned[target.id] = Owned(target, engine, id, reserved)
-            if (target.id in preparations) neverStarted[target.id] = SystemClock.elapsedRealtime() + 10_000
+            preparations[target.id]?.let { request ->
+                val grace = if (request.sessionPlayback) SESSION_PREPLAY_IDLE_GRACE_MS else 10_000L
+                neverStarted[target.id] = SystemClock.elapsedRealtime() + grace
+                handler.postDelayed({
+                    if (!closed && neverStarted[target.id]?.let { it <= SystemClock.elapsedRealtime() } == true)
+                        requests.trySend(Unit)
+                }, grace)
+            }
             diagnosticPhase = "preparation"
             val prepared = engine.prepareSupplemental(generation)
             if (!prepared || !current(expected, global) || !admissionCurrent(target, before) || DspDesiredState.current() != generation) {
@@ -293,8 +361,9 @@ internal class GlobalMixerFallbackController(
                 diagnose("verification_failed", "enabled unsuspended attachment not verified on current target; removing")
                 remove(listOf(target.id))
             } else {
-                preparations.remove(target.id)?.let { request ->
-                    request.done(request.uid == target.uid && request.expires > SystemClock.elapsedRealtime())
+                preparations[target.id]?.let { request ->
+                    finishPreparation(target.id, request,
+                        request.uid == target.uid && request.expires > SystemClock.elapsedRealtime())
                 }
                 diagnose("attachment_observed", "enabled unsuspended supplemental attachment observed in ${SystemClock.elapsedRealtime() - startedAt} ms; audible processing unverified")
             }
@@ -500,9 +569,13 @@ internal class GlobalMixerFallbackController(
         }
     }
 
+    /** A successful result is required before another engine owner is admitted. */
+    suspend fun awaitClosed(timeoutMillis: Long): Boolean =
+        withTimeoutOrNull(timeoutMillis) { closedAndDrained.await() } == true
+
     override fun close() {
         if (CompatibilityPreparationBridge.handler === preparationHandler) CompatibilityPreparationBridge.handler = null
-        preparations.values.forEach { it.done(false) }
+        preparations.toMap().forEach { (id, pending) -> finishPreparation(id, pending, false) }
         preparations.clear()
         if (closed) return
         closed = true
@@ -521,6 +594,7 @@ internal class GlobalMixerFallbackController(
                 delay(300)
             }
             if (lease != null) Timber.w("Coverage owner closed with native safely held; recovery requires successful fence or process restart")
+            closedAndDrained.complete(lease == null && owned.isEmpty())
             requests.close()
             scope.cancel()
         }

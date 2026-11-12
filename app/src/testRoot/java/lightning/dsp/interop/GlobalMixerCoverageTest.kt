@@ -183,6 +183,11 @@ class GlobalMixerCoverageTest {
         assertTrue(snapshot.reason, snapshot.reason.contains("fast-track session guards (software effects unavailable on fast path)=1"))
     }
     @Test fun nonzeroTrackFlagsAreExcluded() { assertTrue(inspect(listOf(Playback(flags = "001"))).targets.isEmpty()) }
+    @Test fun unsupportedTrackStateFailsClosedWithoutThrowing() {
+        val snapshot = inspect(listOf(Playback(state = "1")))
+        assertFalse(snapshot.known)
+        assertTrue(snapshot.targets.isEmpty())
+    }
     @Test fun bitPerfectTrackIsExcluded() { assertTrue(inspect(listOf(Playback(bitPerfect = true))).targets.isEmpty()) }
     @Test fun noTargetDiagnosticsDistinguishTrackAndOutputGuardsWithoutIdentities() {
         val track = inspect(listOf(Playback(flags = "001")))
@@ -459,7 +464,8 @@ class GlobalMixerCoverageTest {
             extra = listOf(effect(31, 361)), owned = setOf(31))
         listOf(foreground, transition, paused, foreground).forEach { snapshot ->
             assertTrue(snapshot.reason, snapshot.retainsAttachment(owner.session, 31))
-            assertTrue(GlobalMixerCoverage.reconcile(snapshot, listOf(owner)).obsolete.isEmpty())
+            assertTrue(GlobalMixerCoverage.reconcile(snapshot, listOf(owner),
+                retainInactiveSessionIds = setOf(361)).obsolete.isEmpty())
         }
         assertTrue(transition.targets.isEmpty())
         assertTrue(inspect(tracks = listOf(Playback(active = true, state = "P", flags = "200"))).targets.isEmpty())
@@ -487,12 +493,20 @@ class GlobalMixerCoverageTest {
             extra = listOf(effect(31, 361)), owned = setOf(31))
         val owner = GlobalMixerCoverage.OwnedAttachment(foreground.targets.single(), 31, true)
         listOf(foreground, background, foreground).forEach { snapshot ->
-            val plan = GlobalMixerCoverage.reconcile(snapshot, listOf(owner))
+            val plan = GlobalMixerCoverage.reconcile(snapshot, listOf(owner), retainInactiveSessionIds = setOf(361))
             assertTrue(plan.obsolete.isEmpty())
             assertTrue(plan.newTargets.isEmpty())
             assertTrue(snapshot.retainsAttachment(owner.session, owner.effectId))
         }
         assertEquals(foreground.signature, background.signature)
+    }
+    @Test fun pausedOwnedSessionIsRemovedWithoutAnExplicitIdleRetentionPolicy() {
+        val paused = inspect(tracks = listOf(Playback(active = false, flags = "600")),
+            extra = listOf(effect(31, 361)), owned = setOf(31))
+        val owner = GlobalMixerCoverage.OwnedAttachment(paused.retainableSessions.single(), 31, true)
+        val plan = GlobalMixerCoverage.reconcile(paused, listOf(owner))
+        assertEquals(listOf(361), plan.obsolete)
+        assertTrue(plan.newTargets.isEmpty())
     }
     @Test fun reconciliationRemovesInvalidOwnersBeforeConsideringNewTargets() {
         val foreground = inspect(extra = listOf(effect(31, 361)), owned = setOf(31))
@@ -524,7 +538,7 @@ class GlobalMixerCoverageTest {
         assertEquals(2, owners.size)
         assertEquals(listOf(362), snapshot.targets.map { it.id })
         val plan = GlobalMixerCoverage.reconcile(snapshot, owners)
-        assertTrue(plan.obsolete.isEmpty())
+        assertEquals(listOf(361), plan.obsolete)
         assertTrue(plan.newTargets.isEmpty())
     }
     @Test fun retainedPausedOwnersConsumeCapacityAndDoNotBlockOtherActiveOwners() {
@@ -535,12 +549,14 @@ class GlobalMixerCoverageTest {
         val owners = snapshot.retainableSessions.map { GlobalMixerCoverage.OwnedAttachment(it, it.id + 100, true) }
         assertEquals(8, owners.size)
         assertEquals(listOf(90), snapshot.targets.map { it.id })
-        val full = GlobalMixerCoverage.reconcile(snapshot, owners)
+        val retainedIds = (1..8).toSet()
+        val full = GlobalMixerCoverage.reconcile(snapshot, owners, retainInactiveSessionIds = retainedIds)
         assertTrue(full.obsolete.isEmpty())
         assertTrue(full.newTargets.isEmpty())
-        val space = GlobalMixerCoverage.reconcile(snapshot, owners.dropLast(1))
+        val space = GlobalMixerCoverage.reconcile(snapshot, owners.dropLast(1), retainInactiveSessionIds = retainedIds)
         assertEquals(listOf(90), space.newTargets.map { it.id })
-        val self = GlobalMixerCoverage.reconcile(snapshot, owners.dropLast(1), excludedUid = active.uid)
+        val self = GlobalMixerCoverage.reconcile(snapshot, owners.dropLast(1), excludedUid = active.uid,
+            retainInactiveSessionIds = retainedIds)
         assertTrue(self.newTargets.isEmpty())
     }
     @Test fun exhaustedOrFailedCandidateCannotStarveLaterCandidateOfLastSlot() {

@@ -16,7 +16,6 @@ import lightning.dsp.interop.BenchmarkManager
 import lightning.dsp.interop.AAudioCompatibilityOption
 import lightning.dsp.interop.AAudioSessionReuseOption
 import lightning.dsp.interop.AAudioCompatibilityResult
-import lightning.dsp.interop.KeepEffectsReadyOption
 import lightning.dsp.interop.PostGainRangePolicy
 import lightning.dsp.preference.MaterialSeekbarPreference
 import lightning.dsp.preference.MaterialSwitchPreference
@@ -43,11 +42,13 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
     private val sessionMode by lazy {
         findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_processing_session_option))
     }
+    private val appMixerMode by lazy {
+        findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_processing_app_mixer_option))
+    }
     private val allMixers by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_all_mixers)) }
     private val enhancedMode by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_enhanced_processing)) }
     private val audioCompat by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_aaudio_compat)) }
     private val aaudioSessionReuse by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_aaudio_reuse_session)) }
-    private val keepEffectsReady by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_keep_effects_ready)) }
     private val enhancedModeInfo by lazy { findPreference<Preference>(getString(R.string.key_audioformat_enhanced_processing_info)) }
     private val benchmark by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_optimization_benchmark)) }
     private val benchmarkRefresh by lazy { findPreference<Preference>(getString(R.string.key_audioformat_optimization_refresh)) }
@@ -92,7 +93,6 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
                             preference.isEnabled = true
                             (preference as MaterialSwitchPreference).isChecked = enabled
                             aaudioSessionReuse?.isEnabled = enabled
-                            updateKeepEffectsReadyOption()
                             if (isAdded) requireContext().toast(R.string.audio_format_aaudio_compat_restart)
                         }
                         AAudioCompatibilityResult.FAILED -> {
@@ -140,7 +140,6 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
                         AAudioCompatibilityResult.APPLIED -> {
                             preference.isEnabled = AAudioCompatibilityOption.requested(appContext)
                             (preference as MaterialSwitchPreference).isChecked = enabled
-                            updateKeepEffectsReadyOption()
                             if (isAdded) requireContext().toast(R.string.audio_format_aaudio_reuse_session_restart)
                         }
                         AAudioCompatibilityResult.FAILED -> {
@@ -152,25 +151,6 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
                             if (isAdded) requireContext().toast(R.string.audio_format_aaudio_compat_unknown)
                         }
                     }
-                }
-                false
-            }
-        }
-
-        keepEffectsReady?.apply {
-            val appContext = requireContext().applicationContext
-            isChecked = KeepEffectsReadyOption.requested(appContext)
-            updateKeepEffectsReadyOption()
-            setOnPreferenceChangeListener { preference, newValue ->
-                val enabled = newValue as Boolean
-                preference.isEnabled = false
-                lifecycleScope.launch {
-                    val result = withContext(Dispatchers.IO) { KeepEffectsReadyOption.set(appContext, enabled) }
-                    if (result == AAudioCompatibilityResult.APPLIED) {
-                        (preference as MaterialSwitchPreference).isChecked = enabled
-                    } else if (isAdded) requireContext().toast(if (result == AAudioCompatibilityResult.FAILED)
-                        R.string.audio_format_aaudio_compat_failed else R.string.audio_format_aaudio_compat_unknown)
-                    if (isAdded) updateKeepEffectsReadyOption()
                 }
                 false
             }
@@ -209,6 +189,10 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
         }
         sessionMode?.setOnPreferenceChangeListener { _, newValue ->
             setProcessingMode(!(newValue as Boolean))
+            false
+        }
+        appMixerMode?.setOnPreferenceChangeListener { _, newValue ->
+            setProcessingMode(globalEnabled = false, mixerEnabled = newValue as Boolean)
             false
         }
         enhancedMode?.setOnPreferenceChangeListener { _, newValue ->
@@ -281,12 +265,13 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
     }
 
     private fun updateProcessingMode(globalEnabled: Boolean) {
-        globalMode?.isChecked = globalEnabled
-        sessionMode?.isChecked = !globalEnabled
-        updateKeepEffectsReadyOption()
-        enhancedMode?.isVisible = isRoot() && !globalEnabled
-        enhancedModeInfo?.isVisible = isRoot() && !globalEnabled
-        if (isRoot() && !globalEnabled) enhancedMode?.apply {
+        val mixerEnabled = preferences.preferences.getBoolean(getString(R.string.key_audioformat_processing_app_mixer), false)
+        globalMode?.isChecked = globalEnabled && !mixerEnabled
+        sessionMode?.isChecked = !globalEnabled && !mixerEnabled
+        appMixerMode?.isChecked = mixerEnabled
+        enhancedMode?.isVisible = isRoot() && !globalEnabled && !mixerEnabled
+        enhancedModeInfo?.isVisible = isRoot() && !globalEnabled && !mixerEnabled
+        if (isRoot() && !globalEnabled && !mixerEnabled) enhancedMode?.apply {
             val permission = requireContext().hasDumpPermission()
             // Display unavailability without changing the user's saved preference.
             isPersistent = false
@@ -299,24 +284,22 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
             // Coverage supplements outputs in Global Mode and unreported sessions
             // in Session Mode; the stored opt-in remains shared between the modes.
             isVisible = isRoot()
-            isEnabled = isRoot()
+            isEnabled = isRoot() && !mixerEnabled
         }
     }
 
-    private fun updateKeepEffectsReadyOption() {
-        keepEffectsReady?.apply {
-            isVisible = isRoot() && !preferences.get<Boolean>(R.string.key_audioformat_processing)
-            isEnabled = isVisible
-            isChecked = KeepEffectsReadyOption.requested(requireContext().applicationContext)
-        }
-    }
-
-    private fun setProcessingMode(globalEnabled: Boolean) {
+    private fun setProcessingMode(globalEnabled: Boolean, mixerEnabled: Boolean = false) {
         val previousMode = preferences.get<Boolean>(R.string.key_audioformat_processing)
-        if (previousMode != globalEnabled) {
-            preferences.set(R.string.key_audioformat_processing, globalEnabled)
+        val mixerKey = getString(R.string.key_audioformat_processing_app_mixer)
+        val previousMixer = preferences.preferences.getBoolean(mixerKey, false)
+        if (previousMode != globalEnabled || previousMixer != mixerEnabled) {
+            preferences.preferences.edit()
+                .putBoolean(getString(R.string.key_audioformat_processing), globalEnabled)
+                .putBoolean(mixerKey, mixerEnabled).apply()
             if (!globalEnabled) requireContext().requestIgnoreBatteryOptimizations()
-            RootAudioProcessorService.updateGlobalMode(requireContext(), globalEnabled)
+            if (mixerEnabled || (previousMixer && !globalEnabled))
+                RootAudioProcessorService.startServiceEnhanced(requireContext())
+            else RootAudioProcessorService.updateGlobalMode(requireContext(), globalEnabled)
         }
         updateProcessingMode(globalEnabled)
     }

@@ -351,14 +351,18 @@ class MainActivity : BaseActivity() {
 
         sendLocalBroadcast(Intent(Constants.ACTION_PREFERENCES_UPDATED))
 
-        if(isRoot() && app.isEnhancedProcessing) {
-            if(!hasDumpPermission()) {
+        val shouldStartRootProcessor = isRoot() && (
+            app.isEnhancedProcessing ||
+                (app.isAppMixerMode && prefsApp.get(R.string.key_powered_on))
+            )
+        if (shouldStartRootProcessor) {
+            if (app.isEnhancedProcessing && !hasDumpPermission()) {
                 Timber.e("Dump permission for enhanced processing lost")
                 toast(getString(R.string.enhanced_processing_missing_perm))
                 prefsApp.set(R.string.key_audioformat_enhanced_processing, false)
             }
             else {
-                Timber.d("Launching service due to enhanced processing")
+                Timber.d("Launching service for active root audio processing mode")
                 RootAudioProcessorService.startServiceEnhanced(this)
             }
         }

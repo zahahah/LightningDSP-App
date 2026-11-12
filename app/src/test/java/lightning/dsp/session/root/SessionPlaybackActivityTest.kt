@@ -65,6 +65,20 @@ class SessionPlaybackActivityTest {
         assertFalse(policy.isPlaying(42, 10322, "player"))
     }
 
+    @Test fun missingPlayingSessionIsBypassedAndRetainedOnlyUntilConfirmedAbsent() {
+        val policy = SessionPlaybackActivity(graceMillis = 1_000)
+        policy.update(mapOf(42 to entry(true)), 0)
+        policy.update(emptyMap(), 100, setOf(42))
+        assertFalse(policy.shouldProcess(42, 10322, "player"))
+        assertTrue(policy.awaitingMissingConfirmation(42, 10322, "player"))
+        assertFalse(policy.awaitingMissingConfirmation(42, 10323, "player"))
+        assertTrue(policy.needsConfirmation)
+        policy.update(emptyMap(), 1_100, setOf(42))
+        assertFalse(policy.awaitingMissingConfirmation(42, 10322, "player"))
+        assertFalse(policy.needsConfirmation)
+        assertEquals(mapOf(42 to (10322 to "player")), policy.confirmedInactiveSessions())
+    }
+
     @Test fun failureHidesUnverifiedPlaybackWithoutInventingInactivityOrErasingEvidence() {
         val policy = SessionPlaybackActivity()
         policy.update(mapOf(42 to entry(true)), 0)

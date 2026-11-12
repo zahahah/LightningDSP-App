@@ -1,13 +1,16 @@
 # App Mixer Mode — isolated POC design and blocker
 
-**Status: UI/data prototype implemented; audio mixer/effect validation remains HARD BLOCKED. No route or effect was created.**
+**Status: an experimental supervised relay mode is implemented; device routing and effect coverage remain unproven.**
 
-The POC adds a visible selection-only prototype to the Root Volume Manager. Its
-preferences are stored under the isolated `app_mixer_mode_poc` namespace, default
-every app to included, and persist excluded package names when toggled. It never
-calls the existing per-session DSP toggle or any routing/policy API. Global Mode
-and Session Mode remain exactly as previously configured; the new selection is not
-connected to a DSP backend and is not an audio-processing claim.
+The interface is a third mutually exclusive mode in Audio Processing; existing
+per-app power buttons in Volume Manager control its UID selection. This document records an earlier output-routing
+hypothesis, not a claim that the mode currently works. Previously saved prototype
+preferences are not deleted from user devices.
+
+> Historical note: the analysis below concerns the earlier direct-output-mixer
+> hypothesis. The implemented experiment instead uses a LOOP_BACK relay; the
+> historical proposed manual gate and its acceptance matrix are not a description
+> of current service behavior. Neither path has device validation.
 
 ## Question and hypothesis
 
@@ -89,8 +92,7 @@ background service, auto-registration, default-on path, or production integratio
 | LightningDSP binds to that exact output | Effect chain reports same output identity; selected-only signal change; effect remains disabled until explicit action | **Not tested — API mismatch / hard blocked** |
 | Global and Session remain unchanged | Compare persisted settings and active effect sessions before/after; no global/session engine mutation | **Not tested — no runtime actions performed** |
 
-The selection UI and preference transitions are implemented and unit-tested. The
-audio claims in this matrix remain unproven.
+The separate selection UI has been removed. The audio claims in this matrix remain unproven.
 
 ## Requirements to unblock
 
@@ -128,11 +130,7 @@ validate the exact API level on the eventual test image before claiming support.
 
 ## Scope and verification record
 
-The experimental Volume Manager entry point and preference model are included in
-the Root app source set so the UI can be compiled and iterated on. The UI writes
-only the isolated prototype preference; it does not call app DSP power, alter the
-Global/Session setting, register AudioPolicy, route audio, or attach effects. No
-device state or audio path was touched. Unit tests cover default inclusion and
-exclude/reinclude state transitions. This is a functional UI/data preference
-prototype only: it does not exclude audio from Global Mode or prove output/effect
-isolation. Runtime claims remain unverified pending the gated test above.
+The separate Volume Manager entry point, preference model, and its unit test have
+been removed. Existing per-app DSP controls and Global/Session processing are
+untouched. The manual routing experiment is described separately in
+`ROUTING-EXPERIMENT.md`; it has not been validated on a device.

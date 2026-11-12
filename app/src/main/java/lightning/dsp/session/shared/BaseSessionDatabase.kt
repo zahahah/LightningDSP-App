@@ -10,6 +10,7 @@ import timber.log.Timber
 abstract class BaseSessionDatabase(protected val context: Context) {
 
     val sessionList = hashMapOf<Int, IEffectSession>()
+    internal val sessionAdmission = SessionAdmissionGate(this)
     private var isDisposing = false
     private val changeCallbacks = mutableListOf<OnSessionChangeListener>()
     private var excludedUids = arrayOf<Int>()
@@ -31,13 +32,14 @@ abstract class BaseSessionDatabase(protected val context: Context) {
         clearSessions()
     }
 
-    fun clearSessions(){
+    fun clearSessions() = sessionAdmission.runLocked {
         sessionList.forEach { (_, session) -> onSessionRemoved(session) }
         sessionList.clear()
     }
 
-    fun update(dump: ISessionInfoDump)
-    {
+    fun update(dump: ISessionInfoDump) = sessionAdmission.runLocked { updateLocked(dump) }
+
+    private fun updateLocked(dump: ISessionInfoDump) {
         if(isDisposing) {
             Timber.d("update: SessionDatabase is disposing; ignoring dump")
             return
@@ -73,7 +75,11 @@ abstract class BaseSessionDatabase(protected val context: Context) {
         removedSessions.forEach { removeSession(it.key) }
     }
 
-    fun addSession(sid: Int, uid: Int, packageName: String, replace: Boolean = false){
+    fun addSession(sid: Int, uid: Int, packageName: String, replace: Boolean = false) {
+        sessionAdmission.runIfAllowed { addSessionAdmitted(sid, uid, packageName, replace) }
+    }
+
+    private fun addSessionAdmitted(sid: Int, uid: Int, packageName: String, replace: Boolean) {
         if(!shouldAddSession(sid, uid, packageName)) {
             return
         }
@@ -101,7 +107,7 @@ abstract class BaseSessionDatabase(protected val context: Context) {
         changeCallbacks.forEach { it.onSessionChanged(sessionList) }
     }
 
-    fun removeSession(sid: Int) {
+    fun removeSession(sid: Int) = sessionAdmission.runLocked {
         sessionList[sid]?.let { it ->
             Timber.d("Removed session: session ${sid}; data: $it")
             onSessionRemoved(it)
@@ -110,7 +116,7 @@ abstract class BaseSessionDatabase(protected val context: Context) {
         }
     }
 
-    fun setExcludedUids(uids: Array<Int>) {
+    fun setExcludedUids(uids: Array<Int>) = sessionAdmission.runLocked {
         excludedUids = uids
 
         val excludedSessions = sessionList.filter {
