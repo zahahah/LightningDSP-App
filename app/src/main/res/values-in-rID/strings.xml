@@ -510,9 +510,8 @@
     <string name="app_compat_instruction_exclude">Untuk langkah alternatif, anda bisa memilih \'Kecualikan\' untuk mengecualikan aplikasi yang tidak didukung.</string>
     <string name="app_compat_unknown_pkg_name">Nama package tidak dikenal</string>
     <!-- Root: Library load failure -->
-    <string name="load_fail_header">Modul magisk tidak terpasang</string>
+
     <string name="load_fail_card_title">Gagal memuat LightningDSP</string>
-    <string name="load_fail_card">Pasang modul magisk LightningDSP dan mulai ulang perangkat Android anda untuk menggunakan aplikasi. Mungkin anda juga perlu memasang ulang aplikasi setelah memulai ulang.</string>
     <string name="load_fail_rootless_card_title">Mencari alternatif rootless?</string>
     <string name="load_fail_rootless_card">Jenis LightningDSP ini dirancang untuk perangkat yang sudah di modifikasi atau di-root. Alternatif untuk perangkat non-root yang punya beberapa keterbatasan juga tersedia. Tekan untuk melihat detail.</string>
     <string name="load_fail_arch_card_title">Modul sudah terpasang?</string>

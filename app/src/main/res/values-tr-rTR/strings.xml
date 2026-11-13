@@ -493,9 +493,8 @@
     <string name="app_compat_instruction_exclude">Alternatif olarak, uyumsuz uygulamayı ses işlemenin dışında tutarak bu sorunu atlamak için \'Hariç Tut\'u seçin.</string>
     <string name="app_compat_unknown_pkg_name">Bilinmeyen paket adı</string>
     <!-- Root: Library load failure -->
-    <string name="load_fail_header">Magisk modülü kurulu değil</string>
+
     <string name="load_fail_card_title">LightningDSP yüklenemedi</string>
-    <string name="load_fail_card">Bu uygulamayı kullanmak için lütfen LightningDSP magisk modülünü kurun ve Android cihazınızı yeniden başlatın. Ayrıca yeniden başlattıktan sonra bu uygulamayı yeniden yüklemeniz gerekebilir.</string>
     <string name="load_fail_rootless_card_title">Köksüz bir alternatif mi arıyorsunuz?</string>
     <string name="load_fail_rootless_card">LightningDSP\'nin bu çeşidi, köklü/değiştirilmiş bir cihazla kullanılmak üzere tasarlanmıştır. Bazı sınırlamalara sahip kök olmayan bir alternatif de mevcuttur. Ayrıntılar için buraya dokunun.</string>
     <string name="load_fail_arch_card_title">Modül zaten kurulu mu?</string>

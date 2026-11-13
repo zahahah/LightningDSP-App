@@ -513,9 +513,8 @@
     <string name="app_compat_instruction_exclude">または、互換性のないアプリをオーディオ処理から除外して、この問題を回避するには、「除外」を選択します。</string>
     <string name="app_compat_unknown_pkg_name">不明なパッケージ名</string>
     <!-- Root: Library load failure -->
-    <string name="load_fail_header">Magiskモジュールがインストールされていません</string>
+
     <string name="load_fail_card_title">LightningDSP の読み込みに失敗</string>
-    <string name="load_fail_card">このアプリを使用するには、LightningDSP Magisk モジュールをインストールして、Android デバイスを再起動してください。再起動後もこのアプリを再インストールする必要があります。</string>
     <string name="load_fail_rootless_card_title">ルート権限なしでの選択肢をお探しですか？</string>
     <string name="load_fail_rootless_card">LightningDSP のこのフレーバーは、ルート/変更されたデバイスと一緒に使用するように設計されています。 いくつかの制限がある non-root 代替も利用できます。詳細はここをタップしてください。</string>
     <string name="load_fail_arch_card_title">モジュールは既にインストールされていますか？</string>

@@ -4,9 +4,9 @@ object AndroidConfig {
     const val compileSdk = 35
     const val targetSdk = 34
 
-    const val versionName = "1.7.1-focused-session-test-50"
+    const val versionName = "1.7.1-focused-session-test-51"
     // Root flavor adds four; test builds use monotonically increasing app codes.
-    const val versionCode = 135
+    const val versionCode = 136
 
     const val kotlinVersion = "2.1.0"
     const val kspVersion = "2.1.0-1.0.29"

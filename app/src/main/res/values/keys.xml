@@ -141,4 +141,5 @@
     <string name="key_limiter_release" translatable="false">limiter_release</string>
     <string name="key_output_postgain" translatable="false">output_postgain</string>
     <string name="key_output_extra_postgain" translatable="false">output_extra_postgain</string>
+    <string name="key_module_update_checks" translatable="false">module_update_checks</string>
 </resources>

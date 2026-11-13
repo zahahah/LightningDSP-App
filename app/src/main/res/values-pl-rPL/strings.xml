@@ -511,9 +511,8 @@ Graphic eq</string>
     <string name="app_compat_instruction_exclude">Alternatywnie, wybierz \"Wyklucz\", aby ominąć ten problem, wykluczając niekompatybilną aplikację z przetwarzania audio.</string>
     <string name="app_compat_unknown_pkg_name">Nieznana nazwa pakietu</string>
     <!-- Root: Library load failure -->
-    <string name="load_fail_header">Moduł Magisk nie jest zainstalowany</string>
+
     <string name="load_fail_card_title">Nie udało się załadować LightningDSP</string>
-    <string name="load_fail_card">Zainstaluj moduł magisk LightningDSP i zrestartuj urządzenie z systemem Android, aby korzystać z tej aplikacji. Może być również konieczne ponowne zainstalowanie tej aplikacji po ponownym uruchomieniu.</string>
     <string name="load_fail_rootless_card_title">Szukasz alternatywy bez roota?</string>
     <string name="load_fail_rootless_card">Ten aromat LightningDSP został zaprojektowany do stosowania z przyrządem zrootowanym/zmodyfikowanym. Dostępna jest również alternatywa bez roota z pewnymi ograniczeniami. Kliknij tutaj, aby uzyskać szczegóły.</string>
     <string name="load_fail_arch_card_title">Moduł jest już zainstalowany?</string>

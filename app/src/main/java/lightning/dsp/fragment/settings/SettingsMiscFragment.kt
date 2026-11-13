@@ -19,6 +19,7 @@ import lightning.dsp.utils.extensions.ContextExtensions.showAlert
 import lightning.dsp.utils.extensions.ContextExtensions.showYesNoAlert
 import lightning.dsp.utils.extensions.ContextExtensions.toast
 import lightning.dsp.utils.extensions.PermissionExtensions.hasProjectMediaAppOp
+import lightning.dsp.utils.isRoot
 import lightning.dsp.utils.isRootless
 import lightning.dsp.utils.preferences.Preferences
 import org.koin.android.ext.android.inject
@@ -39,6 +40,8 @@ class SettingsMiscFragment : SettingsBaseFragment() {
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         preferenceManager.sharedPreferencesName = Constants.PREF_APP
         setPreferencesFromResource(R.xml.app_misc_preferences, rootKey)
+
+        findPreference<Preference>(getString(R.string.key_module_update_checks))?.isVisible = isRoot()
 
         repairAssets?.setOnPreferenceClickListener {
             requireContext().assets.installPrivateAssets(requireContext(), force = true)

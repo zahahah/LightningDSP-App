@@ -166,7 +166,7 @@
     <!-- Compatibility issue activity -->
     <string name="app_compat_retry">Yritä uudelleen</string>
     <!-- Root: Library load failure -->
-    <string name="load_fail_header">Magisk-moduulia ei ole asennettu</string>
+
     <!-- Enhanced processing -->
     <string name="enhanced_processing_feature_unavailable">Ominaisuus ei ole käytettävissä</string>
     <!-- App list -->

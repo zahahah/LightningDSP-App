@@ -510,9 +510,8 @@
     <string name="app_compat_instruction_exclude">Als alternatief selecteer \'Uitsluiten\' om dit probleem te omzeilen door de niet-compatibele app uit te sluiten van audio-verwerking.</string>
     <string name="app_compat_unknown_pkg_name">Onbekende pakketnaam</string>
     <!-- Root: Library load failure -->
-    <string name="load_fail_header">Magisk module niet geïnstalleerd</string>
+
     <string name="load_fail_card_title">Laden LightningDSP mislukt</string>
-    <string name="load_fail_card">Installeer de LightningDSP Magisk module en herstart uw Android apparaat om deze toepassing te gebruiken. Het is mogelijk dat u deze app opnieuw moet installeren na het herstarten.</string>
     <string name="load_fail_rootless_card_title">Op zoek naar een root-loze alternatief?</string>
     <string name="load_fail_rootless_card">Deze smaak van LightningDSP is ontworpen om te worden gebruikt met een ge-root/gemodificeerd apparaat. Een niet-root alternatief met enkele beperkingen is ook beschikbaar. Tik hier voor details.</string>
     <string name="load_fail_arch_card_title">Module al geïnstalleerd?</string>

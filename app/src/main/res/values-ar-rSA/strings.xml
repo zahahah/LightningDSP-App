@@ -510,9 +510,8 @@
     <string name="app_compat_instruction_exclude">بدلاً من ذلك، حدد \'استبعاد\' لتجاوز هذه المشكلة عن طريق استبعاد التطبيق غير المتوافق من معالجة الصوت.</string>
     <string name="app_compat_unknown_pkg_name">اسم الحزمة غير معروف</string>
     <!-- Root: Library load failure -->
-    <string name="load_fail_header">لم يتم تثبيت وحدة Magisk</string>
+
     <string name="load_fail_card_title">فشل تحميل LightningDSP</string>
-    <string name="load_fail_card">الرجاء تثبيت وحدة Magisk و إعادة تشغيل جهاز Android الخاص بك لاستخدام هذا التطبيق. قد تحتاج أيضا إلى إعادة تثبيت هذا التطبيق بعد إعادة التشغيل.</string>
     <string name="load_fail_rootless_card_title">البحث عن بديل بلا جذر؟</string>
     <string name="load_fail_rootless_card">تم تصميم هذه النكهة من جيمس دي بي لاستخدامها مع جهاز جذري/معدل. يتوفر أيضا بديل غير جذري مع بعض القيود. انقر هنا للحصول على التفاصيل.</string>
     <string name="load_fail_arch_card_title">الوحدة مثبتة مسبقا؟</string>

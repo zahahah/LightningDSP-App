@@ -507,9 +507,8 @@
     <string name="app_compat_instruction_exclude">Případně zvolte „Vyloučit“ pro obejití tohoto problému vyloučením nekompatibilní aplikace ze zpracování zvuku.</string>
     <string name="app_compat_unknown_pkg_name">Neznámý název balíčku</string>
     <!-- Root: Library load failure -->
-    <string name="load_fail_header">Magisk modul není nainstalován</string>
+
     <string name="load_fail_card_title">Nepodařilo se načíst LightningDSP</string>
-    <string name="load_fail_card">Nainstalujte prosím magisk modul LightningDSP a restartujte zařízení Android, abyste mohli používat tuto aplikaci. Tuto aplikaci možná budete muset po restartování přeinstalovat.</string>
     <string name="load_fail_rootless_card_title">Hledáte alternativu bez potřeby rootu?</string>
     <string name="load_fail_rootless_card">Tato verze LightningDSP byla určena k použití s rootem/modifikovaným zařízením. K dispozici je také alternativa bez nutnosti rootu, ale s nějakými omezeními. Klepnutím sem zobrazíte podrobnosti.</string>
     <string name="load_fail_arch_card_title">Modul je již nainstalován?</string>

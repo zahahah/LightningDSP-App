@@ -8,6 +8,7 @@ import lightning.dsp.utils.Result
 import java.lang.IllegalStateException
 
 class UpdateManager(val context: Context) {
+    suspend fun checkModuleUpdate(enabled: Boolean = true): Pair<String, String>? = null
     fun getUpdateVersionInfo(): Pair<String, Int>? = throw IllegalStateException()
     suspend fun isUpdateAvailable(): Flow<Result<Boolean>> = throw IllegalStateException()
     fun installUpdate(context: Context): Nothing = throw IllegalStateException()

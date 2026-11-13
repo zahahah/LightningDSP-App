@@ -26,6 +26,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.core.content.getSystemService
 import androidx.core.view.isVisible
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.fragment.app.Fragment
 import androidx.preference.DialogPreference.TargetFragment
 import androidx.preference.Preference
@@ -372,6 +375,7 @@ class MainActivity : BaseActivity() {
         dspFragment.setUpdateCardOnClick { updateManager.installUpdate(this) }
         dspFragment.setUpdateCardOnCloseClick(::dismissUpdate)
         checkForUpdates()
+        if (isRoot()) checkForModuleUpdate()
 
         // Handle potential incoming file intent
         if(intent?.action == Intent.ACTION_VIEW) {
@@ -592,6 +596,37 @@ class MainActivity : BaseActivity() {
                 dialog.dismiss()
             }
             .show()
+    }
+
+    private fun checkForModuleUpdate() {
+        lifecycleScope.launch {
+            val release = updateManager.checkModuleUpdate(prefsApp.get(R.string.key_module_update_checks)) ?: return@launch
+            val preferences = getSharedPreferences("lightningdsp_module_updates", MODE_PRIVATE)
+            var shown = false
+            lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                if (!shown && prefsApp.get<Boolean>(R.string.key_module_update_checks) && release.first !in preferences.getStringSet("skipped_releases", emptySet()).orEmpty() &&
+                    !isFinishing && !isDestroyed && !supportFragmentManager.isStateSaved) {
+                    shown = true
+                    MaterialAlertDialogBuilder(this@MainActivity)
+                        .setTitle(R.string.module_update_title)
+                        .setMessage(getString(R.string.module_update_message, release.second))
+                        .setNegativeButton(R.string.module_update_skip) { _, _ ->
+                            val skipped = preferences.getStringSet("skipped_releases", emptySet()).orEmpty() + release.first
+                            preferences.edit().putStringSet("skipped_releases", skipped).apply()
+                        }
+                        .setPositiveButton(R.string.module_update_download) { _, _ ->
+                            try {
+                                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(
+                                    "https://github.com/zahahah/LightningDSP/releases/tag/${release.second}"
+                                )))
+                            } catch (_: ActivityNotFoundException) {
+                                toast(getString(R.string.module_update_no_browser))
+                            }
+                        }
+                        .show()
+                }
+            }
+        }
     }
 
     private fun checkForUpdates() {

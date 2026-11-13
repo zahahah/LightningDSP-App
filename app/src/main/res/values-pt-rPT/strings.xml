@@ -510,9 +510,10 @@
     <string name="app_compat_instruction_exclude">Em alternativa, selecione \'Excluir\' para ignorar este problema, excluindo a aplicação incompatível do processamento de áudio.</string>
     <string name="app_compat_unknown_pkg_name">Nome de pacote desconhecido</string>
     <!-- Root: Library load failure -->
-    <string name="load_fail_header">Módulo Magisk não está instalado</string>
-    <string name="load_fail_card_title">Falha ao carregar LightningDSP</string>
-    <string name="load_fail_card">Por favor, instale o módulo magisk do LightningDSP e reinicie o dispositivo Android para usar esta aplicação. Também pode precisar reinstalar esta aplicação depois de reiniciar.</string>
+
+    <string name="load_fail_card_title">Módulo LightningDSP ou efeito de áudio indisponível</string>
+    <string name="load_fail_header">Módulo LightningDSP não instalado ou indisponível</string>
+    <string name="load_fail_card">O módulo LightningDSP pode não estar instalado ou o Android pode ainda não ter disponibilizado o respetivo efeito de áudio. Instale o módulo LightningDSP através do Magisk ou KernelSU. No KernelSU, é obrigatório um metamódulo compatível, como Magic Mount ou NoMount (se compatível com o seu dispositivo). Os utilizadores do Magisk não precisam de um metamódulo. Se o módulo já estiver instalado, verifique os registos do módulo e a fábrica de efeitos de áudio antes de o reinstalar.</string>
     <string name="load_fail_rootless_card_title">Procurando uma alternativa sem root?</string>
     <string name="load_fail_rootless_card">Este ramo do LightningDSP foi projetado para ser usado com um dispositivo com Root/modificado. Uma alternativa sem Root com algumas limitações também está disponível. Toque aqui para mais detalhes.</string>
     <string name="load_fail_arch_card_title">Módulo já está instalado?</string>
@@ -599,4 +600,11 @@
     <string name="version_mismatch_root">Pacote magisk LightningDSP requer atualização</string>
     <string name="version_mismatch_root_description">O pacote de magisk LightningDSP instalado no seu dispositivo está desatualizado e não é mais suportado por esta aplicação.\n\nPor favor, obtenha a versão mais recente do LightningDSP e instale-o com o Magisk.\nNote que o pacote magisk pode substituir esta aplicação pela aplicação oficial LightningDSP\n\nDeseja visitar o site de download para os pacotes Magisk agora?</string>
     <string name="version_mismatch_root_toast">Falha ao iniciar. O pacote de magisk LightningDSP instalado é muito antigo e já não é suportado por esta aplicação.</string>
+    <string name="module_update_title">Atualização do módulo disponível</string>
+    <string name="module_update_message">O módulo LightningDSP %1$s está disponível. Abra a página da versão para o transferir.</string>
+    <string name="module_update_skip">Ignorar esta versão</string>
+    <string name="module_update_download">Transferir</string>
+    <string name="module_update_no_browser">Não existe um navegador disponível para abrir a página da versão.</string>
+    <string name="module_update_checks">Procurar atualizações do módulo</string>
+    <string name="module_update_checks_summary">Procurar novas versões estáveis do módulo ao abrir o LightningDSP.</string>
 </resources>

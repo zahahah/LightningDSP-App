@@ -27,6 +27,8 @@ class UpdateManager(val context: Context) {
     private val updateClient = UpdateCheckClient(context)
     private var lastUpdateInfo: UpdateCheckResponse? = null
 
+    suspend fun checkModuleUpdate(enabled: Boolean = true): Pair<String, String>? = ModuleUpdateCheck.check(enabled)
+
     fun getUpdateVersionInfo(): Pair<String, Int>? {
         return lastUpdateInfo?.let { info ->
             info.versionName?.let { Pair<String, Int>(it, info.versionCode ?: 0)  }

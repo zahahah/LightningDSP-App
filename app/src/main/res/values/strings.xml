@@ -573,9 +573,9 @@
     <string name="app_compat_unknown_pkg_name">Unknown package name</string>
 
     <!-- Root: Library load failure -->
-    <string name="load_fail_header">LightningDSP audio effect unavailable</string>
-    <string name="load_fail_card_title">The audio effect is not registered yet</string>
-    <string name="load_fail_card">The module may be mounted, but the audio factory has not registered LightningDSP. On temp-root devices, the overlay can appear after the audio HAL starts. The module waits 10 seconds, then tries one guarded HAL recovery on verified devices. Retry checks again and can request one additional recovery if needed. Audio may briefly stop.</string>
+    <string name="load_fail_header">LightningDSP module not installed or not available</string>
+    <string name="load_fail_card_title">LightningDSP module or audio effect unavailable</string>
+    <string name="load_fail_card">The LightningDSP module may not be installed, or Android may not have exposed its audio effect yet. Install the LightningDSP module with Magisk or KernelSU. On KernelSU, a compatible metamodule is required; install one such as Magic Mount or NoMount if it supports your device. Magisk users do not need a metamodule. If the module is already installed, check its logs and the audio effect factory before reinstalling.</string>
     <string name="load_fail_retry">Retry</string>
     <string name="load_fail_root_required">Root access is required to retry audio recovery.</string>
     <string name="load_fail_recovery_failed">Audio recovery was not completed. Check the module recovery status before trying again.</string>
@@ -691,4 +691,11 @@ Please press \'Continue\' below to re-do the setup wizard.</string>
     <string name="output_extra_postgain" translatable="false">Extra Post Gain</string>
     <string name="output_extra_postgain_warning" translatable="false">Use it cautiously</string>
     <string name="lightning_volume_manager_title">LightningDSP Volume Manager</string>
+    <string name="module_update_title">Module update available</string>
+    <string name="module_update_message">LightningDSP module %1$s is available. Open the release page to download it.</string>
+    <string name="module_update_skip">Skip this release</string>
+    <string name="module_update_download">Download</string>
+    <string name="module_update_no_browser">No browser available to open the release page.</string>
+    <string name="module_update_checks">Check for module updates</string>
+    <string name="module_update_checks_summary">Check for new stable module releases when opening LightningDSP.</string>
 </resources>
