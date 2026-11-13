@@ -4,6 +4,10 @@ import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Patterns
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import androidx.core.content.ContextCompat
 import androidx.preference.EditTextPreference
 import androidx.preference.Preference
@@ -42,6 +46,34 @@ class SettingsMiscFragment : SettingsBaseFragment() {
         setPreferencesFromResource(R.xml.app_misc_preferences, rootKey)
 
         findPreference<Preference>(getString(R.string.key_module_update_checks))?.isVisible = isRoot()
+
+        findPreference<MaterialSwitchPreference>(getString(R.string.key_diagnostic_mode))?.apply {
+            isVisible = isRoot()
+            isChecked = lightning.dsp.interop.DiagnosticModeOption.requested(requireContext())
+            setOnPreferenceChangeListener { _, value ->
+                val appContext = requireContext().applicationContext
+                isEnabled = false
+                lifecycleScope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        lightning.dsp.interop.DiagnosticModeOption.set(appContext, value as Boolean)
+                    }
+                    isEnabled = true
+                    when (result) {
+                        lightning.dsp.interop.AAudioCompatibilityResult.APPLIED -> {
+                            isChecked = value as Boolean
+                            setSummary(R.string.diagnostic_mode_summary)
+                        }
+                        lightning.dsp.interop.AAudioCompatibilityResult.FAILED ->
+                            context.toast(R.string.diagnostic_mode_failed)
+                        lightning.dsp.interop.AAudioCompatibilityResult.UNKNOWN -> {
+                            setSummary(R.string.diagnostic_mode_unknown)
+                            context.toast(R.string.diagnostic_mode_unknown)
+                        }
+                    }
+                }
+                false
+            }
+        }
 
         repairAssets?.setOnPreferenceClickListener {
             requireContext().assets.installPrivateAssets(requireContext(), force = true)

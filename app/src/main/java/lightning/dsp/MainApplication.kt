@@ -22,6 +22,7 @@ import com.pluto.plugins.rooms.db.PlutoRoomsDatabasePlugin
 import fr.bipi.tressence.file.FileLoggerTree
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import lightning.dsp.flavor.CrashlyticsImpl
 import lightning.dsp.flavor.UpdateManager
 import lightning.dsp.model.preference.ThemeMode
@@ -105,28 +106,29 @@ open class MainApplication : Application(), SharedPreferences.OnSharedPreference
     override fun onCreate() {
         instance = this
 
-        Timber.plant(DebugTree())
+        lightning.dsp.utils.logging.DiagnosticMode.initialize(this)
+        Timber.plant(lightning.dsp.utils.logging.DiagnosticTree(DebugTree()))
 
         if(BuildConfig.DEBUG) {
             Timber.plant(PlutoTimberTree())
             enableDebugTools()
         }
         if(!BuildConfig.FOSS_ONLY)
-            Timber.plant(CrashReportingTree())
+            Timber.plant(lightning.dsp.utils.logging.DiagnosticTree(CrashReportingTree()))
 
         // Clean up
         Cache.cleanup(this)
 
         try {
             Timber.plant(
-                FileLoggerTree.Builder()
+                lightning.dsp.utils.logging.DiagnosticTree(FileLoggerTree.Builder()
                     .withFileName("application.log")
                     .withDirName(this.cacheDir.absolutePath)
                     .withMinPriority(Log.VERBOSE)
                     .withSizeLimit(2 * 1000000)
                     .withFileLimit(1)
                     .appendToFile(false)
-                    .build()
+                    .build())
             )
         }
         catch (ex: Exception) {
@@ -170,6 +172,11 @@ open class MainApplication : Application(), SharedPreferences.OnSharedPreference
             seed(Constants.PREF_APP, lightning.dsp.utils.preferences.RootExperienceDefaults::processing)
             seed("lightningdsp_volume_manager", lightning.dsp.utils.preferences.RootExperienceDefaults::manager)
             seed("lightningdsp_volume_panel", lightning.dsp.utils.preferences.RootExperienceDefaults::panel)
+        }
+
+        if (isRoot()) applicationScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            if (!lightning.dsp.interop.DiagnosticModeOption.restore(this@MainApplication))
+                Timber.w("Diagnostic mode could not be restored; root diagnostic state is unverified")
         }
 
         // Depends on Koin
@@ -250,6 +257,12 @@ open class MainApplication : Application(), SharedPreferences.OnSharedPreference
     }
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
+        if (isRoot() && key == lightning.dsp.utils.logging.DiagnosticMode.KEY) {
+            applicationScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                if (!lightning.dsp.interop.DiagnosticModeOption.restore(this@MainApplication))
+                    Timber.w("Diagnostic mode preference changed but root state could not be verified")
+            }
+        }
         if(key == getString(R.string.key_appearance_theme_mode)) {
             AppCompatDelegate.setDefaultNightMode(
                 when (ThemeMode.fromInt(prefs.get<String>(R.string.key_appearance_theme_mode).toIntOrNull() ?: 0)) {

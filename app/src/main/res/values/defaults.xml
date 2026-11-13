@@ -61,4 +61,5 @@
     <integer name="default_editor_font_size" translatable="false" tools:keep="@integer/default_editor_font_size">13</integer>
 
     <bool name="default_module_update_checks">true</bool>
+    <bool name="default_diagnostic_mode" translatable="false">false</bool>
 </resources>

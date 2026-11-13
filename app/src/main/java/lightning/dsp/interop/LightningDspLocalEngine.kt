@@ -38,7 +38,7 @@ class LightningDspLocalEngine(
         // Make sure ongoing async calls to native have enough time to finish
         Timer().schedule(100) {
             LightningDspWrapper.free(oldHandle)
-            Timber.d("Handle $oldHandle has been freed")
+            Timber.d("Native DSP engine released")
         }
     }
 

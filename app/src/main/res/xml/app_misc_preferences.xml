@@ -23,6 +23,13 @@
             app:summary="@string/module_update_checks_summary"
             app:defaultValue="@bool/default_module_update_checks"
             app:iconSpaceReserved="false" />
+        <lightning.dsp.preference.MaterialSwitchPreference
+            app:key="@string/key_diagnostic_mode"
+            app:title="@string/diagnostic_mode"
+            app:summary="@string/diagnostic_mode_summary"
+            app:defaultValue="@bool/default_diagnostic_mode"
+            app:persistent="false"
+            app:iconSpaceReserved="false" />
     </PreferenceCategory>
 
     <PreferenceCategory app:title="@string/assets"

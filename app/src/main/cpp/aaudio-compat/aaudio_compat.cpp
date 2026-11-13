@@ -10,6 +10,7 @@
 #include <sys/system_properties.h>
 #include "opensl_compat.h"
 #endif
+#include "../diagnostic_mode.h"
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -181,7 +182,7 @@ BuilderState* findBuilder(AAudioStreamBuilder* builder) {
     }
     const bool optIn = hookRequested();
     const bool compatibilityOptIn = requested();
-    const bool diagnostic = optIn && openDiagnostics.fetch_add(1, std::memory_order_relaxed) < 12;
+    const bool diagnostic = optIn && ldsp_diagnostics::enabled() && openDiagnostics.fetch_add(1, std::memory_order_relaxed) < 12;
     if (diagnostic) __android_log_print(ANDROID_LOG_INFO, "LightningDSP_AAudio",
         "open enter pid=%d tracked=%d direction=%d mode=%d ready=%d", getpid(),
         state.builder != nullptr, static_cast<int>(state.direction), static_cast<int>(state.performance),
@@ -406,7 +407,7 @@ int inspectLibrary(dl_phdr_info* info, size_t, void* opaque) {
         }
         lookup.reason = "import transaction rejected or rolled back";
         if (result == ldsp::got::Result::Applied)
-            __android_log_print(ANDROID_LOG_INFO, "LightningDSP_AAudio", "%s imports ready pid=%d", backend, getpid());
+            if (ldsp_diagnostics::enabled()) __android_log_print(ANDROID_LOG_INFO, "LightningDSP_AAudio", "%s imports ready pid=%d", backend, getpid());
     };
     applyImports(targets, "AAudio");
     if (lookup.result == ldsp::got::Result::Unsafe) return 1;
@@ -484,7 +485,7 @@ void libraryLoaded(const char* name, void*) {
     dl_iterate_phdr(inspectLibrary, &lookup);
     if (lookup.result == ldsp::got::Result::Applied || lookup.result == ldsp::got::Result::AlreadyApplied) {
         ready.store(true, std::memory_order_release);
-        __android_log_print(ANDROID_LOG_INFO, "LightningDSP_AAudio", "app imports ready pid=%d", getpid());
+        if (ldsp_diagnostics::enabled()) __android_log_print(ANDROID_LOG_INFO, "LightningDSP_AAudio", "app imports ready pid=%d", getpid());
     } else if (lookup.result == ldsp::got::Result::Unsafe) {
         unsafeFailure.store(true, std::memory_order_release);
         ready.store(false, std::memory_order_release);
@@ -553,6 +554,7 @@ LoadedCallback native_init(const NativeApi* api) {
     ldsp::opensl::requested = [] { return requested() && !unsafeFailure.load(std::memory_order_acquire); };
     ldsp::opensl::report = [](const char* message, SLresult result) {
         static std::atomic<unsigned> reports{0};
+        if (!ldsp_diagnostics::enabled()) return;
         if (reports.fetch_add(1, std::memory_order_relaxed) >= 12) return;
         __android_log_print(ANDROID_LOG_INFO, "LightningDSP_OpenSL", "%s result=%u pid=%d", message, result, getpid());
     };

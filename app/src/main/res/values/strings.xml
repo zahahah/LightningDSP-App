@@ -706,4 +706,8 @@ Please press \'Continue\' below to re-do the setup wizard.</string>
     <string name="module_update_no_browser">No browser available to open the release page.</string>
     <string name="module_update_checks">Check for module updates</string>
     <string name="module_update_checks_summary">Check for new stable module releases when opening LightningDSP.</string>
+    <string name="diagnostic_mode" tools:ignore="MissingTranslation">Enable diagnostic mode</string>
+    <string name="diagnostic_mode_summary" tools:ignore="MissingTranslation">Generates logs to help troubleshoot problems.</string>
+    <string name="diagnostic_mode_failed" tools:ignore="MissingTranslation">Could not update diagnostic mode. Check root access and try again.</string>
+    <string name="diagnostic_mode_unknown" tools:ignore="MissingTranslation">Diagnostic state could not be verified. Reopen settings and try again.</string>
 </resources>

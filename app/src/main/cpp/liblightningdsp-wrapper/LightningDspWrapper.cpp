@@ -143,7 +143,7 @@ Java_lightning_dsp_interop_LightningDspWrapper_alloc(JNIEnv *env, jobject obj, j
 
     self->dsp = _dsp;
 
-    LOGD("LightningDspWrapper::ctor: memory allocated at %lx", (long)self);
+    LOGD("LightningDspWrapper::ctor: engine allocated");
     return (long)self;
 }
 
@@ -152,7 +152,7 @@ Java_lightning_dsp_interop_LightningDspWrapper_free(JNIEnv *env, jobject obj, jl
 {
     DECLARE_DSP_V
 
-    LOGD("LightningDspWrapper::dtor: freeing memory allocated at %lx", (long)self);
+    LOGD("LightningDspWrapper::dtor: releasing engine");
 
     setStdOutHandler(nullptr, nullptr);
 

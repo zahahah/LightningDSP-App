@@ -1,6 +1,7 @@
 package lightning.dsp.interop;
 
 import android.content.pm.ApplicationInfo;
+import lightning.dsp.utils.logging.DiagnosticMode;
 import android.os.Process;
 import android.os.Bundle;
 import android.os.SystemClock;
@@ -21,6 +22,11 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 /** Native opt-in applies only inside user apps explicitly scoped by Vector/LSPosed. */
 public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
+    private static void diagnosticLog(String message) {
+        if (DiagnosticMode.isEnabled()) XposedBridge.log(message);
+        else if (message.contains("unavailable") || message.contains("failed"))
+            android.util.Log.w("LightningDSP_AAudio", message);
+    }
     private static final String PROPERTY = "debug.ldsp.aaudio_compat";
     private static final String SESSION_PREPARATION_PROPERTY = "debug.ldsp.session_prepare";
     private static final AtomicBoolean launchHookInstalled = new AtomicBoolean();
@@ -108,7 +114,7 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
                     extras.putBinder("owner", reuseOwner);
                     Bundle result = app.getContentResolver().call(Uri.parse("content://com.lightning.dsp.compatibility"),
                             "retain", Integer.toString(unifiedSessionId), extras);
-                    if (retentionDiagnostics.getAndIncrement() < 8)
+                    if (DiagnosticMode.isEnabled() && retentionDiagnostics.getAndIncrement() < 8)
                         android.util.Log.i("LightningDSP_AAudio", "session retention accepted="
                                 + (result != null && result.getBoolean("prepared", false)));
                 });
@@ -144,7 +150,7 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
                 extras.putBoolean("focused", focused);
                 Bundle result = app.getContentResolver().call(Uri.parse("content://com.lightning.dsp.compatibility"),
                         "focus", null, extras);
-                if (focusDiagnostics.getAndIncrement() < 12)
+                if (DiagnosticMode.isEnabled() && focusDiagnostics.getAndIncrement() < 12)
                     android.util.Log.i("LightningDSP_AAudio", "focus report accepted="
                             + (result != null && result.getBoolean("prepared", false)));
             });
@@ -173,7 +179,7 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
                     XposedHelpers.findClass("android.app.ActivityThread", null), "currentApplication");
             if (current != null) trackFocus(current);
         } catch (Throwable unavailable) {
-            XposedBridge.log("LightningDSP AAudio: focus observer unavailable; idle retention disabled");
+            diagnosticLog("LightningDSP AAudio: focus observer unavailable; idle retention disabled");
         }
     }
 
@@ -202,7 +208,7 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
                 return result != null && result.getBoolean("prepared", false);
             });
             Object prepared = pending.get(2200, TimeUnit.MILLISECONDS);
-            if (preparationDiagnostics.getAndIncrement() < 24)
+            if (DiagnosticMode.isEnabled() && preparationDiagnostics.getAndIncrement() < 24)
                 android.util.Log.i("LightningDSP_AAudio", "preparation ready=" + Boolean.TRUE.equals(prepared)
                         + " elapsedMs=" + (SystemClock.elapsedRealtime() - (deadline - 2000)));
         } catch (Throwable unavailable) {
@@ -242,7 +248,7 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
                     Uri.parse("content://com.lightning.dsp.compatibility"),
                     "prepare_session", Integer.toString(sessionId), extras);
             boolean ready = result != null && result.getBoolean("prepared", false);
-            if (audioTrackPreparationDiagnostics.getAndIncrement() < 24)
+            if (DiagnosticMode.isEnabled() && audioTrackPreparationDiagnostics.getAndIncrement() < 24)
                 android.util.Log.i("LightningDSP_SessionPrepare", "AudioTrack session=" + sessionId
                         + " ready=" + ready + " elapsedMs=" + (SystemClock.elapsedRealtime() - startedAt));
             return ready;
@@ -277,7 +283,7 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
             });
         } catch (Throwable unavailable) {
             audioTrackHookInstalled.set(false);
-            XposedBridge.log("LightningDSP session preparation: AudioTrack hook unavailable; original playback retained");
+            diagnosticLog("LightningDSP session preparation: AudioTrack hook unavailable; original playback retained");
         }
     }
     private static native boolean nativeObserverReady();
@@ -294,14 +300,14 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
                 ScheduledFuture<?> task = libraryScanTask;
                 if (task != null) task.cancel(false);
                 libraryScanScheduled.set(false);
-                XposedBridge.log("LightningDSP AAudio: loaded audio imports rebound pid=" + Process.myPid());
+                diagnosticLog("LightningDSP AAudio: loaded audio imports rebound pid=" + Process.myPid());
             } else if (scanned > 0 && libraryScanDiagnostics.getAndIncrement() < 4) {
-                XposedBridge.log("LightningDSP AAudio: scanned " + scanned
+                diagnosticLog("LightningDSP AAudio: scanned " + scanned
                         + " loaded app libraries; compatibility imports not ready pid=" + Process.myPid());
             }
         } catch (Throwable error) {
             if (libraryScanDiagnostics.getAndIncrement() < 4)
-                XposedBridge.log("LightningDSP AAudio: loaded-library scan unavailable; waiting for linker callback");
+                diagnosticLog("LightningDSP AAudio: loaded-library scan unavailable; waiting for linker callback");
         }
     }
 
@@ -326,7 +332,7 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
             Class<?> properties = XposedHelpers.findClass("android.os.SystemProperties", null);
             return "1".equals(XposedHelpers.callStaticMethod(properties, "get", PROPERTY, ""));
         } catch (Throwable error) {
-            XposedBridge.log("LightningDSP AAudio: opt-in unavailable; original audio behavior retained");
+            diagnosticLog("LightningDSP AAudio: opt-in unavailable; original audio behavior retained");
             return false;
         }
     }
@@ -354,13 +360,13 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
                         // element in place without changing the receiver or result.
                         param.args[1] = adapted;
                         if (launchDiagnostics.getAndIncrement() < 12)
-                            XposedBridge.log("LightningDSP DirectAudio: normal mode requested for child launch");
+                            diagnosticLog("LightningDSP DirectAudio: normal mode requested for child launch");
                     }
                 }
             });
         } catch (Throwable unavailable) {
             launchHookInstalled.set(false);
-            XposedBridge.log("LightningDSP DirectAudio: launch adapter unavailable; original launch retained");
+            diagnosticLog("LightningDSP DirectAudio: launch adapter unavailable; original launch retained");
         }
     }
 
@@ -374,12 +380,12 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
         boolean sessionReuseEnabled = reuseRequested();
         boolean sessionPreparationEnabled = sessionPreparationRequested();
         if (!aaudioRequested && !sessionReuseEnabled && !sessionPreparationEnabled) {
-            XposedBridge.log("LightningDSP audio compatibility: disabled; hooks not installed");
+            diagnosticLog("LightningDSP audio compatibility: disabled; hooks not installed");
             return;
         }
         if (sessionPreparationEnabled) installAudioTrackPreparationHook();
         if (!aaudioRequested && !sessionReuseEnabled) {
-            XposedBridge.log("LightningDSP session preparation: enabled for scoped app");
+            diagnosticLog("LightningDSP session preparation: enabled for scoped app");
             return;
         }
         if (aaudioRequested) installLaunchHook();
@@ -393,11 +399,11 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
                     : nativeAAudioReady() ? "AAudio imports rebound"
                     : nativeReady() ? "other audio imports rebound; waiting for AAudio library"
                     : "observer ready; waiting for app audio library";
-            XposedBridge.log("LightningDSP AAudio: " + state
+            diagnosticLog("LightningDSP AAudio: " + state
                     + " pid=" + Process.myPid());
         } catch (Throwable error) {
-            XposedBridge.log("LightningDSP AAudio: unavailable; original audio behavior retained");
-            XposedBridge.log(error);
+            diagnosticLog("LightningDSP AAudio: unavailable; original audio behavior retained");
+            if (DiagnosticMode.isEnabled()) XposedBridge.log(error);
         }
     }
 }

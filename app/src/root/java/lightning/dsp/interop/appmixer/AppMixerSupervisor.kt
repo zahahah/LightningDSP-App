@@ -72,7 +72,10 @@ internal class AppMixerSupervisor(
                     // Only bounded numeric relay diagnostics, never arbitrary helper stderr.
                     if (diagnostic.startsWith("Fusion Mode relay:") ||
                         diagnostic.startsWith("Fusion Mode playback buffer:")) {
-                        android.util.Log.i("LightningDSP_FusionMode", diagnostic)
+                        if (diagnostic.contains("failed") || diagnostic.contains("unavailable"))
+                            android.util.Log.w("LightningDSP_FusionMode", diagnostic)
+                        else if (lightning.dsp.utils.logging.DiagnosticMode.isEnabled())
+                            android.util.Log.i("LightningDSP_FusionMode", diagnostic)
                     }
                 }
             }.apply { isDaemon = true; name = "AppMixer-errors"; start() }

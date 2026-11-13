@@ -6,6 +6,7 @@ import android.media.AudioManager;
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
+import lightning.dsp.utils.logging.DiagnosticMode;
 import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 import java.util.Set;
@@ -65,11 +66,11 @@ public final class DisableAudioFocusHook implements IXposedHookLoadPackage {
                 XposedBridge.log("LightningDSP AudioFocus: readiness property rejected in " + packageInfo.packageName);
                 return;
             }
-            XposedBridge.log("LightningDSP AudioFocus hook ready in " + packageInfo.packageName
+            if (DiagnosticMode.isEnabled()) XposedBridge.log("LightningDSP AudioFocus hook ready in " + packageInfo.packageName
                     + " pid=" + readyPid + " hooks=" + hooks.size());
         } catch (Throwable error) {
             XposedBridge.log("LightningDSP AudioFocus: hook setup failed in " + packageInfo.packageName);
-            XposedBridge.log(error);
+            if (DiagnosticMode.isEnabled()) XposedBridge.log(error);
         }
     }
 

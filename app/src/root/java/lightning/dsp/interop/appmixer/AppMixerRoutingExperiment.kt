@@ -227,7 +227,7 @@ object AppMixerRoutingExperiment {
                         lastAcceptedBuffer = actual
                         lastBufferCapacity = capacity
                     }
-                    System.err.println("Fusion Mode playback buffer: constructionMinimum=$minimumFrames recoveryFloor=$recoveryFloor requested=$target actual=$actual capacity=${player.bufferCapacityInFrames}")
+                    if (lightning.dsp.utils.logging.DiagnosticMode.isEnabled()) System.err.println("Fusion Mode playback buffer: constructionMinimum=$minimumFrames recoveryFloor=$recoveryFloor requested=$target actual=$actual capacity=${player.bufferCapacityInFrames}")
                 }
             }
             // Capacity remains conservatively sized. The effective queue is tuned separately;
@@ -271,7 +271,7 @@ object AppMixerRoutingExperiment {
             val fixedDspCapture = localDsp?.let { dsp ->
                 AppMixerFixedDspCapture(relayFrames * AppMixerLatencyPolicy.CHANNELS, dsp::process)
             }
-            System.err.println("Fusion Mode relay: backend=${if (config.localDsp) "local-dsp" else "framework"} performanceMode=${target.performanceMode} sampleRate=${target.sampleRate}")
+            if (lightning.dsp.utils.logging.DiagnosticMode.isEnabled()) System.err.println("Fusion Mode relay: backend=${if (config.localDsp) "local-dsp" else "framework"} performanceMode=${target.performanceMode} sampleRate=${target.sampleRate}")
             val counts = AppMixerPcmRelay.runBuffered(ShortArray(relayFrames * AppMixerLatencyPolicy.CHANNELS),
                 shouldContinue = { !stop.get() && SystemClock.elapsedRealtime() < deadline },
                 read = { input ->
@@ -288,7 +288,7 @@ object AppMixerRoutingExperiment {
                     // query or parameter synchronization on the PCM hot path.
                     runCatching { tunePlaybackBuffer() }
                     diagnosticReadGap = maxOf(diagnosticReadGap, readGap)
-                    if (now - lastDiagnostic >= 5_000_000_000L) {
+                    if (lightning.dsp.utils.logging.DiagnosticMode.isEnabled() && now - lastDiagnostic >= 5_000_000_000L) {
                         System.err.println("Fusion Mode relay: read=${progress.readSamples} written=${progress.writtenSamples} queuedFrames=${(progress.readSamples - progress.writtenSamples) / 2} maxReadGapMs=${diagnosticReadGap / 1_000_000} underruns=${target.underrunCount} buffer=${target.bufferSizeInFrames} capacity=${target.bufferCapacityInFrames}")
                         lastDiagnostic = now
                         diagnosticReadGap = 0L

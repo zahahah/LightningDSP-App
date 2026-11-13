@@ -47,7 +47,7 @@ object RootShellImpl {
     }
 
     fun cmd(command: String): Boolean {
-        Timber.d("root command: $command")
+        Timber.d("Executing root operation")
         return Shell.cmd(command).exec().run {
             if(!isSuccess) {
                 Timber.e("Command failed; error $code")

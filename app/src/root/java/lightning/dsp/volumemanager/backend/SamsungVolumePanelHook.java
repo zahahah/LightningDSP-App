@@ -7,6 +7,7 @@ import android.os.SystemClock;
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
+import lightning.dsp.utils.logging.DiagnosticMode;
 import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
@@ -61,10 +62,10 @@ public final class SamsungVolumePanelHook implements IXposedHookLoadPackage {
                 XposedBridge.log("LightningDSP Samsung volume panel: onVolumeChangedW not found; native behavior retained");
                 return;
             }
-            XposedBridge.log("LightningDSP Samsung volume panel hook ready pid=" + Process.myPid() + " hooks=" + hooks);
+            if (DiagnosticMode.isEnabled()) XposedBridge.log("LightningDSP Samsung volume panel hook ready pid=" + Process.myPid() + " hooks=" + hooks);
         } catch (Throwable error) {
             XposedBridge.log("LightningDSP Samsung volume panel hook unavailable; native behavior retained");
-            XposedBridge.log(error);
+            if (DiagnosticMode.isEnabled()) XposedBridge.log(error);
         }
     }
 }

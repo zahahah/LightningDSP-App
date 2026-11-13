@@ -108,6 +108,15 @@ disabled in Settings. Pre-releases and app-only releases are not offered.
 KernelSU Manager uses the module's stable update feed; KernelSU also needs a
 mounting metamodule such as **Magic Mount** or **NoMount**.
 
+## Diagnostics
+
+**Enable diagnostic mode** in Settings → Miscellaneous is off by default. It
+adds detailed logs for troubleshooting without recording audio or uploading
+reports. Logs can include app and device details, so share them only when needed.
+Turning it off stops new detailed app logs; module shell traces follow the
+setting when their next operation starts. Essential warnings and safety status
+remain available. Existing diagnostic files are not automatically shared.
+
 ## Optional Disable Audio Focus
 
 The root app includes an opt-in **Disable App Audio Focus (Requires Xposed)**
