@@ -19,10 +19,47 @@ mismatch there still requires the existing volume-key confirmation and
 best-effort backup flow. See [the compatibility inventory](REBRAND-COMPATIBILITY.md).
 This is not a claim that the local source is newer than upstream ThePBone code.
 
+## What's new on the main branch
+
+Stable app **1.7** and module **6.7** are still available. The main branch now
+includes Fusion Mode and the newer controls below; get test builds from
+[app Actions](https://github.com/zahahah/LightningDSP-App/actions/workflows/root-artifacts.yml)
+or the matching [module Actions](https://github.com/zahahah/LightningDSP/actions/workflows/main-module-artifacts.yml).
+The module includes the same owner-signed root universal APK. Its audio driver
+is still ARM64, even though the APK includes other app architectures.
+
+## Pick how to process audio
+
+- **Global Mode:** effects on the output mix selected by Android.
+- **Session Mode:** effects on individual sessions, with optional scanning to
+  discover apps that do not announce them.
+- **Fusion Mode:** one virtual audio output for apps to share, with per-app
+  DSP power controls in Volume Manager. Root is required; Vector/LSPosed is not.
+  The capture/playback path can add latency.
+
+New root installs default to Fusion, Volume Manager, app DSP buttons and media
+controls. Existing saved choices stay unchanged. The app DSP buttons work in
+Session Mode and Fusion Mode, not on a shared Global effect.
+
+**Include system sounds** extends Session/Fusion coverage to eligible keyboard,
+notification and system audio.
+
+**Cover additional sessions** helps eligible playback outside existing coverage.
+For Global/Session emulator compatibility, the optional hook supports tested
+FAST-requesting backends, including Bannerlator, Eden, NetherSX2, ARMSX2 and
+RetroArch. Select affected apps in Vector/LSPosed and restart them. **Reuse AAudio
+session** can keep eligible short sounds on one session and requires the same
+app scope; ordinary Fusion processing does not need either hook.
+
+Audio Processing settings are grouped, and the brain icon at the top left opens
+them directly. Persistent DSP notifications use **Audio Processing** and keep
+failures distinct from a working relay.
+
 ## Root transport
 
-The root app prefers `/vendor/bin/ldspctl` and the paired `ldsp.control` native
-service using protocol 3 and `LDSPCTL:` replies. Grant the app itself root access;
+Global and Session processing prefer `/vendor/bin/ldspctl` and the paired
+`ldsp.control` native service using protocol 3 and `LDSPCTL:` replies. Fusion
+uses the bundled local DSP inside its guarded root relay. Grant the app itself root access;
 a grant to ADB or Termux does not grant the app access. Missing or rejected native
 control retains the AudioEffect/legacy path. Binder registration and accepted or
 applied generations alone do not prove audible processing. The app does not
@@ -44,12 +81,32 @@ separate collection of example files, not the app's live preset library. A missi
 ## Gain and VolumeManager
 
 **Extra Post Gain** defaults off and displays **Use it cautiously**. Root output
-gain is +/-15 dB normally, +/-30 dB only after opt-in. Disabling clamps the saved
-value safely. Rootless hides the option and retains +/-15 dB.
+controls allow +/-15 dB normally, +/-30 dB only after opt-in; the processing
+backend can still limit the applied gain. Disabling clamps the saved value
+safely. Rootless hides the option and retains +/-15 dB.
 
-LightningDSP Volume Manager is integrated into the root app and is disabled by default on fresh installations. It offers per-app volume, mute and balance, active and recent apps, persistent order and pins, built-in streams, a floating panel, and an optional LightningDSP card. The root app does not require a separate VolumeManager installation. In the floating panel, tap the LightningDSP card icon to open its effects. Press and hold an effect name to select it, then use the slider to lower or raise its intensity.
+LightningDSP Volume Manager is part of the root app. Stable 1.7 leaves it off by default; new main-branch installations enable it as described above. It offers per-app volume, mute and balance, active and recent apps, persistent order and pins, built-in streams, a floating panel, and an optional LightningDSP card. The root app does not require a separate VolumeManager installation. In the floating panel, tap the LightningDSP card icon to open its effects. Press and hold an effect name to select it, then use the slider to lower or raise its intensity.
 
 I maintain LightningDSP as an audio pocket knife: DSP processing and practical audio controls in one app. The pre-rebrand JamesDSP 6.6 module and matching root app 1.6.17 remain in [JamesDSPManager-Classic](https://github.com/zahahah/JamesDSPManager-Classic) and [RootJamesDSP-Classic](https://github.com/zahahah/RootJamesDSP-Classic). The current companion module is [LightningDSP](https://github.com/zahahah/LightningDSP). Original contributors and license obligations remain credited.
+
+Supported players can show play/pause controls. Pausing from our panel keeps
+that app available for up to three minutes; pausing elsewhere does not start
+the timer. Root helps grant the required notification access. Per-app DSP
+buttons can stay visible or appear after tapping the LightningDSP icon, but
+only while **Show app DSP power buttons** is enabled.
+
+Edit mode supports save/cancel, mute and separate hiding from the manager and
+floating panel. Inactive apps collapse; **Hide system apps** affects only the
+manager page. Samsung panel suppression and KDE Connect remote-volume recovery
+have received compatibility fixes without replacing non-Samsung handling.
+
+## Module updates
+
+The app can offer a new stable **module** release at startup. **Download** opens
+GitHub; **Skip** hides that version, not future updates. Automatic checks can be
+disabled in Settings. Pre-releases and app-only releases are not offered.
+KernelSU Manager uses the module's stable update feed; KernelSU also needs a
+mounting metamodule such as **Magic Mount** or **NoMount**.
 
 ## Optional Disable Audio Focus
 
@@ -103,9 +160,11 @@ Use Java 17 and an installed Android SDK:
 
 Builds do not use Firebase or upload crash reports/symbols.
 
-Release outputs are unsigned until signed separately. CI preview builds use the
-Android development/debug signer and are not release APKs. Check the package and
-certificate before distribution; never automatically uninstall or delete data.
+Local release outputs are unsigned until signed separately. The owner main-branch
+workflow builds and verifies the zahahah-signed **root universal** APK; the module
+embeds that same artifact. Other development previews can use a debug signer,
+which is not interchangeable. Check the package and certificate before
+distribution; never automatically uninstall or delete data.
 See [root build notes](BUILD_ROOT.md) and [native integration](NATIVE-CONTROL-V4.md).
 
 ## Contributors
