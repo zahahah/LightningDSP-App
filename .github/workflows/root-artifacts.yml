@@ -37,6 +37,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          trap 'printf "::error::Owner APK verification failed at line %s\n" "$LINENO"' ERR
           test -n "$SIGNING_KEYSTORE" && test -n "$KEY_ALIAS"
           tools=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
           key="$RUNNER_TEMP/owner-keystore"
@@ -44,14 +45,35 @@ jobs:
           umask 077
           printf '%s' "$SIGNING_KEYSTORE" | base64 --decode > "$key"
           mkdir -p dist
-          mapfile -t inputs < <(find app/build/outputs/apk/rootFull/release -name '*universal-release-unsigned.apk')
-          test "${#inputs[@]}" -eq 1
-          "$tools/apksigner" sign --ks "$key" --ks-key-alias "$KEY_ALIAS" \
+          # AGP metadata identifies the universal output without assuming a filename.
+          input=$(python3 - <<'PYMETA'
+          import json
+          from pathlib import Path
+          from zipfile import ZipFile
+          root = Path('app/build/outputs/apk/rootFull/release')
+          metadata = json.loads((root / 'output-metadata.json').read_text())
+          outputs = [entry for entry in metadata['elements'] if not entry.get('filters')]
+          assert len(outputs) == 1, 'Expected exactly one universal APK output'
+          path = root / outputs[0]['outputFile']
+          assert path.is_file() and path.resolve().parent == root.resolve()
+          with ZipFile(path) as archive:
+              abis = {name.split('/')[1] for name in archive.namelist() if name.startswith('lib/')}
+          assert abis == {'arm64-v8a', 'armeabi-v7a', 'x86', 'x86_64'}, abis
+          print(path)
+          PYMETA
+          )
+          printf 'Universal APK selected: %s\n' "$input"
+          "$tools/apksigner" sign --ks "$key" --ks-type PKCS12 --ks-key-alias "$KEY_ALIAS" \
             --ks-pass env:KEYSTORE_PASSWORD --key-pass env:KEY_PASSWORD \
-            --out dist/LightningDSP-root-universal.apk "${inputs[0]}"
-          "$tools/apksigner" verify --print-certs dist/LightningDSP-root-universal.apk > "$RUNNER_TEMP/apk-certificate.txt"
-          grep -Fx 'Signer #1 certificate SHA-256 digest: c18c2d21eee51c357d9485c781be9bf201131c6fa94bab97b93c94b710c40357' "$RUNNER_TEMP/apk-certificate.txt"
-          test "$(grep -c 'certificate SHA-256 digest:' "$RUNNER_TEMP/apk-certificate.txt")" -eq 1
+            --out dist/LightningDSP-root-universal.apk "$input"
+          "$tools/apksigner" verify --print-certs dist/LightningDSP-root-universal.apk | tee "$RUNNER_TEMP/apk-certificate.txt"
+          python3 - <<'PYCERT'
+          import os, re
+          from pathlib import Path
+          output = (Path(os.environ['RUNNER_TEMP']) / 'apk-certificate.txt').read_text()
+          digests = re.findall(r'certificate SHA-256 digest:\s*([0-9a-fA-F]{64})', output)
+          assert len(digests) == 1 and digests[0].lower() == 'c18c2d21eee51c357d9485c781be9bf201131c6fa94bab97b93c94b710c40357', 'Unauthorized APK signer'
+          PYCERT
           "$tools/aapt" dump badging dist/LightningDSP-root-universal.apk > "$RUNNER_TEMP/apk-badging.txt"
           grep -E "^package: name='com.lightning.dsp' " "$RUNNER_TEMP/apk-badging.txt"
           git rev-parse HEAD > dist/SOURCE-COMMIT.txt
