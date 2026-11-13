@@ -23,13 +23,28 @@ class VolumeManagerSettingsContractTest {
         assertTrue(activity.contains("always_show_session_dsp_controls"))
         assertTrue(composeUi.contains("allowAppDspControls = showAppDspButtons"))
         assertTrue(composeUi.contains("SessionDspButtonVisibilityPolicy.shouldShow"))
-        assertTrue(composeUi.contains("onDspIconClick = { appDspButtonsRevealed = !appDspButtonsRevealed }"))
+        assertEquals(2, Regex("SessionDspButtonVisibilityPolicy\\.onIconClick").findAll(composeUi).count())
+        assertTrue(composeUi.contains("if (!sessionMode || !showSessionDspControls || alwaysShowSessionDspControls) appDspButtonsRevealed = false"))
+        assertTrue(composeUi.contains("if (!sessionMode || !showSessionDspButtons || alwaysShowSessionDspButtons) appDspButtonsRevealed = false"))
         assertTrue(composeUi.contains("if (app.mediaControlVisible)"))
         assertTrue(composeUi.contains("it.active || (showMediaButtons && it.retainedPausedMedia)"))
         assertTrue(composeUi.contains("val sideClearance = if (addedControls > 0) 48 else 32"))
         assertTrue(backend.contains("private val mediaRetention = PausedMediaRetention()"))
         assertTrue(backend.contains("SESSION_DSP_ENABLED_PREFIX + name"))
         assertTrue(backend.contains("fun toggleMediaPlayback(packageName: String)"))
+    }
+
+    @Test fun appDspSettingRemainsVisibleButDisabledInGlobalModeWithExplanation() {
+        val activity = ui("LightningDspVolumeManagerActivity")
+        val toggle = activity.substringAfter("val appDspSwitch = MaterialSwitch(settingsContext).apply {")
+            .substringBefore("val appDspSummary")
+        assertTrue(toggle.contains("visibility = View.VISIBLE"))
+        assertTrue(toggle.contains("isEnabled = sessionMode"))
+        assertTrue(activity.contains("!sessionMode -> R.string.ldsp_vm_app_dsp_power_global_summary"))
+        assertTrue(activity.contains("val showAlwaysSetting = sessionMode && appDspSwitch.isChecked"))
+        val strings = File(app, "src/root/res/values/volume_settings_sections.xml").readText()
+        assertTrue(strings.contains("Show buttons to turn LightningDSP effects on or off for each app."))
+        assertTrue(strings.contains("Unavailable in Global Mode, works only in Session Mode and Fusion Mode."))
     }
 
     @Test fun cardVisibilityHasOnePersistedSettingForFullAndFloatingPanels() {

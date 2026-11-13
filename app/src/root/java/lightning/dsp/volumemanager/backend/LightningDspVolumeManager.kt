@@ -888,9 +888,22 @@ object LightningDspVolumeManager {
         }
     }
 
+    private var mediaAccessGrantAttempted = false
+
     private fun configureMediaControls() {
         if (!::panelPreferences.isInitialized) return
-        val hasNotificationAccess = NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
+        var hasNotificationAccess = NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
+        // The default-enabled controls need the same narrowly scoped grant as the settings switch.
+        // Run off the UI thread, at most once per process; never grant when controls are disabled.
+        if (showMediaControls && !hasNotificationAccess && !mediaAccessGrantAttempted) {
+            mediaAccessGrantAttempted = true
+            hasNotificationAccess = runCatching {
+                NotificationListenerAccessGrant.grant(android.os.Process.myUid() / 100000,
+                    { NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName) },
+                    { lightning.dsp.flavor.RootShellImpl.hasRootShell() },
+                    { lightning.dsp.flavor.RootShellImpl.cmd(it) })
+            }.getOrElse { Timber.w(it, "Could not grant notification access for media controls"); false }
+        }
         if (!showMediaControls || !hasNotificationAccess || mediaSessionManager == null) {
             if (mediaSessionListenerRegistered) {
                 runCatching { mediaSessionManager?.removeOnActiveSessionsChangedListener(mediaSessionListener) }

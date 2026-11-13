@@ -15,9 +15,75 @@ class AppMixerExperimentContractTest {
         assertEquals(960, AppMixerLatencyPolicy.stereoPcmBytes(240))
         assertEquals(1920, AppMixerLatencyPolicy.trackBufferBytes(1280, 240))
         assertEquals(8192, AppMixerLatencyPolicy.trackBufferBytes(8192, 240))
-        assertEquals(1920, AppMixerLatencyPolicy.playbackBufferFrames(2886))
+        assertEquals(960, AppMixerLatencyPolicy.playbackBufferFrames(2886))
         assertEquals(960, AppMixerLatencyPolicy.playbackBufferFrames(960))
         assertThrows(IllegalArgumentException::class.java) { AppMixerLatencyPolicy.playbackBufferFrames(0) }
+    }
+
+    @Test fun playbackKeepsFrameworkMinimumAndReservesBoundedHeadroom() {
+        assertEquals(3840, AppMixerLatencyPolicy.playbackBufferFrames(5000, 3840))
+        assertEquals(15360, AppMixerLatencyPolicy.playbackCapacityBytes(1920, 240))
+        assertEquals(20000, AppMixerLatencyPolicy.playbackCapacityBytes(20000, 240))
+        val tuner = AppMixerPlaybackBufferTuner(1920)
+        assertEquals(960, tuner.targetFrames(3840, 0))
+        assertEquals(960, tuner.targetFrames(3840, 0))
+        assertEquals(3840, tuner.targetFrames(3840, 1))
+        // Bluetooth restoration can replace the native track with a huge queue.
+        assertEquals(3840, tuner.targetFrames(16354, 0))
+        assertEquals(3840, tuner.targetFrames(16354, 500))
+        assertEquals(960, tuner.targetFrames(960, 500))
+        assertEquals(960, AppMixerPlaybackBufferTuner(5000).targetFrames(16354, 0))
+        val largeRecommendation = AppMixerPlaybackBufferTuner(5000)
+        assertEquals(960, largeRecommendation.targetFrames(16354, 0))
+        assertEquals(5000, largeRecommendation.targetFrames(16354, 1))
+    }
+
+    @Test fun localDspNeverTurnsBluetoothConstructionCapacityIntoAnEffectiveFloor() {
+        val floor = AppMixerLatencyPolicy.recoveryFloorFrames(16354, localDsp = true)
+        assertEquals(960, floor)
+        assertEquals(16354, AppMixerLatencyPolicy.recoveryFloorFrames(16354, localDsp = false))
+        val tuner = AppMixerPlaybackBufferTuner(floor)
+        assertEquals(960, tuner.targetFrames(16354, 0, 0))
+        assertEquals(3840, tuner.targetFrames(16354, 1, 1))
+        assertEquals(960, tuner.targetFrames(16354, 1, 30_000_000_001))
+        // Counter reset and capacity growth during device restoration must not
+        // resurrect the obsolete Bluetooth recommendation.
+        assertEquals(960, tuner.targetFrames(32768, 0, 31_000_000_000))
+        assertEquals(3840, tuner.targetFrames(32768, 1, 32_000_000_000))
+        assertEquals(960, tuner.targetFrames(32768, 1, 62_000_000_000))
+    }
+
+    @Test fun emergencyHeadroomIsReleasedOnlyAfterSustainedStability() {
+        val tuner = AppMixerPlaybackBufferTuner(2886)
+        assertEquals(960, tuner.targetFrames(3840, 0, 0))
+        assertEquals(3840, tuner.targetFrames(3840, 1, 1))
+        assertEquals(3840, tuner.targetFrames(3840, 1, 29_000_000_000))
+        assertEquals(3840, tuner.targetFrames(3840, 2, 29_000_000_001))
+        assertEquals(3840, tuner.targetFrames(3840, 2, 58_000_000_000))
+        assertEquals(2886, tuner.targetFrames(3840, 2, 59_000_000_001))
+        assertEquals(2886, tuner.targetFrames(3840, 2, 100_000_000_000))
+        // A later real underrun restores headroom immediately.
+        assertEquals(3840, tuner.targetFrames(3840, 3, 100_000_000_001))
+    }
+
+    @Test fun audioSchedulingFailureDoesNotPreventRelayFallback() {
+        var requested = false
+        assertTrue(AppMixerRelayScheduling.requestAudioPriority { requested = true })
+        assertTrue(requested)
+        assertFalse(AppMixerRelayScheduling.requestAudioPriority { throw SecurityException() })
+        assertFalse(AppMixerRelayScheduling.requestAudioPriority { throw IllegalArgumentException() })
+    }
+
+    @Test fun periodicDiagnosticsRemainBoundedDuringPlaybackBackpressure() {
+        var clock = 0L
+        var reports = 0
+        var running = true
+        val counts = AppMixerPcmRelay.run(ShortArray(2), { running }, { 2 }, { _, _, _ -> 0 },
+            idle = { clock += 5; if (clock == 25L) running = false }, nowNanos = { clock },
+            onProgress = { _, progress, _ -> reports++; assertEquals(2L, progress.readSamples) },
+            progressIntervalNanos = 10)
+        assertEquals(2, reports)
+        assertEquals(AppMixerPcmRelay.Counts(2, 0), counts)
     }
 
     @Test fun explicitAppUidsAreRequiredAndDeduplicated() {
@@ -112,9 +178,14 @@ class AppMixerExperimentContractTest {
 
     @Test fun exclusionsRequireRootAndFitNativeCriterionLimit() {
         assertEquals(setOf(0, 10001, 10322), AppMixerExperimentConfig.parseExcludedUids("--exclude-uids=0,10001,10322"))
+        assertEquals(16, AppMixerExperimentConfig.maxExcludedUids(false))
+        assertEquals(13, AppMixerExperimentConfig.maxExcludedUids(true))
         assertThrows(IllegalArgumentException::class.java) { AppMixerExperimentConfig.parseExcludedUids("--exclude-uids=10001") }
         assertThrows(IllegalArgumentException::class.java) {
             AppMixerExperimentConfig.parseExcludedUids("--exclude-uids=0," + (10001..10017).joinToString(","))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            AppMixerExperimentConfig.parseExcludedUids("--exclude-uids=0," + (10001..10013).joinToString(","), true)
         }
     }
 

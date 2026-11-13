@@ -103,7 +103,7 @@ class AppMixerSupervisorTest {
         assertTrue(supervisor.updateExclusions(setOf(0, 10004, 10322)))
         assertEquals(1, launches)
         assertFalse(released)
-        assertEquals(listOf("READY", "UPDATE 1 0,10004,10322"), helper.commands)
+        assertEquals(listOf("READY", "UPDATE 1 0 0,10004,10322"), helper.commands)
         supervisor.close()
         assertTrue(released)
     }

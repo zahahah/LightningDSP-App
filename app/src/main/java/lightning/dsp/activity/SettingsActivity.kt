@@ -9,6 +9,7 @@ import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import lightning.dsp.R
 import lightning.dsp.databinding.ActivitySettingsBinding
+import lightning.dsp.fragment.settings.SettingsAudioFormatFragment
 import lightning.dsp.fragment.settings.SettingsAboutFragment
 import lightning.dsp.fragment.settings.SettingsBackupFragment
 import lightning.dsp.fragment.settings.SettingsFragment
@@ -28,7 +29,10 @@ class SettingsActivity : BaseActivity(),
         setSupportActionBar(binding.settingsToolbar)
 
         if (savedInstanceState == null) {
-            val fragment = SettingsFragment.newInstance()
+            val fragment: PreferenceFragmentCompat = if (intent.getBooleanExtra(EXTRA_OPEN_AUDIO_PROCESSING, false))
+                SettingsAudioFormatFragment() else SettingsFragment.newInstance()
+            if (fragment is SettingsAudioFormatFragment)
+                supportActionBar?.setTitle(R.string.audio_format_header)
             @Suppress("DEPRECATION")
             fragment.setTargetFragment(null, 0)
 
@@ -43,7 +47,8 @@ class SettingsActivity : BaseActivity(),
 
         supportFragmentManager.addOnBackStackChangedListener {
             if (supportFragmentManager.backStackEntryCount == 0) {
-                supportActionBar?.title = getString(R.string.title_activity_settings)
+                supportActionBar?.setTitle(if (intent.getBooleanExtra(EXTRA_OPEN_AUDIO_PROCESSING, false))
+                    R.string.audio_format_header else R.string.title_activity_settings)
             }
             else {
                 supportActionBar?.title = supportFragmentManager.getBackStackEntryAt(supportFragmentManager.backStackEntryCount - 1).name
@@ -133,6 +138,7 @@ class SettingsActivity : BaseActivity(),
     }
 
     companion object {
+        const val EXTRA_OPEN_AUDIO_PROCESSING = "open_audio_processing"
         private const val PERSIST_TITLE = "title"
     }
 }

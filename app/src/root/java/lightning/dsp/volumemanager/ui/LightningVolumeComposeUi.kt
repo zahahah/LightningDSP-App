@@ -333,6 +333,9 @@ internal fun LightningVolumeManagerScreen(
             snapshot.hiddenFromPanel != hiddenAppIds ||
             snapshot.hiddenFromManager != managerHiddenAppIds || editedAppSettings.isNotEmpty()
     } == true
+    androidx.compose.runtime.LaunchedEffect(sessionMode, showSessionDspControls, alwaysShowSessionDspControls) {
+        if (!sessionMode || !showSessionDspControls || alwaysShowSessionDspControls) appDspButtonsRevealed = false
+    }
     val showAppDspButtons = SessionDspButtonVisibilityPolicy.shouldShow(
         sessionMode, showSessionDspControls, alwaysShowSessionDspControls, appDspButtonsRevealed
     )
@@ -420,7 +423,10 @@ internal fun LightningVolumeManagerScreen(
                         Box(Modifier.weight(1f)) {
                             if (showDspCard && (!compact || LightningDspVolumeManager.isEnabled)) {
                                 DspCard(onOpenEffect = onOpenEffect,
-                                    onDspIconClick = { appDspButtonsRevealed = !appDspButtonsRevealed })
+                                    onDspIconClick = {
+                                        appDspButtonsRevealed = SessionDspButtonVisibilityPolicy.onIconClick(
+                                            sessionMode, showSessionDspControls, alwaysShowSessionDspControls, appDspButtonsRevealed)
+                                    })
                             } else if (editing) {
                                 Text("LightningDSP", modifier = Modifier.padding(14.dp))
                             }
@@ -741,6 +747,9 @@ internal fun LightningVolumeFloatingPanel(
             .map { it.packageName }
     } else emptyList()
     val activeApps = appOrder.displayOrder(activeIds).mapNotNull(appById::get)
+    androidx.compose.runtime.LaunchedEffect(sessionMode, showSessionDspButtons, alwaysShowSessionDspButtons) {
+        if (!sessionMode || !showSessionDspButtons || alwaysShowSessionDspButtons) appDspButtonsRevealed = false
+    }
     val showAppDspButtons = SessionDspButtonVisibilityPolicy.shouldShow(
         sessionMode, showSessionDspButtons, alwaysShowSessionDspButtons, appDspButtonsRevealed
     )
@@ -774,7 +783,10 @@ internal fun LightningVolumeFloatingPanel(
                 if (showDspCard && state.enabled) {
                     item(key = "dsp_card") {
                         DspCard(onOpenEffect = onClose, floating = true, floatingLightTheme = !dark,
-                            onDspIconClick = { appDspButtonsRevealed = !appDspButtonsRevealed })
+                            onDspIconClick = {
+                                appDspButtonsRevealed = SessionDspButtonVisibilityPolicy.onIconClick(
+                                    sessionMode, showSessionDspButtons, alwaysShowSessionDspButtons, appDspButtonsRevealed)
+                            })
                     }
                 }
                 item(key = "system_controls") {

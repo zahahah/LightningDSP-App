@@ -15,6 +15,7 @@ import lightning.dsp.model.root.RemoteEffectSession
 import lightning.dsp.session.shared.BaseSessionDatabase
 import lightning.dsp.session.shared.SESSION_DSP_ENABLED_PREFIX
 import lightning.dsp.utils.extensions.ContextExtensions.getUidFromPackage
+import lightning.dsp.utils.Constants
 import timber.log.Timber
 
 
@@ -30,7 +31,7 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
     @Synchronized
     internal fun acquireMixerSessionLease(): Pair<AutoCloseable, List<LightningDspRemoteEngine>>? {
         if (supplementalSessionReservations.isNotEmpty()) {
-            Timber.w("App Mixer session lease refused: %d supplemental session reservation(s) remain", supplementalSessionReservations.size)
+            Timber.w("Fusion Mode session lease refused: %d supplemental session reservation(s) remain", supplementalSessionReservations.size)
             return null
         }
         var retired = emptyList<LightningDspRemoteEngine>()
@@ -38,7 +39,7 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
             retired = sessionList.values.mapNotNull { (it as? RemoteEffectSession)?.effect }
             clearSessions()
         } ?: run {
-            Timber.w("App Mixer session lease refused: session admission is already held")
+            Timber.w("Fusion Mode session lease refused: session admission is already held")
             return null
         }
         return lease to retired
@@ -261,6 +262,10 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
     private val app
         get() = context.applicationContext as MainApplication
 
+    private val includeSystemSounds: Boolean
+        get() = !app.isGlobalMode && app.getSharedPreferences(Constants.PREF_APP, Context.MODE_PRIVATE)
+            .getBoolean(app.getString(lightning.dsp.R.string.key_audioformat_include_system_sounds), true)
+
     var enabled: Boolean = true
         set(value) {
             field = value
@@ -443,7 +448,7 @@ class RootSessionDatabase(context: Context) : BaseSessionDatabase(context) {
     }
 
     override fun shouldAcceptSessionDump(id: Int, session: AudioSessionDumpEntry): Boolean {
-        if (!session.isUsageRecordable()) {
+        if (!session.isUsageRecordable(includeSystemSounds)) {
             Timber.d("Skipped session $id due to usage ($session)")
             return false
         }

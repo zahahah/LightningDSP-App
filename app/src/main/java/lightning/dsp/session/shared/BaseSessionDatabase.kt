@@ -47,8 +47,10 @@ abstract class BaseSessionDatabase(protected val context: Context) {
 
         onSessionDumpUpdated(dump)
 
-        val removedSessions = sessionList.filter {
-            !dump.sessions.contains(it.key) && !shouldRetainMissingSession(it.key, it.value)
+        val removedSessions = sessionList.filter { (id, session) ->
+            val current = dump.sessions[id]
+            if (current == null) !shouldRetainMissingSession(id, session)
+            else !shouldAcceptSessionDump(id, current)
         }
         val addedSessions = dump.sessions.filter {
             !sessionList.contains(it.key) && !excludedUids.contains(it.value.uid)

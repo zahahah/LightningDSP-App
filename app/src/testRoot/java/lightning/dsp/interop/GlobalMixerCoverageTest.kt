@@ -601,4 +601,29 @@ class GlobalMixerCoverageTest {
         budget.clear()
         assertTrue(budget.mayAttempt("b"))
     }
+
+    @Test fun unrelatedSystemPlaybackDoesNotInvalidateAStableAppTarget() {
+        val system = Playback(session = 441, uid = 1000, port = 99)
+        val started = inspect(listOf(Playback(), system))
+        val stopped = inspect(listOf(Playback(), system.copy(active = false, state = "S", flags = "600")))
+        assertTrue(started.reason, started.known)
+        assertTrue(stopped.reason, stopped.known)
+        assertEquals(started.targets, stopped.targets)
+        assertEquals(started.signature, stopped.signature)
+        val sequential = inspect(listOf(Playback(), system), transformPolicy = {
+            it.replace("Session ID: 441; uid 1000; State: Active", "Session ID: 441; uid 1000; State: Inactive")
+        })
+        assertTrue(sequential.reason, sequential.known)
+        assertEquals(started.targets, sequential.targets)
+    }
+    @Test fun appIdentityRouteFlagsAndEffectsStillInvalidateCoverage() {
+        val original = inspect()
+        assertNotEquals(original.signature, inspect(listOf(Playback(uid = 10329))).signature)
+        assertNotEquals(original.signature, inspect(listOf(Playback(session = 353))).signature)
+        assertNotEquals(original.signature, inspect(flags = "8").signature)
+        assertNotEquals(original.signature, inspect(globalOutput = 37).signature)
+        val effected = inspect(extra = listOf(effect(99, 361)))
+        assertTrue(effected.targets.isEmpty())
+        assertNotEquals(original.signature, effected.signature)
+    }
 }

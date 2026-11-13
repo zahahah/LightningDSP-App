@@ -1,7 +1,10 @@
 package lightning.dsp.volumemanager.backend
 
-/** App-level buttons are on-demand unless the Session Mode setting requests them always. */
+/** The master setting gates both on-demand and permanent controls in Session/Fusion modes. */
 internal object SessionDspButtonVisibilityPolicy {
-    fun shouldShow(sessionMode: Boolean, alwaysSetting: Boolean, always: Boolean, revealed: Boolean) =
-        sessionMode && ((alwaysSetting && always) || revealed)
+    fun shouldShow(modeEligible: Boolean, enabled: Boolean, always: Boolean, revealed: Boolean) =
+        modeEligible && enabled && (always || revealed)
+
+    fun onIconClick(modeEligible: Boolean, enabled: Boolean, always: Boolean, revealed: Boolean) =
+        if (modeEligible && enabled && !always) !revealed else false
 }

@@ -93,6 +93,10 @@ int main() {
     auto call = [&] { createCalls = configCalls = 0; return (*e)->CreateAudioPlayer(e, &player, &source, &sink, 0, nullptr, nullptr); };
     assert(call() == SL_RESULT_SUCCESS && createCalls == 1 && configCalls == 1 && lastCount == 1);
     assert(player == &realPlayer && performance == SL_ANDROID_PERFORMANCE_LATENCY_EFFECTS);
+    preferNoPerformanceRequirement = true;
+    assert(call() == SL_RESULT_SUCCESS && configCalls == 1 && performance == SL_ANDROID_PERFORMANCE_NONE);
+    setterFails = true; assert(call() == SL_RESULT_SUCCESS && configCalls == 1); setterFails = false;
+    preferNoPerformanceRequirement = false;
     // The real player/config interface remains intact: caller can explicitly override later.
     const SLuint32 latency = SL_ANDROID_PERFORMANCE_LATENCY;
     realConfig->SetConfiguration(&realConfig, SL_ANDROID_KEY_PERFORMANCE_MODE, &latency, sizeof(latency)); assert(performance == latency);

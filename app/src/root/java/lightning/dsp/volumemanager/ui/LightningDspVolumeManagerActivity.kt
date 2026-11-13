@@ -275,6 +275,8 @@ class LightningDspVolumeManagerActivity : BaseActivity() {
         val sessionMode = !(application as MainApplication).isGlobalMode
         val appDspSwitch = MaterialSwitch(settingsContext).apply {
             setText(R.string.ldsp_vm_app_dsp_power)
+            // Keep discoverable in Global Mode without enabling unsupported per-app control.
+            visibility = View.VISIBLE
             isChecked = preferences.getBoolean("show_session_dsp_controls", false)
             isEnabled = sessionMode
         }
@@ -295,6 +297,8 @@ class LightningDspVolumeManagerActivity : BaseActivity() {
                 appDspSwitch.isChecked -> R.string.ldsp_vm_app_dsp_power_enabled_summary
                 else -> R.string.ldsp_vm_app_dsp_power_summary
             })
+            alwaysShowAppDspSummary.setText(if (alwaysShowAppDspSwitch.isChecked)
+                R.string.ldsp_vm_app_dsp_power_always_summary else R.string.ldsp_vm_app_dsp_power_on_demand_summary)
             val showAlwaysSetting = sessionMode && appDspSwitch.isChecked
             alwaysShowAppDspSwitch.visibility = if (showAlwaysSetting) View.VISIBLE else View.GONE
             alwaysShowAppDspSummary.visibility = if (showAlwaysSetting) View.VISIBLE else View.GONE
@@ -305,6 +309,7 @@ class LightningDspVolumeManagerActivity : BaseActivity() {
         }
         alwaysShowAppDspSwitch.setOnCheckedChangeListener { _, checked ->
             preferences.edit().putBoolean("always_show_session_dsp_controls", checked).apply()
+            refreshAppDspSettingVisibility()
         }
         controls.addView(appDspSwitch)
         controls.addView(appDspSummary)

@@ -68,10 +68,16 @@ internal class AppMixerSupervisor(
                 } finally { lines.offer("APP_MIXER:EOF"); drained.countDown() }
             }.apply { isDaemon = true; name = "AppMixer-responses"; start() }
             Thread {
-                AppMixerProcessStreamDrainer.drain(process.errorStream)
+                AppMixerProcessStreamDrainer.drain(process.errorStream) { diagnostic ->
+                    // Only bounded numeric relay diagnostics, never arbitrary helper stderr.
+                    if (diagnostic.startsWith("Fusion Mode relay:") ||
+                        diagnostic.startsWith("Fusion Mode playback buffer:")) {
+                        android.util.Log.i("LightningDSP_FusionMode", diagnostic)
+                    }
+                }
             }.apply { isDaemon = true; name = "AppMixer-errors"; start() }
-            val sessionLine = awaitLine(lines, "APP_MIXER:SESSION ", 8_000)
-                ?: return failure(lastFailureReason ?: "helper did not publish a session within 8 seconds")
+            val sessionLine = awaitLine(lines, "APP_MIXER:SESSION ", 30_000)
+                ?: return failure(lastFailureReason ?: "helper did not prepare local DSP and publish a session within 30 seconds")
             val session = sessionLine.removePrefix("APP_MIXER:SESSION ").toIntOrNull()
             if (session == null || session <= 0) return failure("helper published an invalid playback session")
             effect = try { prepareEffect(session) } catch (error: Exception) {
@@ -92,15 +98,18 @@ internal class AppMixerSupervisor(
     @Synchronized fun hasOwner(): Boolean = child != null || exclusive != null
 
     /** Changes the registered mix without closing the shared playback path. */
-    @Synchronized fun updateExclusions(exclusions: Set<Int>): Boolean {
+    @Synchronized fun updateExclusions(exclusions: Set<Int>): Boolean = updateRules(exclusions, false)
+
+    /** Updates usage coverage and UID exceptions atomically without stopping the relay. */
+    @Synchronized fun updateRules(exclusions: Set<Int>, includeSystemSounds: Boolean): Boolean {
         val process = child ?: return false
         val lines = responses ?: return false
         if (!process.isAlive) return false
         return try {
             val values = exclusions.sorted().joinToString(",")
-            AppMixerExperimentConfig.parseExcludedUids("--exclude-uids=$values")
+            AppMixerExperimentConfig.parseExcludedUids("--exclude-uids=$values", includeSystemSounds)
             val id = ++updateId
-            process.outputStream.write("UPDATE $id $values\n".toByteArray(Charsets.US_ASCII))
+            process.outputStream.write("UPDATE $id ${if (includeSystemSounds) 1 else 0} $values\n".toByteArray(Charsets.US_ASCII))
             process.outputStream.flush()
             if (awaitLine(lines, "APP_MIXER:UPDATED $id", 8_000) == null)
                 failure(lastFailureReason ?: "mix rule update was not confirmed")

@@ -86,7 +86,7 @@ Java_lightning_dsp_interop_LightningDspWrapper_alloc(JNIEnv *env, jobject obj, j
 {
     auto* self = new LightningDspWrapper();
     self->callbackInterface = env->NewGlobalRef(callback);
-    self->env = env;
+    env->GetJavaVM(&self->vm);
 
     jclass callbackClass = env->GetObjectClass(callback);
     if (callbackClass == nullptr)
@@ -116,14 +116,15 @@ Java_lightning_dsp_interop_LightningDspWrapper_alloc(JNIEnv *env, jobject obj, j
 
 
     auto* _dsp = (JamesDSPLib*)malloc(sizeof(JamesDSPLib));
-    memset(_dsp, 0, sizeof(JamesDSPLib));
 
     if(!_dsp)
     {
         LOGE("LightningDspWrapper::ctor: Failed to allocate memory for LightningDSP core object");
+        env->DeleteGlobalRef(self->callbackInterface);
         delete self;
-        return 1;
+        return 0;
     }
+    memset(_dsp, 0, sizeof(JamesDSPLib));
 
     JamesDSPGlobalMemoryAllocation();
     JamesDSPInit(_dsp, 128, 48000);
@@ -133,9 +134,11 @@ Java_lightning_dsp_interop_LightningDspWrapper_alloc(JNIEnv *env, jobject obj, j
         LOGE("LightningDspWrapper::ctor: JamesDSPGetMutexStatus returned false. "
                     "Cannot run safely in multi-threaded environment.");
         JamesDSPFree(_dsp);
+        free(_dsp);
         JamesDSPGlobalMemoryDeallocation();
+        env->DeleteGlobalRef(self->callbackInterface);
         delete self;
-        return 2;
+        return 0;
     }
 
     self->dsp = _dsp;
@@ -744,7 +747,18 @@ void receiveLiveprogStdOut(const char *buffer, void* userData)
         return;
     }
 
-    self->env->CallVoidMethod(self->callbackInterface, self->callbackOnLiveprogOutput, self->env->NewStringUTF(buffer));
+    JNIEnv* env = nullptr;
+    const bool attach = self->vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6) == JNI_EDETACHED;
+    if (attach && self->vm->AttachCurrentThread(&env, nullptr) != JNI_OK) return;
+    if (env) {
+        jstring message = env->NewStringUTF(buffer);
+        if (message) {
+            env->CallVoidMethod(self->callbackInterface, self->callbackOnLiveprogOutput, message);
+            env->DeleteLocalRef(message);
+        }
+        if (env->ExceptionCheck()) env->ExceptionClear();
+    }
+    if (attach) self->vm->DetachCurrentThread();
 }
 
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *, void *)

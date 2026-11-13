@@ -27,4 +27,10 @@ class AppMixerUidSelectionTest {
         assertNull(AppMixerUidSelection.exclusions(listOf(app(10001, "")), 10004))
         assertNull(AppMixerUidSelection.exclusions((10010..10025).map { app(it, "$it", false) }, 10004))
     }
+
+    @Test fun systemSoundCriteriaReserveRoomForAdditionalRuleCriteria() {
+        val disabled = (10010..10021).map { app(it, "$it", false) }
+        assertEquals(14, AppMixerUidSelection.exclusions(disabled, 10004)?.size)
+        assertNull(AppMixerUidSelection.exclusions(disabled + app(10022, "10022", false), 10004, true))
+    }
 }

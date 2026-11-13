@@ -45,6 +45,9 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
     private val appMixerMode by lazy {
         findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_processing_app_mixer_option))
     }
+    private val includeSystemSounds by lazy {
+        findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_include_system_sounds))
+    }
     private val allMixers by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_all_mixers)) }
     private val enhancedMode by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_enhanced_processing)) }
     private val audioCompat by lazy { findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_aaudio_compat)) }
@@ -72,7 +75,6 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
                     val requested = AAudioCompatibilityOption.requested(compatContext)
                 if (actual != null && actual == requested) {
                     isEnabled = true
-                    aaudioSessionReuse?.isEnabled = requested
                 }
                     else {
                         if (actual != null) isChecked = actual
@@ -92,7 +94,6 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
                         AAudioCompatibilityResult.APPLIED -> {
                             preference.isEnabled = true
                             (preference as MaterialSwitchPreference).isChecked = enabled
-                            aaudioSessionReuse?.isEnabled = enabled
                             if (isAdded) requireContext().toast(R.string.audio_format_aaudio_compat_restart)
                         }
                         AAudioCompatibilityResult.FAILED -> {
@@ -111,19 +112,21 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
 
         aaudioSessionReuse?.apply {
             val compatContext = requireContext().applicationContext
-            isVisible = isRoot()
+            val initialGlobalMode = preferences.get<Boolean>(R.string.key_audioformat_processing)
+            val initialMixerMode = preferences.preferences.getBoolean(
+                getString(R.string.key_audioformat_processing_app_mixer), false)
+            isVisible = isRoot() && (!initialGlobalMode || initialMixerMode)
             isChecked = AAudioSessionReuseOption.requested(compatContext)
-            isEnabled = isRoot() && AAudioCompatibilityOption.requested(compatContext)
+            isEnabled = isRoot()
             if (isRoot()) {
                 isEnabled = false
                 lifecycleScope.launch {
                     val actual = withContext(Dispatchers.IO) { AAudioSessionReuseOption.actual() }
-                    val expected = AAudioSessionReuseOption.requested(compatContext) &&
-                        AAudioCompatibilityOption.requested(compatContext)
+                    val expected = AAudioSessionReuseOption.requested(compatContext)
                     if (actual != null && actual == expected) {
-                        isEnabled = AAudioCompatibilityOption.requested(compatContext)
+                        isEnabled = true
                     } else {
-                        if (actual != null && AAudioCompatibilityOption.requested(compatContext)) isChecked = actual
+                        if (actual != null) isChecked = actual
                         setSummary(R.string.audio_format_aaudio_compat_unknown)
                     }
                 }
@@ -138,12 +141,12 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
                     }
                     when (result) {
                         AAudioCompatibilityResult.APPLIED -> {
-                            preference.isEnabled = AAudioCompatibilityOption.requested(appContext)
+                            preference.isEnabled = true
                             (preference as MaterialSwitchPreference).isChecked = enabled
                             if (isAdded) requireContext().toast(R.string.audio_format_aaudio_reuse_session_restart)
                         }
                         AAudioCompatibilityResult.FAILED -> {
-                            preference.isEnabled = AAudioCompatibilityOption.requested(appContext)
+                            preference.isEnabled = true
                             if (isAdded) requireContext().toast(R.string.audio_format_aaudio_compat_failed)
                         }
                         AAudioCompatibilityResult.UNKNOWN -> {
@@ -181,8 +184,11 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
         encoding?.parent?.isVisible = isRootless()
         benchmark?.parent?.isVisible = !isRoot()
 
-        // Rootless: Hide audio processing category
+        // Rootless: Hide all root-only audio processing groups
         globalMode?.parent?.isVisible = isRoot()
+        allMixers?.parent?.isVisible = isRoot()
+        audioCompat?.parent?.isVisible = isRoot()
+        extraPostGain?.parent?.isVisible = isRoot()
         globalMode?.setOnPreferenceChangeListener { _, newValue ->
             setProcessingMode(newValue as Boolean)
             false
@@ -269,6 +275,22 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
         globalMode?.isChecked = globalEnabled && !mixerEnabled
         sessionMode?.isChecked = !globalEnabled && !mixerEnabled
         appMixerMode?.isChecked = mixerEnabled
+        includeSystemSounds?.apply {
+            isVisible = isRoot() && (!globalEnabled || mixerEnabled)
+            isEnabled = isRoot() && (!globalEnabled || mixerEnabled)
+            isChecked = preferences.preferences.getBoolean(
+                getString(R.string.key_audioformat_include_system_sounds), true)
+        }
+        audioCompat?.apply {
+            isVisible = isRoot() && !mixerEnabled
+            isEnabled = isRoot() && !mixerEnabled
+        }
+        aaudioSessionReuse?.apply {
+            // Session reuse is independent from the compatibility-mode toggle;
+            // it is supported for scoped AAudio apps in Session and Fusion Mode modes.
+            isVisible = isRoot() && (!globalEnabled || mixerEnabled)
+            isEnabled = isRoot() && (!globalEnabled || mixerEnabled)
+        }
         enhancedMode?.isVisible = isRoot() && !globalEnabled && !mixerEnabled
         enhancedModeInfo?.isVisible = isRoot() && !globalEnabled && !mixerEnabled
         if (isRoot() && !globalEnabled && !mixerEnabled) enhancedMode?.apply {

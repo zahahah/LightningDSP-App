@@ -1,0 +1,67 @@
+name: Signed root universal APK
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: root-artifacts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.repository == 'zahahah/LightningDSP-App' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/wrapper-validation@v4
+      - name: Test and build root universal release
+        run: ./gradlew --no-daemon --max-workers=2 :app:testRootFullReleaseUnitTest :app:assembleRootFullRelease
+      - name: Sign and verify the owner APK
+        env:
+          SIGNING_KEYSTORE: ${{ secrets.SIGNING_KEYSTORE }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SIGNING_KEYSTORE" && test -n "$KEY_ALIAS"
+          tools=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          key="$RUNNER_TEMP/owner-keystore"
+          trap 'rm -f "$key"' EXIT
+          umask 077
+          printf '%s' "$SIGNING_KEYSTORE" | base64 --decode > "$key"
+          mkdir -p dist
+          mapfile -t inputs < <(find app/build/outputs/apk/rootFull/release -name '*universal-release-unsigned.apk')
+          test "${#inputs[@]}" -eq 1
+          "$tools/apksigner" sign --ks "$key" --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass env:KEYSTORE_PASSWORD --key-pass env:KEY_PASSWORD \
+            --out dist/LightningDSP-root-universal.apk "${inputs[0]}"
+          "$tools/apksigner" verify --print-certs dist/LightningDSP-root-universal.apk > "$RUNNER_TEMP/apk-certificate.txt"
+          grep -Fx 'Signer #1 certificate SHA-256 digest: c18c2d21eee51c357d9485c781be9bf201131c6fa94bab97b93c94b710c40357' "$RUNNER_TEMP/apk-certificate.txt"
+          test "$(grep -c 'certificate SHA-256 digest:' "$RUNNER_TEMP/apk-certificate.txt")" -eq 1
+          "$tools/aapt" dump badging dist/LightningDSP-root-universal.apk > "$RUNNER_TEMP/apk-badging.txt"
+          grep -E "^package: name='com.lightning.dsp' " "$RUNNER_TEMP/apk-badging.txt"
+          git rev-parse HEAD > dist/SOURCE-COMMIT.txt
+          (cd dist && sha256sum LightningDSP-root-universal.apk > SHA256SUMS.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LightningDSP-root-universal-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            dist/LightningDSP-root-universal.apk
+            dist/SHA256SUMS.txt
+            dist/SOURCE-COMMIT.txt

@@ -1,4 +1,4 @@
-# App Mixer Mode — isolated POC design and blocker
+# Fusion Mode — isolated POC design and blocker
 
 **Status: an experimental supervised relay mode is implemented; device routing and effect coverage remain unproven.**
 

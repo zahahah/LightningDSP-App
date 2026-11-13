@@ -177,6 +177,17 @@ class MainActivity : BaseActivity() {
         // Setup views
         setContentView(binding.root)
         setSupportActionBar(binding.toolbar)
+        if (isRoot()) {
+            binding.toolbar.setNavigationIcon(R.drawable.ic_audio_processing)
+            binding.toolbar.setNavigationIconTint(com.google.android.material.color.MaterialColors.getColor(
+                binding.toolbar, com.google.android.material.R.attr.colorOnSurface))
+            binding.toolbar.navigationContentDescription = getString(R.string.audio_format_header)
+            binding.toolbar.setNavigationOnClickListener {
+                startActivity(Intent(this, SettingsActivity::class.java)
+                    .putExtra(SettingsActivity.EXTRA_OPEN_AUDIO_PROCESSING, true))
+            }
+        }
+
 
         actionBar?.setDisplayHomeAsUpEnabled(true)
         actionBar?.setHomeButtonEnabled(true)
@@ -222,7 +233,7 @@ class MainActivity : BaseActivity() {
         // Inflate bottom right menu
         binding.bar.inflateMenu(R.menu.menu_main_bottom)
 
-        if(isPlugin() || (isRoot() && !app.isEnhancedProcessing))
+        if (isPlugin() || !app.isEnhancedProcessing)
             binding.bar.menu.removeItem(R.id.action_blocklist)
 
         binding.bar.setOnMenuItemClickListener { arg0 ->

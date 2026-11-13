@@ -4,6 +4,9 @@ package lightning.dsp.interop.appmixer
 internal object AppMixerEffectInventory {
     const val EFFECT_UUID = "f27317f4-c984-4de6-9a90-545759495bf2"
 
+    /** Local PCM processing must have no framework insert, including after preparation. */
+    fun expectedAfterPreparation(localDsp: Boolean): Int = if (localDsp) 0 else 1
+
     /** Returns null when the dump is incomplete or its effect layout is unknown. */
     fun count(dump: String): Int? {
         val hasEffectInventory = dump.contains("Effect Chains") ||

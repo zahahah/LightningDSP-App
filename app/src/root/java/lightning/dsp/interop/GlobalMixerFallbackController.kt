@@ -208,9 +208,14 @@ internal class GlobalMixerFallbackController(
     }
 
     private fun baseline() = (app.rootSessionDatabase.sessionList[0] as? RemoteEffectSession)?.effect
-    private fun current(expected: Long, global: LightningDspRemoteEngine?) =
-        !closed && revision == expected && shouldRun() && baseline() === global &&
+    private fun current(expected: Long, global: LightningDspRemoteEngine?): Boolean {
+        if (revision != expected) {
+            diagnose("inspection_superseded", "phase=$diagnosticPhase; playback/device/preference revision changed; result discarded")
+            return false
+        }
+        return !closed && shouldRun() && baseline() === global &&
             (global?.canControlEndpoint() ?: !app.isGlobalMode)
+    }
 
     private suspend fun reconcile(expected: Long) {
         val startedAt = SystemClock.elapsedRealtime()
@@ -307,7 +312,10 @@ internal class GlobalMixerFallbackController(
             val generation = DspDesiredState.current()
             diagnosticPhase = "construction"
             val reserved = !app.isGlobalMode && app.rootSessionDatabase.reserveSupplementalSession(target.id)
-            if (!app.isGlobalMode && !reserved) continue
+            if (!app.isGlobalMode && !reserved) {
+                diagnose("session_reserved", "candidate already owned by the Session Mode database or admission blocked; duplicate refused")
+                continue
+            }
             if (!current(expected, global) || app.rootSessionDatabase.sessionList.containsKey(target.id)) {
                 if (reserved) app.rootSessionDatabase.releaseSupplementalSession(target.id)
                 continue

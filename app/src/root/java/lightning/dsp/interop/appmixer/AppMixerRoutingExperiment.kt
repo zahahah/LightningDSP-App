@@ -9,6 +9,7 @@ import android.media.AudioTrack
 import android.media.audiofx.AudioEffect
 import android.os.Process
 import android.os.SystemClock
+import android.util.Base64
 import lightning.dsp.volumemanager.backend.PrivilegedVolumeContext
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -19,7 +20,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Root app_process relay for the manual experiment and supervised App Mixer mode.
+ * Root app_process relay for the manual experiment and supervised Fusion Mode.
  * Uses LOOP_BACK alone (never LOOP_BACK|RENDER), avoiding intentional duplicate rendering.
  * Unknown/denied platform APIs fail closed. No capture-policy changes or recording files.
  */
@@ -32,7 +33,8 @@ object AppMixerRoutingExperiment {
             runMain(args)
         } catch (error: Throwable) {
             exitCode = 1
-            System.err.println("App Mixer helper failed: ${error.javaClass.simpleName}: ${error.message.orEmpty().take(160)}")
+            android.util.Log.e("LightningDSP_FusionMode", "Helper initialization or routing failed", error)
+            System.err.println("Fusion Mode helper failed: ${error.javaClass.simpleName}: ${error.message.orEmpty().take(160)}")
             println("APP_MIXER:FAILED ${error.javaClass.simpleName}: ${error.message.orEmpty().take(160)}")
         } finally {
             System.out.flush()
@@ -45,13 +47,24 @@ object AppMixerRoutingExperiment {
 
     private fun runMain(args: Array<String>) {
         if (args.isEmpty()) {
-            println("App Mixer routing helper. See poc/app-mixer-mode/ROUTING-EXPERIMENT.md")
+            println("Fusion Mode routing helper. See poc/app-mixer-mode/ROUTING-EXPERIMENT.md")
             return
         }
-        val supervised = args.size == 6 && args[0] == "--supervised" && args[1].startsWith("--exclude-uids=") && args[2].startsWith("--user=") && args[3].startsWith("--owner=") && args[4].startsWith("--owner-pid=") && args[5].startsWith("--owner-start=")
-        val config = if (supervised) AppMixerExperimentConfig(AppMixerExperimentConfig.parseExcludedUids(args[1]), 90, excludeUids = true,
+        if (args.size == 3 && args[0] == "--local-dsp-files-preflight") {
+            check(Process.myUid() == 0)
+            if (android.os.Looper.getMainLooper() == null) android.os.Looper.prepareMainLooper()
+            val path = String(Base64.decode(args[2], Base64.URL_SAFE), Charsets.UTF_8)
+            AppMixerLocalDsp.verifyFileAccess(PrivilegedVolumeContext.obtain(), args[1].toInt(), path)
+            println("APP_MIXER:FILES_OK (read-only; no DSP instance or route created)")
+            return
+        }
+        val supervised = args.size == 9 && args[7] == "--local-dsp" && args[8].startsWith("--owner-external-b64=") && args[0] == "--supervised" && args[1].startsWith("--exclude-uids=") && args[2].startsWith("--user=") && args[3].startsWith("--owner=") && args[4].startsWith("--owner-pid=") && args[5].startsWith("--owner-start=") && args[6].matches(Regex("--include-system-sounds=[01]"))
+        val config = if (supervised) AppMixerExperimentConfig(
+            AppMixerExperimentConfig.parseExcludedUids(args[1], args[6].endsWith("=1")), 90, excludeUids = true,
             userId = args[2].removePrefix("--user=").toInt().also { require(it in 0..21473) },
-            ownerUid = args[3].removePrefix("--owner=").toInt())
+            ownerUid = args[3].removePrefix("--owner=").toInt(),
+            includeSystemSounds = args[6].endsWith("=1"), localDsp = true,
+            ownerExternalFiles = String(Base64.decode(args[8].removePrefix("--owner-external-b64="), Base64.URL_SAFE), Charsets.UTF_8))
         else AppMixerExperimentConfig.parse(args)
         if (supervised) require(config.ownerUid in config.uids && config.ownerUid / 100000 == config.userId && config.ownerUid % 100000 in 10000..19999)
         check(Process.myUid() == 0) { "A separately authorized root app_process is required" }
@@ -59,7 +72,7 @@ object AppMixerRoutingExperiment {
         if (supervised) {
             val owner = AppMixerOwnerIdentity(args[4].removePrefix("--owner-pid=").toInt(),
                 config.ownerUid, args[5].removePrefix("--owner-start=").toLong())
-            check(AppMixerOwnerIdentity.read(owner.pid) == owner) { "App Mixer owner is no longer valid" }
+            check(AppMixerOwnerIdentity.read(owner.pid) == owner) { "Fusion Mode owner is no longer valid" }
             AppMixerOwnerWatchdog.start(owner, stop)
         }
         // Do not relax hidden-API enforcement: unavailable APIs abort before routing.
@@ -78,7 +91,7 @@ object AppMixerRoutingExperiment {
             return
         }
         val commands = ArrayBlockingQueue<String>(1)
-        val updater = AtomicReference<((Set<Int>) -> Boolean)?>(null)
+        val updater = AtomicReference<((Set<Int>, Boolean) -> Boolean)?>(null)
         Thread {
             try {
                 val input = System.`in`.bufferedReader()
@@ -88,12 +101,13 @@ object AppMixerRoutingExperiment {
                     while (true) {
                         val line = AppMixerControlProtocol.readCommand(input, 256) ?: break
                         if (line == "STOP") break
-                        val parts = line.split(' ', limit = 3)
-                        if (parts.size != 3 || parts[0] != "UPDATE" || parts[1].toLongOrNull() == null) break
+                        val parts = line.split(' ', limit = 4)
+                        if (parts.size != 4 || parts[0] != "UPDATE" || parts[1].toLongOrNull() == null || parts[2] !in setOf("0", "1")) break
                         val ok = runCatching {
-                            val excluded = AppMixerExperimentConfig.parseExcludedUids("--exclude-uids=${parts[2]}")
+                            val includeSystemSounds = parts[2] == "1"
+                            val excluded = AppMixerExperimentConfig.parseExcludedUids("--exclude-uids=${parts[3]}", includeSystemSounds)
                             require(config.ownerUid in excluded)
-                            updater.get()?.invoke(excluded) == true
+                            updater.get()?.invoke(excluded, includeSystemSounds) == true
                         }.getOrDefault(false)
                         println("APP_MIXER:${if (ok) "UPDATED" else "UPDATE_FAILED"} ${parts[1]}")
                         System.out.flush()
@@ -113,7 +127,7 @@ object AppMixerRoutingExperiment {
     }
 
     private fun run(context: Context, config: AppMixerExperimentConfig, stop: AtomicBoolean,
-                    updater: AtomicReference<((Set<Int>) -> Boolean)?>,
+                    updater: AtomicReference<((Set<Int>, Boolean) -> Boolean)?>,
                     prepareExternalEffect: ((Int) -> Unit)?) {
         val audio = context.getSystemService(AudioManager::class.java)
         val policyType = Class.forName("android.media.audiopolicy.AudioPolicy")
@@ -129,10 +143,21 @@ object AppMixerRoutingExperiment {
             audio.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER))
         val ruleBuilderType = Class.forName("android.media.audiopolicy.AudioMixingRule\$Builder")
         val uidRule = ruleType.getField("RULE_MATCH_UID").getInt(null)
-        fun buildRule(uids: Set<Int>): Any {
+        fun buildRule(uids: Set<Int>, includeSystemSounds: Boolean = config.includeSystemSounds): Any {
         val ruleBuilder = ruleBuilderType.getConstructor().newInstance()
-        // Only media/game PCM is considered. No calls, alarms or system sonification.
-        for (usage in intArrayOf(AudioAttributes.USAGE_MEDIA, AudioAttributes.USAGE_GAME)) {
+        // Some apps report PCM as UNKNOWN. Optional notification/sonification usage
+        // matching covers notification tones and keyboard/system clicks, not calls or alarms.
+        val usages = buildList {
+            add(AudioAttributes.USAGE_MEDIA)
+            add(AudioAttributes.USAGE_GAME)
+            add(AudioAttributes.USAGE_UNKNOWN)
+            if (includeSystemSounds) {
+                add(AudioAttributes.USAGE_NOTIFICATION)
+                add(AudioAttributes.USAGE_NOTIFICATION_EVENT)
+                add(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+            }
+        }
+        for (usage in usages) {
             ruleBuilderType.getMethod("addRule", AudioAttributes::class.java, Int::class.javaPrimitiveType)
                 .invoke(ruleBuilder, AudioAttributes.Builder().setUsage(usage).build(),
                     ruleType.getField("RULE_MATCH_ATTRIBUTE_USAGE").getInt(null))
@@ -164,33 +189,53 @@ object AppMixerRoutingExperiment {
         var recorder: AudioRecord? = null
         var player: AudioTrack? = null
         var effect: AudioEffect? = null
+        var localDsp: AppMixerLocalDsp? = null
         try {
             check(!stop.get()) { "Owner pipe closed before routing" }
+            if (config.localDsp) localDsp = AppMixerLocalDsp.open(context, config.ownerUid, stop, relayFrames * AppMixerLatencyPolicy.CHANNELS, config.ownerExternalFiles)
             // Build the return path first, but do not start playback or enable DSP yet.
             val minimumBytes = AudioTrack.getMinBufferSize(48000,
                 AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT)
             check(minimumBytes > 0) { "PCM playback configuration unavailable: $minimumBytes" }
-            val bytes = AppMixerLatencyPolicy.trackBufferBytes(minimumBytes, relayFrames)
+            val bytes = AppMixerLatencyPolicy.playbackCapacityBytes(minimumBytes, relayFrames)
             player = AudioTrack.Builder().setAudioAttributes(AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
                 .setAudioFormat(format).setTransferMode(AudioTrack.MODE_STREAM)
-                // LightningDSP is a software effect. Android rejects software
-                // session effects on FAST playback threads, so keep this relay
-                // track on the normal mixer instead of requesting low latency.
-                .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_NONE)
+                // Local DSP has no framework insert and may request FAST. The
+                // legacy framework-effect backend must retain normal playback.
+                .setPerformanceMode(if (config.localDsp) AudioTrack.PERFORMANCE_MODE_LOW_LATENCY else AudioTrack.PERFORMANCE_MODE_NONE)
                 .setBufferSizeInBytes(bytes).build()
             check(player.state == AudioTrack.STATE_INITIALIZED && player.audioSessionId > 0)
-            // Keep the allocated capacity but reduce the effective write queue.
-            // Unsupported devices retain the framework default rather than failing
-            // the effect or discarding captured audio.
-            runCatching {
-                val target = AppMixerLatencyPolicy.playbackBufferFrames(player.bufferCapacityInFrames)
-                val actual = player.setBufferSizeInFrames(target)
-                System.err.println("App Mixer playback buffer: requested=$target actual=$actual frames")
+            val minimumFrames = (minimumBytes + 3) / 4
+            val recoveryFloor = AppMixerLatencyPolicy.recoveryFloorFrames(minimumFrames, config.localDsp)
+            val bufferTuner = AppMixerPlaybackBufferTuner(recoveryFloor)
+            var lastRequestedBuffer = -1
+            var lastAcceptedBuffer = -1
+            var lastBufferCapacity = -1
+            fun tunePlaybackBuffer() {
+                val target = bufferTuner.targetFrames(player.bufferCapacityInFrames, player.underrunCount)
+                val capacity = player.bufferCapacityInFrames
+                val current = player.bufferSizeInFrames
+                // A valid platform clamp is not a failure: do not reconfigure the
+                // same accepted size every second. A route/track restoration can
+                // change capacity or size and must still trigger a fresh request.
+                if (lastRequestedBuffer != target || lastBufferCapacity != capacity ||
+                    lastAcceptedBuffer != current) {
+                    val actual = player.setBufferSizeInFrames(target)
+                    if (actual > 0) {
+                        lastRequestedBuffer = target
+                        lastAcceptedBuffer = actual
+                        lastBufferCapacity = capacity
+                    }
+                    System.err.println("Fusion Mode playback buffer: constructionMinimum=$minimumFrames recoveryFloor=$recoveryFloor requested=$target actual=$actual capacity=${player.bufferCapacityInFrames}")
+                }
             }
+            // Capacity remains conservatively sized. The effective queue is tuned separately;
+            // AudioTrack clamps unsupported sizes and underruns restore safe headroom.
+            runCatching { tunePlaybackBuffer() }
             if (prepareExternalEffect == null) effect = createDiagnosticEffect(player.audioSessionId)
             else prepareExternalEffect(player.audioSessionId)
-            checkNoExistingEffects(allowOwnDiagnostic = true)
+            checkNoExistingEffects(expectedCount = AppMixerEffectInventory.expectedAfterPreparation(config.localDsp))
             check(!stop.get()) { "Owner pipe closed before routing" }
             // The supervisor treats all exits before this marker as pre-route failures,
             // where releasing the external effect and exclusive lease is safe.
@@ -205,12 +250,12 @@ object AppMixerRoutingExperiment {
             check(recorder.recordingState == AudioRecord.RECORDSTATE_RECORDING)
             effect?.let { check(it.setEnabled(true) == AudioEffect.SUCCESS && it.enabled && it.hasControl()) }
             player.play()
-            if (config.excludeUids) updater.set { excluded ->
+            if (config.excludeUids) updater.set { excluded, includeSystemSounds ->
                 val update = policyType.getMethod("updateMixingRules", List::class.java)
-                val updates = listOf(android.util.Pair(mix, buildRule(excluded)))
+                val updates = listOf(android.util.Pair(mix, buildRule(excluded, includeSystemSounds)))
                 (update.invoke(policy, updates) as Int) == 0
             }
-            println("APP_MIXER:RUNNING session=${player.audioSessionId} uidCount=${config.uids.size} effect=${if (prepareExternalEffect == null) "diagnostic" else "external"}; coverage NOT verified")
+            println("APP_MIXER:RUNNING session=${player.audioSessionId} uidCount=${config.uids.size} effect=${if (config.localDsp) "local" else if (prepareExternalEffect == null) "diagnostic" else "external"}; coverage NOT verified")
             System.out.flush()
             // Supervised lifetime is controlled by the owner's pipe; manual tests
             // remain time-limited. Rebuilding the mix periodically interrupts all tracks.
@@ -218,11 +263,37 @@ object AppMixerRoutingExperiment {
                 SystemClock.elapsedRealtime() + config.seconds * 1000L else Long.MAX_VALUE
             val source = recorder
             val target = player
-            val counts = AppMixerPcmRelay.run(ShortArray(relayFrames * AppMixerLatencyPolicy.CHANNELS),
+            if (!AppMixerRelayScheduling.requestAudioPriority {
+                    Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
+                }) System.err.println("Fusion Mode relay: audio scheduling unavailable; retaining default priority")
+            var lastDiagnostic = System.nanoTime()
+            var diagnosticReadGap = 0L
+            val fixedDspCapture = localDsp?.let { dsp ->
+                AppMixerFixedDspCapture(relayFrames * AppMixerLatencyPolicy.CHANNELS, dsp::process)
+            }
+            System.err.println("Fusion Mode relay: backend=${if (config.localDsp) "local-dsp" else "framework"} performanceMode=${target.performanceMode} sampleRate=${target.sampleRate}")
+            val counts = AppMixerPcmRelay.runBuffered(ShortArray(relayFrames * AppMixerLatencyPolicy.CHANNELS),
                 shouldContinue = { !stop.get() && SystemClock.elapsedRealtime() < deadline },
-                read = { source.read(it, 0, it.size, AudioRecord.READ_NON_BLOCKING) },
+                read = { input ->
+                    if (fixedDspCapture == null) source.read(input, 0, input.size, AudioRecord.READ_NON_BLOCKING)
+                    else fixedDspCapture.read(input) { capture, offset, count ->
+                        source.read(capture, offset, count, AudioRecord.READ_NON_BLOCKING)
+                    }
+                },
                 write = { block, offset, count -> target.write(block, offset, count, AudioTrack.WRITE_NON_BLOCKING) },
-                idle = { Thread.sleep(2) })
+                idle = { Thread.sleep(2) },
+                progressIntervalNanos = 1_000_000_000L,
+                onProgress = { now, progress, readGap ->
+                    // Shared-memory AudioTrack metrics; no dumpsys/Binder topology
+                    // query or parameter synchronization on the PCM hot path.
+                    runCatching { tunePlaybackBuffer() }
+                    diagnosticReadGap = maxOf(diagnosticReadGap, readGap)
+                    if (now - lastDiagnostic >= 5_000_000_000L) {
+                        System.err.println("Fusion Mode relay: read=${progress.readSamples} written=${progress.writtenSamples} queuedFrames=${(progress.readSamples - progress.writtenSamples) / 2} maxReadGapMs=${diagnosticReadGap / 1_000_000} underruns=${target.underrunCount} buffer=${target.bufferSizeInFrames} capacity=${target.bufferCapacityInFrames}")
+                        lastDiagnostic = now
+                        diagnosticReadGap = 0L
+                    }
+                })
             println("APP_MIXER:STOP samplesRead=${counts.readSamples} samplesWritten=${counts.writtenSamples}; counters are NOT coverage proof")
         } finally {
             updater.set(null)
@@ -238,6 +309,7 @@ object AppMixerRoutingExperiment {
             cleanup { recorder?.release() }
             cleanup { player?.release() }
             if (registrationAttempted) cleanup { unregister.invoke(audio, policy) }
+            cleanup { localDsp?.close() }
             if (cleanupFailure != null) throw IllegalStateException("APP_MIXER:CLEANUP_FAILED; verify policy/output state", cleanupFailure)
             println("APP_MIXER:RELEASED (verify dumps to confirm baseline restoration)")
             System.out.flush()
@@ -264,7 +336,7 @@ object AppMixerRoutingExperiment {
         } catch (e: Throwable) { effect.release(); throw e }
     }
 
-    private fun checkNoExistingEffects(allowOwnDiagnostic: Boolean = false) {
+    private fun checkNoExistingEffects(expectedCount: Int = 0) {
         val process = ProcessBuilder("/system/bin/timeout", "3", "/system/bin/dumpsys", "media.audio_flinger")
             .redirectErrorStream(true).start()
         val bytes = process.inputStream.use { input ->
@@ -285,6 +357,6 @@ object AppMixerRoutingExperiment {
         val dump = bytes.toString(Charsets.UTF_8)
         val count = AppMixerEffectInventory.count(dump)
             ?: error("AudioFlinger effect inventory layout unknown")
-        check(count == if (allowOwnDiagnostic) 1 else 0) { "Stop existing LightningDSP processing before the manual mixer experiment" }
+        check(count == expectedCount) { "Framework DSP inventory mismatch: expected=$expectedCount found=$count; duplicate processing is not permitted" }
     }
 }

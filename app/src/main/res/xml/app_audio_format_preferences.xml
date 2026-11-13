@@ -27,7 +27,7 @@
     </PreferenceCategory>
 
     <PreferenceCategory
-        app:title="@string/audio_format_processing_header"
+        app:title="@string/audio_format_processing_modes_header"
         app:iconSpaceReserved="false">
         <lightning.dsp.preference.MaterialSwitchPreference
             android:key="@string/key_audioformat_processing_global_option"
@@ -49,12 +49,23 @@
             android:title="@string/audio_format_processing_app_mixer"
             android:summary="@string/audio_format_processing_app_mixer_summary"
             app:iconSpaceReserved="false" />
+    </PreferenceCategory>
 
+    <PreferenceCategory
+        app:title="@string/audio_format_coverage_header"
+        app:iconSpaceReserved="false">
         <lightning.dsp.preference.MaterialSwitchPreference
             android:key="@string/key_audioformat_all_mixers"
             android:defaultValue="@bool/default_audioformat_all_mixers"
             android:title="@string/audio_format_all_mixers"
             android:summary="@string/audio_format_all_mixers_summary"
+            app:iconSpaceReserved="false" />
+
+        <lightning.dsp.preference.MaterialSwitchPreference
+            android:key="@string/key_audioformat_include_system_sounds"
+            android:defaultValue="@bool/default_audioformat_include_system_sounds"
+            android:title="@string/audio_format_include_system_sounds"
+            android:summary="@string/audio_format_include_system_sounds_summary"
             app:iconSpaceReserved="false" />
 
         <lightning.dsp.preference.MaterialSwitchPreference
@@ -65,6 +76,16 @@
             android:summaryOn="@string/audio_format_enhanced_processing_on"
             app:iconSpaceReserved="false" />
 
+        <Preference
+            android:key="@string/key_audioformat_enhanced_processing_info"
+            android:title="@string/audio_format_enhanced_processing_info_title"
+            android:summary="@string/audio_format_enhanced_processing_info"
+            app:iconSpaceReserved="false"/>
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        app:title="@string/audio_format_compatibility_header"
+        app:iconSpaceReserved="false">
         <lightning.dsp.preference.MaterialSwitchPreference
             android:key="@string/key_audioformat_aaudio_compat"
             android:defaultValue="@bool/default_audioformat_aaudio_compat"
@@ -80,7 +101,11 @@
             android:summary="@string/audio_format_aaudio_reuse_session_summary"
             android:persistent="false"
             app:iconSpaceReserved="false" />
+    </PreferenceCategory>
 
+    <PreferenceCategory
+        app:title="@string/audio_format_effect_adjustments_header"
+        app:iconSpaceReserved="false">
         <lightning.dsp.preference.MaterialSwitchPreference
             android:key="@string/key_output_extra_postgain"
             android:title="@string/output_extra_postgain"
@@ -88,13 +113,6 @@
             android:defaultValue="false"
             android:persistent="false"
             app:iconSpaceReserved="false" />
-
-        <Preference
-            android:key="@string/key_audioformat_enhanced_processing_info"
-            android:title="@string/audio_format_enhanced_processing_info_title"
-            android:summary="@string/audio_format_enhanced_processing_info"
-            app:iconSpaceReserved="false"/>
-
     </PreferenceCategory>
 
     <PreferenceCategory

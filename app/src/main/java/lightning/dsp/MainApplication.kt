@@ -157,6 +157,21 @@ open class MainApplication : Application(), SharedPreferences.OnSharedPreference
             modules(appModule)
         }
 
+        // Seed the root experience before any service or UI reads these preferences.
+        // Existing false values and existing Session/Global selections remain untouched.
+        if (isRoot()) {
+            fun seed(name: String, defaults: (Map<String, *>) -> Map<String, Boolean>) {
+                val store = getSharedPreferences(name, Context.MODE_PRIVATE)
+                val missing = defaults(store.all)
+                if (missing.isNotEmpty()) store.edit().apply {
+                    missing.forEach { (key, value) -> putBoolean(key, value) }
+                }.apply()
+            }
+            seed(Constants.PREF_APP, lightning.dsp.utils.preferences.RootExperienceDefaults::processing)
+            seed("lightningdsp_volume_manager", lightning.dsp.utils.preferences.RootExperienceDefaults::manager)
+            seed("lightningdsp_volume_panel", lightning.dsp.utils.preferences.RootExperienceDefaults::panel)
+        }
+
         // Depends on Koin
         profileManager = ProfileManager()
 

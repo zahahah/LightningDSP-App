@@ -1,7 +1,7 @@
-# App Mixer Mode — manual routing experiment
+# Fusion Mode — manual routing experiment
 
 The manual harness remains available, and its supervised variant now backs the
-opt-in experimental App Mixer Mode. The mode shares the existing app DSP power
+opt-in experimental Fusion Mode. The mode shares the existing app DSP power
 preferences. Global and Session processing are fenced during its relay handoff.
 No device validation has been performed. Build/unit tests do not prove routing,
 capture eligibility, selected-only DSP, latency, or reliable cleanup on a device.

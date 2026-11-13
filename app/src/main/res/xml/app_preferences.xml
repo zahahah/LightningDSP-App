@@ -11,7 +11,7 @@
         app:key="@string/key_audio_format"
         app:title="@string/audio_format_header"
         app:summary="@string/audio_format_summary"
-        app:icon="@drawable/ic_twotone_volume_up_24dp"
+        app:icon="@drawable/ic_audio_processing"
         app:fragment="lightning.dsp.fragment.settings.SettingsAudioFormatFragment" />
 
     <Preference

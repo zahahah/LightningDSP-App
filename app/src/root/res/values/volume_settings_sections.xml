@@ -10,10 +10,11 @@
     <string name="ldsp_vm_media_play_pause_summary" tools:ignore="MissingTranslation">When enabled, root grants LightningDSP notification access for media controls. Supported players show a button; paused apps stay in the floating panel for 3 minutes.</string>
     <string name="ldsp_vm_media_play_pause_access_failed" tools:ignore="MissingTranslation">Could not enable media controls. Allow notification access for LightningDSP and try again.</string>
     <string name="ldsp_vm_app_dsp_power" tools:ignore="MissingTranslation">Show app DSP power buttons</string>
-    <string name="ldsp_vm_app_dsp_power_summary" tools:ignore="MissingTranslation">Status: App DSP power buttons appear after tapping the LightningDSP icon.</string>
-    <string name="ldsp_vm_app_dsp_power_global_summary" tools:ignore="MissingTranslation">Available in Session Mode and App Mixer Mode.</string>
-    <string name="ldsp_vm_app_dsp_power_enabled_summary" tools:ignore="MissingTranslation">Buttons are always visible when the option below is on; otherwise tap the LightningDSP icon.</string>
+    <string name="ldsp_vm_app_dsp_power_summary" tools:ignore="MissingTranslation">Show buttons to turn LightningDSP effects on or off for each app.</string>
+    <string name="ldsp_vm_app_dsp_power_global_summary" tools:ignore="MissingTranslation">Show buttons to turn LightningDSP effects on or off for each app. Unavailable in Global Mode, works only in Session Mode and Fusion Mode.</string>
+    <string name="ldsp_vm_app_dsp_power_enabled_summary" tools:ignore="MissingTranslation">Turn LightningDSP effects on or off for each app. Enable the option below to keep buttons visible, or tap the LightningDSP icon to show them.</string>
     <string name="ldsp_vm_app_dsp_power_always" tools:ignore="MissingTranslation">Always show app DSP power buttons</string>
+    <string name="ldsp_vm_app_dsp_power_on_demand_summary" tools:ignore="MissingTranslation">Status: App DSP power buttons appear after tapping the LightningDSP icon.</string>
     <string name="ldsp_vm_app_dsp_power_always_summary" tools:ignore="MissingTranslation">Keep them visible without tapping the LightningDSP icon.</string>
     <string name="ldsp_vm_settings_app_list" tools:ignore="MissingTranslation">App list</string>
     <string name="ldsp_vm_settings_dsp_card" tools:ignore="MissingTranslation">LightningDSP card</string>

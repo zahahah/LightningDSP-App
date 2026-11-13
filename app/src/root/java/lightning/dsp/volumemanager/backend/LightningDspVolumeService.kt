@@ -45,7 +45,7 @@ class LightningDspVolumeService : Service() {
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
         .setContentTitle("LightningDSP Volume Manager")
-        .setContentText("LightningDSP volume panel is enabled")
+        .setContentText("Volume panel enabled")
         .setOnlyAlertOnce(true)
         .setOngoing(true).build()
 

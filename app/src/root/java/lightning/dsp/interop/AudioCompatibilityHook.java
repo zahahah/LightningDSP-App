@@ -90,7 +90,7 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
         if (tracker != null) tracker.refresh();
         if (reuseHeartbeat != null && !reuseHeartbeat.isDone()) return;
         reuseHeartbeat = libraryScanWorker.scheduleWithFixedDelay(() -> {
-            if (!requested() || !reuseRequested()) {
+            if (!reuseRequested()) {
                 ScheduledFuture<?> task = reuseHeartbeat;
                 if (task != null) task.cancel(false);
                 return;
@@ -126,7 +126,7 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
     private static boolean focusRequested() {
         try {
             Class<?> props = XposedHelpers.findClass("android.os.SystemProperties", null);
-            return requested() && reuseRequested() && "1".equals(XposedHelpers.callStaticMethod(
+            return reuseRequested() && "1".equals(XposedHelpers.callStaticMethod(
                     props, "get", "debug.ldsp.aaudio_focus_hold", "0"));
         } catch (Throwable unavailable) { return false; }
     }
@@ -178,7 +178,7 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
     }
 
     private static void prepareSession(int sessionId, boolean unified) {
-        if (sessionId <= 0 || !requested()) return;
+        if (sessionId <= 0 || (!requested() && !reuseRequested())) return;
         if (unified) retainUnifiedSession(sessionId);
         Future<?> pending = null;
         AtomicReference<String> phase = new AtomicReference<>("worker_dispatch");
@@ -286,7 +286,11 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
     private static void scanLoadedAudioLibraries() {
         try {
             int scanned = nativeScanLoadedAudioLibraries();
-            if (nativeAAudioReady()) {
+            // Once any compatible backend import has been rebound, the linker
+            // callback handles libraries loaded later. Do not keep sweeping an
+            // OpenSL-only app while waiting for an AAudio import that may never
+            // exist (for example, RetroArch).
+            if (nativeReady()) {
                 ScheduledFuture<?> task = libraryScanTask;
                 if (task != null) task.cancel(false);
                 libraryScanScheduled.set(false);
@@ -304,9 +308,9 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
     private static void startLoadedLibraryScan() {
         if (!nativeObserverReady()) return;
         scanLoadedAudioLibraries();
-        if (nativeAAudioReady() || !libraryScanScheduled.compareAndSet(false, true)) return;
+        if (nativeReady() || !libraryScanScheduled.compareAndSet(false, true)) return;
         libraryScanTask = libraryScanWorker.scheduleWithFixedDelay(() -> {
-            if (!requested() || nativeAAudioReady()) {
+            if (!aaudioHookRequested() || nativeReady()) {
                 ScheduledFuture<?> task = libraryScanTask;
                 if (task != null) task.cancel(false);
                 libraryScanScheduled.set(false);
@@ -325,6 +329,10 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
             XposedBridge.log("LightningDSP AAudio: opt-in unavailable; original audio behavior retained");
             return false;
         }
+    }
+
+    private static boolean aaudioHookRequested() {
+        return requested() || reuseRequested();
     }
 
     private static void installLaunchHook() {
@@ -363,18 +371,19 @@ public final class AudioCompatibilityHook implements IXposedHookLoadPackage {
                 info.packageName == null || info.packageName.equals("android") ||
                 info.packageName.equals("system") || info.packageName.startsWith("com.lightning.dsp")) return;
         boolean aaudioRequested = requested();
+        boolean sessionReuseEnabled = reuseRequested();
         boolean sessionPreparationEnabled = sessionPreparationRequested();
-        if (!aaudioRequested && !sessionPreparationEnabled) {
+        if (!aaudioRequested && !sessionReuseEnabled && !sessionPreparationEnabled) {
             XposedBridge.log("LightningDSP audio compatibility: disabled; hooks not installed");
             return;
         }
         if (sessionPreparationEnabled) installAudioTrackPreparationHook();
-        if (!aaudioRequested) {
+        if (!aaudioRequested && !sessionReuseEnabled) {
             XposedBridge.log("LightningDSP session preparation: enabled for scoped app");
             return;
         }
-        installLaunchHook();
-        installFocusHook();
+        if (aaudioRequested) installLaunchHook();
+        if (sessionReuseEnabled) installFocusHook();
         try {
             System.loadLibrary("ldsp_aaudio_compat");
             nativeSetPreparationCallback();

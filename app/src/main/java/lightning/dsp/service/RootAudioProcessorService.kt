@@ -361,6 +361,10 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
                 mixerFallback?.requestCheck()
                 updateServiceNotification()
             }
+            getString(R.string.key_audioformat_include_system_sounds) -> {
+                if (app.isAppMixerMode) appMixer?.request(true)
+                else if (!app.isGlobalMode) sessionDumpManager?.pollOnce(true)
+            }
             getString(R.string.key_audioformat_keep_effects_ready) -> {
                 val enabled = KeepEffectsReadyOption.requested(applicationContext) && !app.isGlobalMode
                 app.rootSessionDatabase.setKeepEffectsReadyEnabled(enabled)
@@ -478,7 +482,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
     private fun acquireMixerExclusive(): AutoCloseable? = runBlocking {
         val owners = withContext(Dispatchers.Main) {
             if (isServiceDisposing || !app.isAppMixerMode || !app.rootSessionDatabase.enabled) {
-                Timber.w("App Mixer handoff refused before retirement: disposing=%s mode=%s processing=%s",
+                Timber.w("Fusion Mode handoff refused before retirement: disposing=%s mode=%s processing=%s",
                     isServiceDisposing, app.isAppMixerMode, app.rootSessionDatabase.enabled)
                 return@withContext null
             }
@@ -492,7 +496,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
         val (lease, retired) = sessionLease
         if ((retiring != null && !retiring.awaitClosed(8_000)) || LightningDspControlClient.isCoverageLeaseActive()) {
             uncertainMixerLease = lease
-            Timber.e("App Mixer refused: supplemental retirement/coverage lease is still active; admission remains fenced")
+            Timber.e("Fusion Mode refused: supplemental retirement/coverage lease is still active; admission remains fenced")
             return@runBlocking null
         }
         val drained = withTimeoutOrNull(8_000) {
@@ -501,7 +505,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
         } == true
         if (!drained) {
             uncertainMixerLease = lease
-            Timber.e("App Mixer refused: %d previous session effect(s) did not close; admission remains fenced", retired.count { !it.isClosed() })
+            Timber.e("Fusion Mode refused: %d previous session effect(s) did not close; admission remains fenced", retired.count { !it.isClosed() })
             return@runBlocking null
         }
         if (isServiceDisposing || !app.isAppMixerMode || !app.rootSessionDatabase.enabled) {
@@ -536,7 +540,7 @@ open class RootAudioProcessorService : BaseAudioProcessorService(), KoinComponen
     }
 
     companion object {
-        private const val MIXER_CLEANUP_PENDING = "Previous App Mixer cleanup is pending or uncertain; other DSP is held off."
+        private const val MIXER_CLEANUP_PENDING = "Previous Fusion Mode cleanup is pending or uncertain; other DSP is held off."
         const val SESSION_CLOSE_GRACE_MILLIS = 10_000L
         const val ACTION_START_ENHANCED_PROCESSING = BuildConfig.APPLICATION_ID + ".root.service.START_ENHANCED"
         const val ACTION_START_BACKGROUND = BuildConfig.APPLICATION_ID + ".root.service.START_BACKGROUND"

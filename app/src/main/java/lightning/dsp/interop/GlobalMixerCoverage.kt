@@ -101,14 +101,18 @@ internal object GlobalMixerCoverage {
         val active = outputs.filter { o -> o.tracks.any { it.active } }
         // Activity may change between sequential dumps without changing ownership or
         // topology. Only already-owned sessions may use this retention-only exception.
+        // System sonifications cannot be supplemental app targets. Their short
+        // activity may race between sequential dumps without changing an app's
+        // identity/route; retain every output/effect/flag check below, but compare
+        // playback ownership only for identities eligible for app coverage.
         outputs.forEach { out ->
-            val tracks = out.tracks.filter { it.active && (it.session to out.id) !in ownedPlacements }
-            val clients = policy.single { it.id == out.id }.clients.filter { it.active && (it.session to out.id) !in ownedPlacements }
+            val tracks = out.tracks.filter { it.active && it.uid >= 10000 && (it.session to out.id) !in ownedPlacements }
+            val clients = policy.single { it.id == out.id }.clients.filter { it.active && it.uid >= 10000 && (it.session to out.id) !in ownedPlacements }
             require(tracks.map { Triple(it.uid, it.session, it.port) }.toSet() ==
                     clients.map { Triple(it.uid, it.session, it.port) }.toSet())
-            if (out.tracks.any { it.active }) require(!out.standby)
+            if (out.tracks.any { it.active && it.uid >= 10000 }) require(!out.standby)
         }
-        require(policy.filter { descriptor -> descriptor.clients.any { it.active && (it.session to descriptor.id) !in ownedPlacements } }
+        require(policy.filter { descriptor -> descriptor.clients.any { it.active && it.uid >= 10000 && (it.session to descriptor.id) !in ownedPlacements } }
             .all { descriptor -> outputs.any { it.id == descriptor.id } })
         val global = if (globalEffectId == null) {
             require(effects.none { it.session == 0 })
@@ -175,7 +179,7 @@ internal object GlobalMixerCoverage {
         val targets = eligible.filter { it.id in activeIds || preparationUids[it.id] == it.uid }.take(MAX_SUPPLEMENTAL_SESSIONS)
         val retained = eligible.filter { it.id in ownedSessions }
         val signature = "${global?.id ?: 0}:${global?.output ?: 0}:" + observed.filter {
-            it.second.active || it.second.session in ownedSessions
+            it.second.uid >= 10000 && (it.second.active || it.second.session in ownedSessions)
         }.map { (out, t) ->
             "$out:${t.uid}:${t.session}:${t.port}:${t.type}:${t.normal}:${t.format}:${t.channels}:${t.stream}:" +
                 if (t.session in ownedSessions) "owned" else t.active

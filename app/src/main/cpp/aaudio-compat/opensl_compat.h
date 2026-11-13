@@ -14,6 +14,8 @@ using Report = void (*)(const char*, SLresult);
 inline CreateEngine originalCreate = nullptr;
 inline Requested requested = nullptr;
 inline Report report = nullptr;
+// Selected once at native initialization; all other apps retain existing behavior.
+inline bool preferNoPerformanceRequirement = false;
 inline bool enabled() { return requested && requested(); }
 inline bool iidEqual(SLInterfaceID a, SLInterfaceID b) {
     return a && b && std::memcmp(a, b, sizeof(*a)) == 0;
@@ -85,11 +87,11 @@ inline SLresult createPlayer(SLEngineItf self, SLObjectItf* player, SLDataSource
         SLAndroidConfigurationItf configuration = nullptr;
         auto status = (*candidate)->GetInterface(candidate, SL_IID_ANDROIDCONFIGURATION, &configuration);
         if (status == SL_RESULT_SUCCESS && !configuration) status = SL_RESULT_FEATURE_UNSUPPORTED;
-        SLuint32 performance = SL_ANDROID_PERFORMANCE_LATENCY_EFFECTS;
+        SLuint32 performance = preferNoPerformanceRequirement ? SL_ANDROID_PERFORMANCE_NONE : SL_ANDROID_PERFORMANCE_LATENCY_EFFECTS;
         if (status == SL_RESULT_SUCCESS) {
             status = (*configuration)->SetConfiguration(configuration, SL_ANDROID_KEY_PERFORMANCE_MODE,
                 &performance, sizeof(performance));
-            if (status != SL_RESULT_SUCCESS) {
+            if (status != SL_RESULT_SUCCESS && !preferNoPerformanceRequirement) {
                 // Some older/vendor OpenSL implementations do not recognize the
                 // latency-with-effects mode. Retry with NONE, which still permits
                 // effects and is safer than leaving the default latency-only path.
@@ -98,7 +100,7 @@ inline SLresult createPlayer(SLEngineItf self, SLObjectItf* player, SLDataSource
                     SL_ANDROID_KEY_PERFORMANCE_MODE, &performance, sizeof(performance));
                 if (report) report("OpenSL latency-effects unsupported; fallback to no performance requirement", status);
             } else if (report) {
-                report("OpenSL latency-effects request", status);
+                report(preferNoPerformanceRequirement ? "OpenSL no-performance request" : "OpenSL latency-effects request", status);
             }
         } else if (report) {
             report("OpenSL configuration unavailable", status);

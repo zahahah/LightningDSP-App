@@ -226,6 +226,25 @@ int main() {
     normalFails = false;
     setPerformance(builder, 10); expect(builder, {10});
     setPerformance(builder, 11); expect(builder, {11});
+    // Session reuse can opt into the scoped hook independently of the optional
+    // low-latency downgrade. Fusion Mode users can reuse AAudio IDs without enabling
+    // the separate compatibility mode.
+    property = "0"; reuseSessionProperty = "1";
+    assert(hookRequested() && !requested() && reuseSessionRequested());
+    AAudioStreamBuilder* reuseOnlyBuilder = nullptr;
+    assert(createBuilder(&reuseOnlyBuilder) == AAUDIO_OK && findBuilder(reuseOnlyBuilder));
+    setDirection(reuseOnlyBuilder, AAUDIO_DIRECTION_OUTPUT);
+    setPerformance(reuseOnlyBuilder, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
+    expect(reuseOnlyBuilder, {AAUDIO_PERFORMANCE_MODE_LOW_LATENCY});
+    assert(reuseOnlyBuilder->performance == AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
+    assert(audioStream.session > 0);
+    deleteBuilder(reuseOnlyBuilder);
+    reuseSessionProperty = "0"; property = "1";
+    pinnedSession = AAUDIO_SESSION_ID_NONE;
+    nextAllocatedSession = 101;
+    preparationsForTest = 0;
+    preparedReuseForTest = false;
+    renewalsForTest = 0;
     // Unknown builders retain their original behavior.
     AAudioStreamBuilder unknown; unknown.performance = 12; expect(&unknown, {12});
     assert(deleteBuilder(builder) == 0);

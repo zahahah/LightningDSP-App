@@ -5,10 +5,12 @@ package lightning.dsp.interop.appmixer
 internal object AppMixerUidSelection {
     data class App(val uid: Int, val packageName: String, val enabled: Boolean)
 
-    fun exclusions(apps: Collection<App>, relayUid: Int): Set<Int>? {
+    fun exclusions(apps: Collection<App>, relayUid: Int, includeSystemSounds: Boolean = false): Set<Int>? {
         if (apps.any { it.packageName.isBlank() }) return null
         val disabled = apps.groupBy { it.uid }.filterValues { members -> members.any { !it.enabled } }.keys
-        return (disabled + setOf(0, relayUid)).takeIf { it.size <= AppMixerExperimentConfig.MAX_EXCLUDED_UIDS }
+        return (disabled + setOf(0, relayUid)).takeIf {
+            it.size <= AppMixerExperimentConfig.maxExcludedUids(includeSystemSounds)
+        }
     }
 
     fun select(apps: Collection<App>, relayUid: Int): Set<Int> {

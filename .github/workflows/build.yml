@@ -19,6 +19,8 @@ concurrency:
 jobs:
   build:
     name: Build app
+    # The owner fork distributes only its verified root universal APK in root-artifacts.yml.
+    if: github.repository != 'zahahah/LightningDSP-App'
     runs-on: ubuntu-latest
 
     strategy:

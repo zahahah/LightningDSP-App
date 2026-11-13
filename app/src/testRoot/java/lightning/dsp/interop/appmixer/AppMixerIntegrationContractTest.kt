@@ -19,7 +19,7 @@ class AppMixerIntegrationContractTest {
         assertTrue(acquire.indexOf("retiring.awaitClosed(8_000)") < acquire.indexOf("retired.any { !it.isClosed() }"))
         assertTrue(acquire.contains("uncertainMixerLease = lease"))
         assertTrue(source.contains("else if (app.rootSessionDatabase.isMixerSessionLeaseHeld())"))
-        assertTrue(source.contains("Previous App Mixer cleanup is pending or uncertain"))
+        assertTrue(source.contains("Previous Fusion Mode cleanup is pending or uncertain"))
     }
 
     @Test fun thirdModeSharesExistingAppPowerAndExcludesNormalEngineAdmission() {
@@ -67,12 +67,44 @@ class AppMixerIntegrationContractTest {
         assertTrue(preparer.contains("power=\${runCatching(shouldEnable)"))
     }
 
-    @Test fun appMixerUsesNormalPlaybackThreadForSoftwareSessionEffect() {
+    @Test fun localBackendRequiresZeroFrameworkEffectsAfterPreparation() {
+        assertEquals(0, AppMixerEffectInventory.expectedAfterPreparation(localDsp = true))
+        assertEquals(1, AppMixerEffectInventory.expectedAfterPreparation(localDsp = false))
+        val helper = read("root/java/lightning/dsp/interop/appmixer/AppMixerRoutingExperiment.kt")
+        assertTrue(helper.contains("checkNoExistingEffects(expectedCount = AppMixerEffectInventory.expectedAfterPreparation(config.localDsp))"))
+        assertTrue(helper.contains("check(count == expectedCount)"))
+        assertFalse(helper.contains("allowOwnDiagnostic = true"))
+    }
+
+    @Test fun systemSoundCoverageIsOptionalAndModeScoped() {
+        val settings = read("main/java/lightning/dsp/fragment/settings/SettingsAudioFormatFragment.kt")
+        val helper = read("root/java/lightning/dsp/interop/appmixer/AppMixerRoutingExperiment.kt")
+        val database = read("main/java/lightning/dsp/session/root/RootSessionDatabase.kt")
+        assertTrue(settings.contains("isVisible = isRoot() && (!globalEnabled || mixerEnabled)"))
+        assertTrue(settings.contains("key_audioformat_include_system_sounds"))
+        assertTrue(helper.contains("AudioAttributes.USAGE_NOTIFICATION"))
+        assertTrue(helper.contains("AudioAttributes.USAGE_NOTIFICATION_EVENT"))
+        assertTrue(helper.contains("AudioAttributes.USAGE_ASSISTANCE_SONIFICATION"))
+        assertTrue(helper.contains("if (includeSystemSounds)"))
+        assertTrue(database.contains("!app.isGlobalMode && app.getSharedPreferences"))
+    }
+
+    @Test fun localDspCanRequestLowLatencyWithoutDuplicatingFrameworkEffects() {
         val helper = read("root/java/lightning/dsp/interop/appmixer/AppMixerRoutingExperiment.kt")
         val track = helper.substringAfter("player = AudioTrack.Builder()")
             .substringBefore("check(player.state == AudioTrack.STATE_INITIALIZED")
         assertTrue(track.contains("AudioTrack.PERFORMANCE_MODE_NONE"))
-        assertFalse(track.contains("AudioTrack.PERFORMANCE_MODE_LOW_LATENCY"))
-        assertTrue(helper.contains("Android rejects software") && helper.contains("session effects on FAST playback threads"))
+        assertTrue(track.contains("if (config.localDsp) AudioTrack.PERFORMANCE_MODE_LOW_LATENCY"))
+        assertTrue(helper.indexOf("AppMixerLocalDsp.open(") < helper.indexOf("player = AudioTrack.Builder()"))
+        assertTrue(helper.contains("AppMixerFixedDspCapture(relayFrames * AppMixerLatencyPolicy.CHANNELS, dsp::process)"))
+        val preparer = read("root/java/lightning/dsp/interop/appmixer/AppMixerEffectPreparer.kt")
+        val localBranch = preparer.substringAfter("if (localDsp) {").substringBefore("return prepareFrameworkEffect")
+        assertFalse(localBranch.contains("LightningDspRemoteEngine"))
+        assertTrue(localBranch.contains("reportLocalSampleRate(48000f)"))
+        val local = read("root/java/lightning/dsp/interop/appmixer/AppMixerLocalDsp.kt")
+        assertTrue(local.contains("synchronizeRelayState(force = true)"))
+        assertTrue(local.contains("synchronizeRelayState(force = false)"))
+        assertTrue(local.contains("worker.awaitTermination(5, TimeUnit.SECONDS)"))
+        assertTrue(local.contains("owner.applicationInfo.uid == ownerUid"))
     }
 }

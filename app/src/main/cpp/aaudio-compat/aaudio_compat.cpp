@@ -121,10 +121,13 @@ bool requested() {
     char value[PROP_VALUE_MAX]{};
     return __system_property_get(kProperty, value) == 1 && value[0] == '1';
 }
-bool reuseSessionRequested() {
+bool reuseSessionEnabled() {
     char value[PROP_VALUE_MAX]{};
-    return requested() && sessionReuseSafe.load(std::memory_order_acquire) &&
-        __system_property_get(kReuseSessionProperty, value) == 1 && value[0] == '1';
+    return __system_property_get(kReuseSessionProperty, value) == 1 && value[0] == '1';
+}
+bool hookRequested() { return requested() || reuseSessionEnabled(); }
+bool reuseSessionRequested() {
+    return reuseSessionEnabled() && sessionReuseSafe.load(std::memory_order_acquire);
 }
 BuilderState* findBuilder(AAudioStreamBuilder* builder) {
     for (auto& item : builders) if (item.builder == builder) return &item;
@@ -176,7 +179,8 @@ BuilderState* findBuilder(AAudioStreamBuilder* builder) {
         std::lock_guard<std::mutex> lock(buildersMutex);
         if (auto* found = findBuilder(builder)) state = *found;
     }
-    const bool optIn = requested();
+    const bool optIn = hookRequested();
+    const bool compatibilityOptIn = requested();
     const bool diagnostic = optIn && openDiagnostics.fetch_add(1, std::memory_order_relaxed) < 12;
     if (diagnostic) __android_log_print(ANDROID_LOG_INFO, "LightningDSP_AAudio",
         "open enter pid=%d tracked=%d direction=%d mode=%d ready=%d", getpid(),
@@ -188,7 +192,7 @@ BuilderState* findBuilder(AAudioStreamBuilder* builder) {
     // requested performance mode while pinning only an unassigned session.
     const bool reuseRequested = reuseSessionRequested() && originalSession && originalGetSession &&
         state.sessionObserved && state.session == AAUDIO_SESSION_ID_NONE;
-    const bool downgradeLowLatency = state.directionObserved && state.performanceObserved &&
+    const bool downgradeLowLatency = compatibilityOptIn && state.directionObserved && state.performanceObserved &&
         state.direction == AAUDIO_DIRECTION_OUTPUT &&
         state.performance == AAUDIO_PERFORMANCE_MODE_LOW_LATENCY;
     if (!stream || !ready.load(std::memory_order_acquire) || unsafeFailure.load(std::memory_order_acquire) || !optIn ||
@@ -269,7 +273,7 @@ BuilderState* findBuilder(AAudioStreamBuilder* builder) {
     // The GOT slot becomes visible before libraryLoaded publishes ready. Oboe
     // caches the returned pointers, so use the initialized observer gate here;
     // create/open wrappers still pass through until ready is published.
-    if (!resolved || !symbol || !requested() || !observerReady.load(std::memory_order_acquire) ||
+    if (!resolved || !symbol || !hookRequested() || !observerReady.load(std::memory_order_acquire) ||
         unsafeFailure.load(std::memory_order_acquire)) return resolved;
     struct Mapping { const char* name; void* original; void* replacement; };
     const std::array<Mapping, 5> mappings{{
@@ -465,7 +469,7 @@ int inspectLibrary(dl_phdr_info* info, size_t, void* opaque) {
 }
 #endif
 void libraryLoaded(const char* name, void*) {
-    if (!requested() || unsafeFailure.load(std::memory_order_acquire) || !eligibleLibrary(name)) return;
+    if (!hookRequested() || unsafeFailure.load(std::memory_order_acquire) || !eligibleLibrary(name)) return;
 #ifndef LDSP_AAUDIO_COMPAT_HOST_TEST
     std::lock_guard<std::mutex> lock(rebindMutex);
     Lookup lookup{name};
@@ -501,7 +505,7 @@ int collectLoadedLibrary(dl_phdr_info* info, size_t, void* opaque) {
     return 0;
 }
 size_t scanLoadedLibraries() {
-    if (!observerReady.load(std::memory_order_acquire) || !requested()) return 0;
+    if (!observerReady.load(std::memory_order_acquire) || !hookRequested()) return 0;
     LoadedLibraryPaths loaded;
     dl_iterate_phdr(collectLoadedLibrary, &loaded);
     // Do not rebind while dl_iterate_phdr is walking the loader's image list.
@@ -522,7 +526,7 @@ size_t scanLoadedLibraries() { return 0; }
 extern "C" __attribute__((visibility("default"), used))
 LoadedCallback native_init(const NativeApi* api) {
 #if defined(__aarch64__) || defined(LDSP_AAUDIO_COMPAT_HOST_TEST)
-    if (!allowedProcess() || !api || (api->version != 1 && api->version != 2) || !requested()) return nullptr;
+    if (!allowedProcess() || !api || (api->version != 1 && api->version != 2) || !hookRequested()) return nullptr;
     if (initStarted.exchange(true, std::memory_order_acq_rel)) return nullptr;
     originalCreate = AAudio_createStreamBuilder;
     originalDirection = AAudioStreamBuilder_setDirection;
@@ -538,6 +542,13 @@ LoadedCallback native_init(const NativeApi* api) {
     originalGetSession = reinterpret_cast<SessionGetter>(dlsym(RTLD_DEFAULT, "AAudioStream_getSessionId"));
 #endif
 #ifndef LDSP_AAUDIO_COMPAT_HOST_TEST
+    // Restrict this experimental policy to the examined RetroArch package.
+    char processName[128]{};
+    if (FILE* cmdline = std::fopen("/proc/self/cmdline", "re")) {
+        std::fread(processName, 1, sizeof(processName) - 1, cmdline);
+        std::fclose(cmdline);
+    }
+    ldsp::opensl::preferNoPerformanceRequirement = !std::strcmp(processName, "com.retroarch");
     ldsp::opensl::originalCreate = slCreateEngine;
     ldsp::opensl::requested = [] { return requested() && !unsafeFailure.load(std::memory_order_acquire); };
     ldsp::opensl::report = [](const char* message, SLresult result) {

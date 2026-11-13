@@ -14,7 +14,6 @@ object AAudioSessionReuseOption {
         .getBoolean(context.getString(R.string.key_audioformat_aaudio_reuse_session), false)
 
     @Synchronized fun set(context: Context, enabled: Boolean): AAudioCompatibilityResult {
-        if (enabled && !AAudioCompatibilityOption.requested(context)) return AAudioCompatibilityResult.FAILED
         val old = try { requested(context) } catch (_: Exception) { return AAudioCompatibilityResult.UNKNOWN }
         try {
             if (!RootShellImpl.hasRootShell()) return AAudioCompatibilityResult.FAILED
@@ -30,9 +29,9 @@ object AAudioSessionReuseOption {
 
     @Synchronized fun actual(): Boolean? = try {
         if (!RootShellImpl.hasRootShell()) null else {
-            val result = Shell.cmd("if [ \"\$(getprop debug.ldsp.aaudio_compat)\" = 1 ] && [ \"\$(getprop $PROPERTY)\" = 1 ]; then echo 1; else echo 0; fi").exec()
+            val result = Shell.cmd("getprop $PROPERTY").exec()
             if (!result.isSuccess) null else when (result.out.lastOrNull()?.trim()) {
-                "0" -> false
+                "", "0" -> false
                 "1" -> true
                 else -> null
             }
@@ -40,7 +39,7 @@ object AAudioSessionReuseOption {
     } catch (_: Exception) { null }
 
     @Synchronized fun restore(context: Context): Boolean = try {
-        RootShellImpl.hasRootShell() && write(requested(context) && AAudioCompatibilityOption.requested(context))
+        RootShellImpl.hasRootShell() && write(requested(context))
     } catch (_: Exception) { false }
 
     private fun write(enabled: Boolean): Boolean {

@@ -22,7 +22,16 @@ class AllMixersPreferenceContractTest {
             .single { it.getAttribute("name") == name }.textContent
     }
 
-    @Test fun audioCompatibilityIsOptInAndFollowsMediaScanning() {
+    @Test fun fusionModeExplainsVirtualAudioWithoutRenamingPersistentKeys() {
+        assertEquals("Fusion Mode", value("src/main/res/values/strings.xml", "string", "audio_format_processing_app_mixer"))
+        val summary = value("src/main/res/values/strings.xml", "string", "audio_format_processing_app_mixer_summary")
+        assertTrue(summary.contains("virtual audio output"))
+        assertTrue(summary.contains("per-app control"))
+        assertEquals("audioformat_processing_app_mixer",
+            value("src/main/res/values/keys.xml", "string", "key_audioformat_processing_app_mixer"))
+    }
+
+    @Test fun audioCompatibilityIsOptInAndGroupedWithSessionReuse() {
         assertEquals("false", value("src/main/res/values/defaults.xml", "bool", "default_audioformat_aaudio_compat"))
         assertEquals("false", value("src/main/res/values/defaults.xml", "bool", "default_audioformat_aaudio_reuse_session"))
         assertEquals("Improve app compatibility", value("src/main/res/values/strings.xml", "string", "audio_format_aaudio_compat"))
@@ -33,21 +42,61 @@ class AllMixersPreferenceContractTest {
         val settings = (0 until nodes.length).map { nodes.item(it) as Element }
         val scanning = settings.indexOfFirst { it.getAttributeNS(androidNamespace, "key") == "@string/key_audioformat_enhanced_processing" }
         val compat = settings.indexOfFirst { it.getAttributeNS(androidNamespace, "key") == "@string/key_audioformat_aaudio_compat" }
+        val mixer = settings.indexOfFirst { it.getAttributeNS(androidNamespace, "key") == "@string/key_audioformat_processing_app_mixer_option" }
         val reuse = settings.indexOfFirst { it.getAttributeNS(androidNamespace, "key") == "@string/key_audioformat_aaudio_reuse_session" }
-        assertEquals(scanning + 1, compat)
+        assertTrue(scanning >= 0)
+        assertTrue(mixer >= 0)
         assertEquals(compat + 1, reuse)
+        assertSame(settings[compat].parentNode, settings[reuse].parentNode)
+        assertNotSame(settings[mixer].parentNode, settings[reuse].parentNode)
         assertEquals("false", settings[compat].getAttributeNS(androidNamespace, "persistent"))
         assertEquals("false", settings[reuse].getAttributeNS(androidNamespace, "persistent"))
         assertEquals("Reuse AAudio session", value("src/main/res/values/strings.xml", "string", "audio_format_aaudio_reuse_session"))
         val nativeSource = File(app, "src/main/cpp/aaudio-compat/aaudio_compat.cpp").readText()
         assertTrue(nativeSource.contains("debug.ldsp.aaudio_reuse_session"))
+        assertTrue(nativeSource.contains("bool hookRequested() { return requested() || reuseSessionEnabled(); }"))
+        assertTrue(nativeSource.contains("compatibilityOptIn && state.directionObserved"))
         assertTrue(nativeSource.contains("firstPinnedSession"))
         val option = File(app, "src/root/java/lightning/dsp/interop/AAudioSessionReuseOption.kt").readText()
-        assertTrue(option.contains("AAudioCompatibilityOption.requested(context)"))
+        assertTrue(option.contains("write(requested(context))"))
+        assertFalse(option.contains("if (enabled && !AAudioCompatibilityOption.requested(context))"))
+        val settingsSource = File(app, "src/main/java/lightning/dsp/fragment/settings/SettingsAudioFormatFragment.kt").readText()
+        assertTrue(settingsSource.contains("isVisible = isRoot() && (!globalEnabled || mixerEnabled)"))
+        assertTrue(settingsSource.contains("isEnabled = isRoot() && (!globalEnabled || mixerEnabled)"))
         val cmake = File(app, "src/main/cpp/CMakeLists.txt").readText()
         // Vector calls native_init under its registry lock; reentering dlopen deadlocks.
         assertFalse(nativeSource.contains("dlopen(\"libaaudio.so\""))
         assertTrue(cmake.contains("target_link_libraries(ldsp_aaudio_compat PRIVATE log aaudio OpenSLES dl)"))
+    }
+
+
+    @Test fun processingOptionsHaveClearGroupsWithoutChangingTheirKeys() {
+        val doc = xml("src/main/res/xml/app_audio_format_preferences.xml")
+        val appNamespace = "http://schemas.android.com/apk/res-auto"
+        val categories = doc.getElementsByTagName("PreferenceCategory")
+        val actual = (0 until categories.length).map { categories.item(it) as Element }
+            .associate { category ->
+                val children = (0 until category.childNodes.length)
+                    .mapNotNull { category.childNodes.item(it) as? Element }
+                    .map { it.getAttributeNS(androidNamespace, "key").ifEmpty {
+                        it.getAttributeNS(appNamespace, "key") } }
+                category.getAttributeNS(appNamespace, "title") to children
+            }
+        fun assertGroup(title: String, vararg keys: String) {
+            assertEquals(keys.map { "@string/$it" }, actual["@string/$title"])
+        }
+        assertGroup("audio_format_processing_modes_header", "key_audioformat_processing_global_option",
+            "key_audioformat_processing_session_option", "key_audioformat_processing_app_mixer_option")
+        assertGroup("audio_format_coverage_header", "key_audioformat_all_mixers",
+            "key_audioformat_include_system_sounds", "key_audioformat_enhanced_processing",
+            "key_audioformat_enhanced_processing_info")
+        assertGroup("audio_format_compatibility_header", "key_audioformat_aaudio_compat",
+            "key_audioformat_aaudio_reuse_session")
+        assertGroup("audio_format_effect_adjustments_header", "key_output_extra_postgain")
+        val source = File(app, "src/main/java/lightning/dsp/fragment/settings/SettingsAudioFormatFragment.kt").readText()
+        for (representative in listOf("globalMode", "allMixers", "audioCompat", "extraPostGain")) {
+            assertTrue(source.contains("$representative?.parent?.isVisible = isRoot()"))
+        }
     }
 
     @Test fun mediaScanningDefaultsOnAndIsVisibleOnlyInSessionMode() {

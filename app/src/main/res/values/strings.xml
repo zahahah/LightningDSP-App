@@ -1,4 +1,4 @@
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <string name="lightningdsp" translatable="false">LightningDSP</string>
 
     <!-- Main menu bar -->
@@ -23,6 +23,8 @@
     <string name="action_stop">Stop</string>
     <string name="notification_processing">Active apps: %1$s</string>
     <string name="notification_idle">Audio processing idle</string>
+    <string name="notification_audio_processing_title" translatable="false">Audio Processing</string>
+    <string name="notification_fusion_relay_working" translatable="false">Fusion mode relay working</string>
     <string name="notification_processing_title">Audio processing active</string>
     <string name="notification_global_enabled_title">Global mode enabled</string>
     <string name="notification_processing_disabled_title">Audio processing disabled</string>
@@ -299,11 +301,17 @@
     <string name="audio_format_header">Audio processing</string>
     <string name="audio_format_section_header">Preferred audio format</string>
     <string name="audio_format_processing_header">Audio processing options</string>
+    <string name="audio_format_processing_modes_header" tools:ignore="MissingTranslation">Processing mode</string>
+    <string name="audio_format_coverage_header" tools:ignore="MissingTranslation">Audio coverage</string>
+    <string name="audio_format_compatibility_header" tools:ignore="MissingTranslation">App compatibility</string>
+    <string name="audio_format_effect_adjustments_header" tools:ignore="MissingTranslation">Effect adjustments</string>
     <string name="audio_format_processing_legacy">Global mode</string>
     <string name="audio_format_processing_global">Global Mode</string>
     <string name="audio_format_processing_global_summary">Apply effects to the output mix selected by Android</string>
-    <string name="audio_format_processing_app_mixer" translatable="false">App Mixer Mode (experimental)</string>
-    <string name="audio_format_processing_app_mixer_summary" translatable="false">Experimental: relays included MEDIA/GAME PCM through one effect. FAST/MMAP, direct/offload, protected audio, isolated UIDs and other usages may bypass or fail. Shared-UID apps cannot be separated. Switching may interrupt audio and adds latency; rollback varies by device.</string>
+    <string name="audio_format_processing_app_mixer" translatable="false">Fusion Mode</string>
+    <string name="audio_format_processing_app_mixer_summary" translatable="false">Creates a virtual audio output to process apps together, with per-app control in Volume Manager.</string>
+    <string name="audio_format_include_system_sounds">Include system sounds</string>
+    <string name="audio_format_include_system_sounds_summary">Applies effects to notification tones, keyboard clicks, and other system sounds.</string>
     <string name="audio_format_processing_session">Session Mode</string>
     <string name="audio_format_processing_session_summary">Apply effects to individual app sessions</string>
     <string name="audio_format_all_mixers">Cover additional sessions</string>
@@ -315,12 +323,12 @@
     <string name="audio_format_aaudio_compat_summary">Requires selecting incompatible apps in Vector or LSPosed.</string>
     <string name="audio_format_aaudio_compat_restart">Restart selected apps to apply this change. Audio latency may increase.</string>
     <string name="audio_format_aaudio_reuse_session">Reuse AAudio session</string>
-    <string name="audio_format_aaudio_reuse_session_summary">Requires Improve app compatibility. Reuses the session when selected apps reopen AAudio streams. In Session Mode, keeps its effects ready while the app is focused. May increase latency or affect audio behavior.</string>
+    <string name="audio_format_aaudio_reuse_session_summary">Reuses AAudio sessions to keep effects ready. Requires apps to be enabled in Vector/LSPosed.</string>
     <string name="audio_format_aaudio_reuse_session_restart">Restart selected apps to apply this change.</string>
     <string name="audio_format_aaudio_compat_failed">Could not update compatibility mode. Check root access.</string>
     <string name="audio_format_aaudio_compat_unknown">Unable to verify compatibility mode. Check root access and reopen settings.</string>
-    <string name="audio_format_enhanced_processing_on">Scanning enabled for broader app compatibility</string>
-    <string name="audio_format_enhanced_processing_off">Media session scanning disabled</string>
+    <string name="audio_format_enhanced_processing_on">Automatically scans for apps\' audio sessions.</string>
+    <string name="audio_format_enhanced_processing_off">Apps need to announce their audio sessions.</string>
     <string name="audio_format_enhanced_processing_info_title">About media session scanning</string>
     <string name="audio_format_enhanced_processing_info">Tap to view documentation</string>
     <string name="audio_format_enhanced_processing_info_content">When media session scanning is enabled, LightningDSP actively discovers playback sessions. You can also exclude specific apps from processing using the 3-dot menu in the bottom-right corner and selecting \'Excluded apps\'.\n\nWhen Global mode is disabled, LightningDSP relies on media apps to send a system broadcast when they start playback. Each app gets its own LightningDSP effect engine, which allows for more fine-grained control. Global mode attaches one effect to the output mix selected by Android. Some output paths cannot use this effect.\n\nSome media apps do not send session broadcasts correctly. Media session scanning helps LightningDSP find those sessions and improves compatibility when Global mode is disabled.</string>

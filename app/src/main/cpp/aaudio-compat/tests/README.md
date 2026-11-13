@@ -17,9 +17,12 @@ rollback, and builder direction/performance observation guards.
 
 The hook tests also verify the loaded-library sweep's path filtering. At runtime,
 the Xposed entry performs an immediate sweep and retries every two seconds until
-an AAudio import is rebound. This covers app audio libraries that were already
-loaded before Vector registered its linker callback, without touching audio
-buffers or changing playback from the scan thread.
+an import for any supported backend (AAudio or OpenSL) is rebound. This covers
+app audio libraries that were already loaded before Vector registered its linker
+callback. After the first successful bind, later-loaded libraries are handled by
+the registered linker callback, so OpenSL-only apps do not keep doing periodic
+sweeps while waiting for an AAudio library they may never load. The scan never
+touches audio buffers or changes playback.
 
 An import slot may be inside a PT_LOAD whose first or last page extends beyond
 the exact segment bounds. The protection transaction accepts that partial page
@@ -69,7 +72,7 @@ requested. Before returning a successfully created, still-unrealized player, it
 requests `SL_ANDROID_PERFORMANCE_LATENCY_EFFECTS`, which preserves the low-latency
 preference while allowing software/hardware effects. If the implementation rejects
 that mode, it retries with `SL_ANDROID_PERFORMANCE_NONE`, which also permits effects
-but makes no latency promise. An amended creation failure with a null
+but makes no latency promise. For the experimental com.retroarch path only, NONE is requested first; rejection leaves the original player usable. This request does not guarantee the output will cease to be FAST. An amended creation failure with a null
 object gets exactly one retry with the caller's original arguments. A nonnull
 partial object is returned with the platform failure, never destroyed or retried
 by the hook. Missing configuration or a failed setter leaves the original player

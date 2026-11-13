@@ -27,20 +27,23 @@ internal class AppMixerModeController(
     private var requested = false
     private var running = false
     private var selected = emptySet<Int>()
+    private var selectedSystemSounds = true
     private var disposed = false
     private var standbyLease: AutoCloseable? = null
     private var lastStatus: String? = null
     private fun status(value: String) {
         if (value != lastStatus) { lastStatus = value; onStatus(value) }
     }
-    private val supervisor: AppMixerSupervisor = AppMixerSupervisor({ launcher.launch(selected) }, acquireExclusive, effect::prepare,
-        { modeAndPowerWanted() && inventory.read() == selected }) { clean ->
+    private val supervisor: AppMixerSupervisor = AppMixerSupervisor({ launcher.launch(selected, selectedSystemSounds) }, acquireExclusive, effect::prepare,
+        { modeAndPowerWanted() && inventory.readRoute(selectedSystemSounds)?.let {
+            it.excludedUids == selected && it.includesSystemSounds == selectedSystemSounds
+        } == true }) { clean ->
         runCatching {
             executor.execute {
                 if (requested && !supervisor.isActive()) {
                     running = false
-                    status(if (clean) "App Mixer relay stopped; coverage is unavailable until retry."
-                        else "App Mixer stopped with uncertain cleanup; other DSP remains fenced.")
+                    status(if (clean) "Fusion Mode relay stopped; coverage is unavailable until retry."
+                        else "Fusion Mode stopped with uncertain cleanup; other DSP remains fenced.")
                 }
             }
         }
@@ -48,9 +51,14 @@ internal class AppMixerModeController(
     private val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key == null || key.startsWith(SESSION_DSP_ENABLED_PREFIX)) runCatching { executor.execute { reconcile(false) } }
     }
+    private val appListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+        if (key == app.getString(R.string.key_audioformat_include_system_sounds))
+            runCatching { executor.execute { reconcile(false) } }
+    }
 
     init {
         panel.registerOnSharedPreferenceChangeListener(listener)
+        appPrefs.registerOnSharedPreferenceChangeListener(appListener)
     }
 
     fun request(enable: Boolean) {
@@ -59,34 +67,44 @@ internal class AppMixerModeController(
 
     private fun reconcile(renew: Boolean) {
         if (disposed) return
-        val next = if (requested) inventory.read() else emptySet()
+        val requestedSystemSounds = appPrefs.getBoolean(app.getString(R.string.key_audioformat_include_system_sounds), true)
+        val route = if (requested) inventory.readRoute(requestedSystemSounds) else null
+        val next = if (requested) route?.excludedUids else emptySet()
+        val nextSystemSounds = route?.includesSystemSounds ?: requestedSystemSounds
+        val systemSoundFallback = requested && requestedSystemSounds && route != null && !route.includesSystemSounds
         if (next == null || next.isEmpty()) {
             supervisor.close()
             running = false
             selected = emptySet()
             if (!requested) { runCatching { standbyLease?.close() }; standbyLease = null }
             if (supervisor.hasOwner()) {
-                status("App Mixer cleanup is uncertain; other DSP remains fenced.")
+                status("Fusion Mode cleanup is uncertain; other DSP remains fenced.")
                 return
             }
             if (requested && standbyLease == null) standbyLease = runCatching(acquireExclusive).getOrNull()
             if (requested) {
-                Timber.w("App Mixer unavailable: incomplete inventory or too many UID exclusions")
+                Timber.w("Fusion Mode unavailable: incomplete inventory or too many UID exclusions")
                 status(if (standbyLease == null)
-                    "App Mixer unavailable; exclusive handoff failed or cleanup is uncertain."
-                else "App Mixer unavailable: incomplete inventory or too many app exclusions.")
-            } else status("App Mixer off requested; cleanup may be pending.")
+                    "Fusion Mode unavailable; exclusive handoff failed or cleanup is uncertain."
+                else "Fusion Mode unavailable: incomplete inventory or too many app exclusions.")
+            } else status("Fusion Mode off requested; cleanup may be pending.")
             return
         }
-        if (running && !renew && selected == next) return
+        if (running && !renew && selected == next && selectedSystemSounds == nextSystemSounds) {
+            if (systemSoundFallback) status("Fusion Mode is active, but system sounds are excluded because too many apps are turned off.")
+            return
+        }
         if (running && !renew) {
-            if (supervisor.updateExclusions(next)) {
+            if (supervisor.updateRules(next, nextSystemSounds)) {
                 selected = next
-                status("App Mixer rules updated. Route coverage is not verified.")
+                selectedSystemSounds = nextSystemSounds
+                status(if (systemSoundFallback)
+                    "Fusion Mode updated, but system sounds are excluded because too many apps are turned off."
+                else app.getString(R.string.notification_fusion_relay_working))
             } else {
                 running = false
-                Timber.w("App Mixer rule update failed: %s", supervisor.lastFailureReason)
-                status("App Mixer rule update failed; requested app selection was not applied. Check logs.")
+                Timber.w("Fusion Mode rule update failed: %s", supervisor.lastFailureReason)
+                status("Fusion Mode rule update failed; requested app selection was not applied. Check logs.")
             }
             return
         }
@@ -95,18 +113,22 @@ internal class AppMixerModeController(
         if (running) supervisor.close()
         running = false
         selected = next
+        selectedSystemSounds = nextSystemSounds
         if (requested) {
             running = supervisor.start()
             if (!running) {
                 val reason = supervisor.lastFailureReason ?: "an existing relay or exclusive owner is still active"
-                Timber.w("App Mixer startup failed: %s; original route is not claimed", reason)
-                status("App Mixer failed: $reason. Other DSP may remain fenced; check logs.")
-            } else status("App Mixer relay started. Route coverage is not verified.")
+                Timber.w("Fusion Mode startup failed: %s; original route is not claimed", reason)
+                status("Fusion Mode failed: $reason. Other DSP may remain fenced; check logs.")
+            } else status(if (systemSoundFallback)
+                "Fusion Mode started, but system sounds are excluded because too many apps are turned off."
+            else app.getString(R.string.notification_fusion_relay_working))
         }
     }
 
     override fun close() {
         panel.unregisterOnSharedPreferenceChangeListener(listener)
+        appPrefs.unregisterOnSharedPreferenceChangeListener(appListener)
         runCatching {
             executor.execute {
                 disposed = true

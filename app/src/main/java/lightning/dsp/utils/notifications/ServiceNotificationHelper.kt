@@ -74,18 +74,15 @@ object ServiceNotificationHelper: KoinComponent {
     }
 
     fun createServiceNotificationAppMixer(context: Context, status: String): Notification =
-        createServiceNotification(context, context.getString(R.string.audio_format_processing_app_mixer), status,
+        createServiceNotification(context, status,
             enabled = preferences.get<Boolean>(R.string.key_powered_on))
 
     fun createServiceNotificationGlobal(context: Context): Notification {
         val enabled = preferences.get<Boolean>(R.string.key_powered_on)
         return createServiceNotification(
             context,
-            context.getString(
-                if(enabled) R.string.notification_global_enabled_title
-                else R.string.notification_processing_disabled_title
-            ),
-            context.getString(R.string.notification_processing_legacy),
+            context.getString(if (enabled) R.string.notification_processing_legacy
+                else R.string.notification_processing_disabled_title),
             enabled = enabled
         )
     }
@@ -108,10 +105,8 @@ object ServiceNotificationHelper: KoinComponent {
         val enabled = isRootless() || preferences.get<Boolean>(R.string.key_powered_on)
 
         return createServiceNotification(context,
-            context.getString(
-                if(enabled) R.string.notification_processing_title
-                else R.string.notification_processing_disabled_title
-            ), when {
+            when {
+                !enabled -> context.getString(R.string.notification_processing_disabled_title)
                 sessions.isNotEmpty() -> context.getString(R.string.notification_processing, apps)
                 else -> context.getString(R.string.notification_idle)
             }, enabled = enabled)
@@ -119,14 +114,13 @@ object ServiceNotificationHelper: KoinComponent {
 
     private fun createServiceNotification(
         context: Context,
-        title: String,
         message: String,
         enabled: Boolean
     ) = NotificationCompat.Builder(context, Notifications.CHANNEL_SERVICE_STATUS)
         .setShowWhen(false)
         .setOnlyAlertOnce(true)
         .setCategory(Notification.CATEGORY_SERVICE)
-        .setContentTitle(title)
+        .setContentTitle(context.getString(R.string.notification_audio_processing_title))
         .setContentText(message)
         .setSmallIcon(processingNotificationIcon(enabled))
         .setContentIntent(

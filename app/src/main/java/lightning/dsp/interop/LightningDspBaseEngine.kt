@@ -85,6 +85,13 @@ abstract class LightningDspBaseEngine(
             retryAttempt = 0, generation = expectedGeneration, scheduleRetry = false)
     }
 
+    /** Synchronous completion boundary for a separately owned relay worker. */
+    internal suspend fun synchronizeRelayState(force: Boolean): Boolean = withContext(Dispatchers.IO) {
+        syncWithPreferencesAsync(
+            if (force) Constants.DSP_PREFERENCE_NAMESPACES.toTypedArray() else null,
+            retryAttempt = 0, generation = DspDesiredState.current(), scheduleRetry = false)
+    }
+
     private suspend fun syncWithPreferencesAsync(
         forceUpdateNamespaces: Array<String>? = null,
         retryAttempt: Int,

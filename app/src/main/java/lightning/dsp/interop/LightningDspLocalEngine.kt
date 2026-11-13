@@ -9,20 +9,25 @@ import timber.log.Timber
 import java.util.Timer
 import kotlin.concurrent.schedule
 
-class LightningDspLocalEngine(context: Context, callbacks: LightningDspWrapper.LightningDspCallbacks? = null) : LightningDspBaseEngine(context, callbacks) {
+class LightningDspLocalEngine(
+    context: Context,
+    callbacks: LightningDspWrapper.LightningDspCallbacks? = null,
+    loadBenchmarks: Boolean = true,
+    private val publishSampleRate: Boolean = true,
+) : LightningDspBaseEngine(context, callbacks, publishSampleRate) {
     var handle: LightningDspHandle = LightningDspWrapper.alloc(callbacks ?: DummyCallbacks())
 
     override var sampleRate: Float
         set(value) {
             super.sampleRate = value
             LightningDspWrapper.setSamplingRate(handle, value, false)
-            context.sendLocalBroadcast(Intent(Constants.ACTION_SAMPLE_RATE_UPDATED))
+            if (publishSampleRate) context.sendLocalBroadcast(Intent(Constants.ACTION_SAMPLE_RATE_UPDATED))
         }
         get() = super.sampleRate
     override var enabled: Boolean = true
 
     init {
-        if(BenchmarkManager.hasBenchmarksCached())
+        if(loadBenchmarks && BenchmarkManager.hasBenchmarksCached())
             BenchmarkManager.loadBenchmarksFromCache()
     }
 
@@ -35,6 +40,14 @@ class LightningDspLocalEngine(context: Context, callbacks: LightningDspWrapper.L
             LightningDspWrapper.free(oldHandle)
             Timber.d("Handle $oldHandle has been freed")
         }
+    }
+
+    /** Caller must stop PCM and join its configuration worker before calling this. */
+    internal fun releaseQuiescentRelay() {
+        super.close()
+        val oldHandle = handle
+        handle = 0
+        if (NativeDspHandlePolicy.isValid(oldHandle)) LightningDspWrapper.free(oldHandle)
     }
 
     // Processing
