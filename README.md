@@ -10,7 +10,7 @@ by the original JamesDSP project. We retain the original authorship, contributor
 credits, upstream references and license notices; the new name does not replace
 that history.
 
-The current root release is **1.7** (root versionCode **78**). The root app
+The current root release is **1.7.1** (root versionCode **145**). The root app
 uses package ID `com.lightning.dsp`; the rootless package remains unchanged.
 When the companion module is explicitly flashed, it removes the old `james.dsp`
 package before installing LightningDSP. The old package's private data is not
@@ -19,12 +19,13 @@ mismatch there still requires the existing volume-key confirmation and
 best-effort backup flow. See [the compatibility inventory](REBRAND-COMPATIBILITY.md).
 This is not a claim that the local source is newer than upstream ThePBone code.
 
-## What's new on the main branch
+## What's new in 1.7.1
 
-Stable app **1.7** and module **6.7** are still available. The main branch now
-includes Fusion Mode and the newer controls below; get test builds from
+App **1.7.1** accompanies module **6.7.1**. See the
+[release notes](docs/release-1.7.1.md) for all improvements since app 1.7/module
+6.7, including the pre-releases. Build artifacts are also available from
 [app Actions](https://github.com/zahahah/LightningDSP-App/actions/workflows/root-artifacts.yml)
-or the matching [module Actions](https://github.com/zahahah/LightningDSP/actions/workflows/main-module-artifacts.yml).
+and [module Actions](https://github.com/zahahah/LightningDSP/actions/workflows/main-module-artifacts.yml).
 The module includes the same owner-signed root universal APK. Its audio driver
 is still ARM64, even though the APK includes other app architectures.
 

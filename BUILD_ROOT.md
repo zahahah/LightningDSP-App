@@ -9,8 +9,8 @@ Use Java 17 and the configured Android SDK/NDK with the Gradle wrapper:
 
 Firebase is not configured or used; builds do not upload crash reports or symbols.
 
-The root output is LightningDSP 1.6.18, versionCode 63; rootless is a separate
-application, versionCode 59. The root application ID is `com.lightning.dsp`;
+The root output is LightningDSP 1.7.1, versionCode 145; rootless is a separate
+application, versionCode 141. The distributed root APK is universal (four ABIs). The root application ID is `com.lightning.dsp`;
 rootless remains `me.timschneeberger.rootlessjamesdsp`. The previous
 `james.dsp` installation is a separate app and is not removed or migrated by
 this package change.
