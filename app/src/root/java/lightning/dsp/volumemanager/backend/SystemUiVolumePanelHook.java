@@ -6,8 +6,15 @@ import android.os.SystemClock;
 import android.app.Application;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.UserManager;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 
 import java.lang.reflect.Method;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import lightning.dsp.xposed.HookBackend;
 import lightning.dsp.xposed.HookPlatform;
@@ -23,7 +30,6 @@ public final class SystemUiVolumePanelHook {
     };
     private static final String LEASE_PROPERTY = "debug.lightningdsp.volume_panel_lease_ms";
     private static final String ENABLED_PROPERTY = "debug.lightningdsp.suppress_volume_panel";
-    private static final String READY_PROPERTY = "debug.lightningdsp.volume_panel_hook_pid";
     private static final long LEASE_TTL_MS = 6_000L;
     private static final long CONTROLLER_RETRY_MS = 500L;
     // SystemUI can be relaunched after boot or under memory pressure; Samsung and
@@ -32,6 +38,12 @@ public final class SystemUiVolumePanelHook {
     private static final int CONTROLLER_ATTEMPTS = 20;
     private static final int FLAG_SHOW_UI = 1;
     private static final AtomicBoolean startupScheduled = new AtomicBoolean();
+    private static final AtomicBoolean unlockReceiverRegistered = new AtomicBoolean();
+    private static final ExecutorService READINESS_EXECUTOR = Executors.newSingleThreadExecutor(task -> {
+        Thread thread = new Thread(task, "LightningDSP-SystemUI-readiness");
+        thread.setDaemon(true);
+        return thread;
+    });
     private static boolean volumeHookInstalled;
 
     /** Only hook the AOSP contract: older releases use (int, int), newer ones add a boolean. */
@@ -64,7 +76,6 @@ public final class SystemUiVolumePanelHook {
         // Package-ready can be dispatched again as its splits are loaded.
         // Do not clear a live readiness receipt or spawn a second startup chain.
         if (!startupScheduled.compareAndSet(false, true)) return;
-        clearReadinessMarker();
         // A framework can load this hook after SystemUI's Application.onCreate.
         // A hook placed on onCreate would then never run, leaving the stock dialog forever.
         Handler main = new Handler(Looper.getMainLooper());
@@ -72,11 +83,51 @@ public final class SystemUiVolumePanelHook {
     }
 
     /** Do not leave a dead SystemUI PID advertised while this process reinitializes. */
-    private static void clearReadinessMarker() {
+    private static void clearReadinessMarker(Application application) {
+        READINESS_EXECUTOR.execute(() -> {
+            if (!SystemUiHookReadiness.clear(application, Process.myPid()))
+                HookPlatform.log("LightningDSP SystemUI volume panel: could not clear stale readiness receipt");
+        });
+    }
+
+    private static void publishReadiness(Application application, int pid, int attempt) {
+        READINESS_EXECUTOR.execute(() -> {
+            if (SystemUiHookReadiness.register(application, pid)) {
+                if (DiagnosticMode.isEnabled()) HookPlatform.log("LightningDSP SystemUI volume panel hook ready pid=" + pid);
+                return;
+            }
+            if (attempt + 1 < CONTROLLER_ATTEMPTS) {
+                new Handler(Looper.getMainLooper()).postDelayed(
+                    () -> publishReadiness(application, pid, attempt + 1), CONTROLLER_RETRY_MS);
+            } else {
+                HookPlatform.log("LightningDSP SystemUI volume panel: readiness receipt unavailable; native behavior retained");
+            }
+        });
+    }
+
+    private static void observeUserUnlock(Application application, int pid) {
+        if (Build.VERSION.SDK_INT < 24) return;
+        UserManager users = application.getSystemService(UserManager.class);
+        if (users == null || users.isUserUnlocked() ||
+                !unlockReceiverRegistered.compareAndSet(false, true)) return;
+        BroadcastReceiver receiver = new BroadcastReceiver() {
+            @Override public void onReceive(Context context, Intent intent) {
+                if (!Intent.ACTION_USER_UNLOCKED.equals(intent.getAction())) return;
+                try { application.unregisterReceiver(this); } catch (Throwable ignored) { }
+                unlockReceiverRegistered.set(false);
+                publishReadiness(application, pid, 0);
+            }
+        };
         try {
-            HookPlatform.setProperty(READY_PROPERTY, "0");
+            IntentFilter filter = new IntentFilter(Intent.ACTION_USER_UNLOCKED);
+            if (Build.VERSION.SDK_INT >= 33)
+                application.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED);
+            else application.registerReceiver(receiver, filter);
+            // Close the race where the user unlocked while the receiver was registering.
+            if (users.isUserUnlocked()) publishReadiness(application, pid, 0);
         } catch (Throwable error) {
-            HookPlatform.log("LightningDSP SystemUI volume panel: could not clear stale readiness marker");
+            unlockReceiverRegistered.set(false);
+            HookPlatform.log("LightningDSP SystemUI volume panel: could not observe user unlock");
         }
     }
 
@@ -96,11 +147,13 @@ public final class SystemUiVolumePanelHook {
             return;
         }
         SystemUiVolumeSurfaceHost.install(application);
-        installVolumeController(backend, application.getClassLoader(), 0);
+        clearReadinessMarker(application);
+        installVolumeController(backend, application, application.getClassLoader(), 0);
     }
 
     /** SystemUI's concrete controller is not reliably resolvable during package loading. */
-    private static void installVolumeController(HookBackend backend, ClassLoader loader, int attempt) {
+    private static void installVolumeController(HookBackend backend, Application application,
+                                               ClassLoader loader, int attempt) {
         if (volumeHookInstalled) return;
         try {
             boolean samsung = "samsung".equalsIgnoreCase(Build.MANUFACTURER);
@@ -118,7 +171,7 @@ public final class SystemUiVolumePanelHook {
             if (control == null) {
                 if (attempt + 1 < CONTROLLER_ATTEMPTS) {
                     new Handler(Looper.getMainLooper()).postDelayed(
-                        () -> installVolumeController(backend, loader, attempt + 1), CONTROLLER_RETRY_MS);
+                        () -> installVolumeController(backend, application, loader, attempt + 1), CONTROLLER_RETRY_MS);
                 } else {
                     HookPlatform.log("LightningDSP SystemUI volume panel: controller unavailable after startup retries; native behavior retained");
                 }
@@ -169,17 +222,13 @@ public final class SystemUiVolumePanelHook {
                 HookPlatform.log("LightningDSP SystemUI volume panel: supported onVolumeChangedW signature not found; native behavior retained");
                 return;
             }
-            // Only advertise readiness after a real hook was installed. The app compares
-            // this PID with the live SystemUI process before allowing the option to be enabled.
-            String pid = Integer.toString(Process.myPid());
-            HookPlatform.setProperty(READY_PROPERTY, pid);
-            String readyPid = HookPlatform.property(READY_PROPERTY, "");
-            if (!pid.equals(readyPid)) {
-                HookPlatform.log("LightningDSP SystemUI volume panel: readiness property rejected; native behavior retained");
-                return;
-            }
+            // Acknowledge readiness off SystemUI's main thread. Binder lets the app validate
+            // SystemUI's UID/PID without granting it debug_prop write access.
+            int pid = Process.myPid();
             volumeHookInstalled = true;
-            if (DiagnosticMode.isEnabled()) HookPlatform.log("LightningDSP SystemUI volume panel hook ready pid=" + Process.myPid() + " hooks=" + hooks);
+            observeUserUnlock(application, pid);
+            publishReadiness(application, pid, 0);
+            if (DiagnosticMode.isEnabled()) HookPlatform.log("LightningDSP SystemUI volume panel hooks installed pid=" + pid + " hooks=" + hooks);
         } catch (Throwable error) {
             HookPlatform.log("LightningDSP SystemUI volume panel hook unavailable; native behavior retained");
             if (DiagnosticMode.isEnabled()) HookPlatform.log(error);

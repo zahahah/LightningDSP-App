@@ -8,9 +8,11 @@ import android.os.Binder
 import android.os.Bundle
 import android.os.SystemClock
 import android.os.Looper
+import android.provider.Settings
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
+import lightning.dsp.volumemanager.backend.SystemUiHookReadinessPolicy
 
 /** A request is only a hint: the controller independently verifies UID, session and output. */
 internal object CompatibilityPreparationBridge {
@@ -18,6 +20,13 @@ internal object CompatibilityPreparationBridge {
 }
 
 class CompatibilityPreparationProvider : ContentProvider() {
+    private companion object {
+        const val SYSTEM_UI_PACKAGE = "com.android.systemui"
+        const val HOOK_READINESS_PREFS = "lightningdsp_systemui_hook_readiness"
+        const val HOOK_PID = "systemui_volume_panel_pid"
+        const val HOOK_BOOT_COUNT = "systemui_volume_panel_boot_count"
+    }
+
     private val slots = Semaphore(2)
     private val admission = CompatibilityPreparationAdmission()
     private val sessionPlaybackAdmission = SessionPlaybackPreparationAdmission()
@@ -31,6 +40,7 @@ class CompatibilityPreparationProvider : ContentProvider() {
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle {
         val uid = Binder.getCallingUid()
         val pid = Binder.getCallingPid()
+        readinessCall(method, extras, uid, pid)?.let { return it }
         val deadline = minOf(extras?.getLong("deadline", 0) ?: 0, SystemClock.elapsedRealtime() + 2_000)
         val session = arg?.toIntOrNull() ?: 0
         if (deadline <= SystemClock.elapsedRealtime() || method !in setOf("prepare", "prepare_session", "retain", "focus") ||
@@ -110,6 +120,49 @@ class CompatibilityPreparationProvider : ContentProvider() {
             return result(false)
         } finally { slots.release() }
     }
+
+    /** SystemUI cannot write debug_prop on several OEM builds; acknowledge the hook over Binder. */
+    @Suppress("DEPRECATION")
+    private fun readinessCall(method: String, extras: Bundle?, uid: Int, pid: Int): Bundle? {
+        if (method !in setOf("systemui_volume_panel_ready", "systemui_volume_panel_clear", "systemui_volume_panel_status"))
+            return null
+        val appContext = context ?: return readinessResult(0, false)
+        val systemUiUid = runCatching {
+            appContext.packageManager.getApplicationInfo(SYSTEM_UI_PACKAGE, 0).uid
+        }.getOrDefault(-1)
+        val prefs = appContext.getSharedPreferences(HOOK_READINESS_PREFS, android.content.Context.MODE_PRIVATE)
+        val bootCount = runCatching {
+            Settings.Global.getInt(appContext.contentResolver, Settings.Global.BOOT_COUNT, -1)
+        }.getOrDefault(-1)
+        val claimedPid = extras?.getInt("pid", -1) ?: -1
+        return when (method) {
+            "systemui_volume_panel_ready" -> {
+                if (!SystemUiHookReadinessPolicy.canRegister(uid, systemUiUid, pid, claimedPid) || bootCount < 0)
+                    return readinessResult(0, false)
+                val saved = prefs.edit().putInt(HOOK_PID, pid).putInt(HOOK_BOOT_COUNT, bootCount).commit()
+                readinessResult(if (saved) pid else 0, saved)
+            }
+            "systemui_volume_panel_clear" -> {
+                if (!SystemUiHookReadinessPolicy.canRegister(uid, systemUiUid, pid, claimedPid))
+                    return readinessResult(0, false)
+                val cleared = prefs.edit().remove(HOOK_PID).remove(HOOK_BOOT_COUNT).commit()
+                readinessResult(0, cleared)
+            }
+            else -> {
+                if (!SystemUiHookReadinessPolicy.canRead(uid, android.os.Process.myUid(), systemUiUid))
+                    return readinessResult(0, false)
+                val readyPid = if (bootCount >= 0 && prefs.getInt(HOOK_BOOT_COUNT, -1) == bootCount)
+                    prefs.getInt(HOOK_PID, 0) else 0
+                readinessResult(readyPid, true)
+            }
+        }
+    }
+
+    private fun readinessResult(pid: Int, accepted: Boolean) = Bundle().apply {
+        putInt("pid", pid)
+        putBoolean("accepted", accepted)
+    }
+
     private fun result(prepared: Boolean) = Bundle().apply { putBoolean("prepared", prepared) }
     override fun query(uri: Uri, projection: Array<out String>?, selection: String?, selectionArgs: Array<out String>?, sortOrder: String?): Cursor? = null
     override fun getType(uri: Uri): String? = null

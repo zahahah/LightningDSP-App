@@ -9,10 +9,8 @@ internal object SystemUiHookIdentity {
         marker?.toIntOrNull()?.let { it > 0 && it in livePids } == true
 
     fun available(context: Context): Boolean = runCatching {
-        val properties = Class.forName("android.os.SystemProperties")
-        val marker = properties.getDeclaredMethod("get", String::class.java, String::class.java)
-            .invoke(null, SystemUiVolumePanelOption.READY_PROPERTY, "") as String
+        val marker = SystemUiHookReadiness.currentPid(context)
         val processes = context.getSystemService(ActivityManager::class.java).runningAppProcesses.orEmpty()
-        matches(marker, processes.filter { it.processName == "com.android.systemui" }.map { it.pid })
+        marker > 0 && marker in processes.filter { it.processName == "com.android.systemui" }.map { it.pid }
     }.getOrDefault(false)
 }

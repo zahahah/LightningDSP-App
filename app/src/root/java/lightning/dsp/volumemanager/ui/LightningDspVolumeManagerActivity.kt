@@ -398,7 +398,7 @@ class LightningDspVolumeManagerActivity : BaseActivity() {
                 isEnabled = false
                 Thread({
                     val success = SystemUiVolumePanelOption.set(applicationContext, checked)
-                    val hookAvailable = SystemUiVolumePanelOption.available()
+                    val hookAvailable = SystemUiVolumePanelOption.available(applicationContext)
                     val canConfigure = SystemUiVolumePanelOption.canConfigure()
                     runOnUiThread {
                         if (!success) {
@@ -419,7 +419,7 @@ class LightningDspVolumeManagerActivity : BaseActivity() {
         controls.addView(systemUiPanelSwitch)
         controls.addView(systemUiPanelStatus)
         Thread({
-            val hookAvailable = SystemUiVolumePanelOption.available()
+            val hookAvailable = SystemUiVolumePanelOption.available(applicationContext)
             val canConfigure = SystemUiVolumePanelOption.canConfigure()
             val requested = SystemUiVolumePanelOption.requested(applicationContext)
             runOnUiThread {
