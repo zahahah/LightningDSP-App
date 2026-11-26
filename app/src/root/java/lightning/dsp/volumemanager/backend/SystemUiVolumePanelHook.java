@@ -172,11 +172,10 @@ public final class SystemUiVolumePanelHook {
             // Only advertise readiness after a real hook was installed. The app compares
             // this PID with the live SystemUI process before allowing the option to be enabled.
             String pid = Integer.toString(Process.myPid());
-            HookPlatform.setProperty(READY_PROPERTY, pid);
-            String readyPid = HookPlatform.property(READY_PROPERTY, "");
-            if (!pid.equals(readyPid)) {
-                HookPlatform.log("LightningDSP SystemUI volume panel: readiness property rejected; native behavior retained");
-                return;
+            try {
+                HookPlatform.setProperty(READY_PROPERTY, pid);
+            } catch (Throwable ignored) {
+                // SystemUI (platform_app) may lack SELinux permission to set debug_prop
             }
             volumeHookInstalled = true;
             if (DiagnosticMode.isEnabled()) HookPlatform.log("LightningDSP SystemUI volume panel hook ready pid=" + Process.myPid() + " hooks=" + hooks);
