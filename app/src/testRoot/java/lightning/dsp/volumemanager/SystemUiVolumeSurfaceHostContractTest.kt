@@ -53,6 +53,16 @@ class SystemUiVolumeSurfaceHostContractTest {
         assertTrue(host.contains("if (screenOff || userSwitch || configurationChanged || presentationChanged)"))
     }
 
+    @Test fun recreatedHolderGetsItsOwnFirstFrameDeadline() {
+        val created = host.substringAfter("void surfaceCreated(").substringBefore("void surfaceChanged(")
+        assertTrue(created.contains("holder != surface.getHolder()"))
+        assertTrue(created.contains("requestStarted = SystemClock.uptimeMillis()"))
+        assertTrue(created.contains("main.postDelayed(heartbeat, HEARTBEAT_MS)"))
+        val destroyed = host.substringAfter("void surfaceDestroyed(").substringBefore("private void requestSurface")
+        assertTrue(destroyed.indexOf("holder != surface.getHolder()") in 0 until destroyed.indexOf("generation++"))
+        assertTrue(host.contains("bindTimeout = () -> { if (service == null) fail(); }"))
+    }
+
     @Test fun privacyTransitionsRemovePreviousContentAndUnsupportedListenersRestrictPresentation() {
         assertTrue(host.contains("Intent.ACTION_SCREEN_OFF"))
         assertTrue(host.contains("android.intent.action.USER_SWITCHED"))

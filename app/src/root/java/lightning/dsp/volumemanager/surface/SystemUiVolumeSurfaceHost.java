@@ -235,7 +235,7 @@ public final class SystemUiVolumeSurfaceHost {
         } catch (Throwable error) { warn("binding", error); fail(); }
     }
 
-    private final Runnable bindTimeout = () -> { if (service == null || !ready) fail(); };
+    private final Runnable bindTimeout = () -> { if (service == null) fail(); };
     private final Runnable bindRetry = this::prepare;
     private final ServiceConnection connection = new ServiceConnection() {
         @Override public void onServiceConnected(ComponentName name, IBinder binder) {
@@ -247,6 +247,7 @@ public final class SystemUiVolumeSurfaceHost {
                 serviceBinder = binder;
                 binder.linkToDeath(serviceDeath, 0);
                 service = IVolumePanelSurfaceService.Stub.asInterface(binder);
+                main.removeCallbacks(bindTimeout);
                 attachWindow();
             } catch (Throwable ignored) { fail(); }
         }
@@ -315,7 +316,12 @@ public final class SystemUiVolumeSurfaceHost {
 
     private final SurfaceHolder.Callback surfaceCallbacks = new SurfaceHolder.Callback() {
         @Override public void surfaceCreated(SurfaceHolder holder) {
-            if (!optedIn()) return;
+            if (surface == null || holder != surface.getHolder() || !optedIn()) return;
+            // A shade/keyguard transition can recreate the holder without replacing the window.
+            // Its first frame has a new deadline; the previous generation's heartbeat was stopped.
+            requestStarted = SystemClock.uptimeMillis();
+            main.removeCallbacks(heartbeat);
+            main.postDelayed(heartbeat, HEARTBEAT_MS);
             if (renderingLocked != presentationLocked()) {
                 boolean pendingShow = requestedShow;
                 stop(false);
@@ -326,14 +332,17 @@ public final class SystemUiVolumeSurfaceHost {
             requestSurface();
         }
         @Override public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-            if (!attaching && !ready) requestSurface();
+            if (surface != null && holder == surface.getHolder() && !attaching && !ready) requestSurface();
         }
         @Override public void surfaceDestroyed(SurfaceHolder holder) {
-            if (surface == null) return; // releaseWindow already invalidated this holder.
+            if (surface == null || holder != surface.getHolder()) return; // Ignore teardown of an older window.
             ready = false;
             attaching = false;
             long destroyedGeneration = generation++;
+            requestStarted = SystemClock.uptimeMillis();
             main.removeCallbacks(heartbeat);
+            // If the holder never returns, don't strand a pending show on this window.
+            main.postDelayed(heartbeat, REQUEST_TIMEOUT_MS);
             if (service != null) {
                 try { service.heartbeat(owner, destroyedGeneration, false, renderingLocked); }
                 catch (Throwable ignored) { main.post(SystemUiVolumeSurfaceHost.this::fail); }
@@ -408,7 +417,15 @@ public final class SystemUiVolumeSurfaceHost {
     private final Runnable heartbeat = new Runnable() {
         @Override public void run() {
             if (window == null || service == null) return;
-            if (!optedIn() || renderingLocked != presentationLocked()) { stop(false); return; }
+            if (!optedIn()) { stop(false); return; }
+            if (renderingLocked != presentationLocked()) {
+                // Drop the old content immediately, not the key press waiting for new content.
+                boolean pendingShow = requestedShow;
+                releaseWindow();
+                requestedShow = pendingShow;
+                prepare();
+                return;
+            }
             if (!ready && SystemClock.uptimeMillis() - requestStarted >= REQUEST_TIMEOUT_MS) { fail(); return; }
             if (ready) {
                 if (!window.isAttachedToWindow()) { fail(); return; }

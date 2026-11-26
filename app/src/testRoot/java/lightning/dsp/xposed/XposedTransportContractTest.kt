@@ -18,7 +18,7 @@ class XposedTransportContractTest {
         assertEquals("libldsp_aaudio_compat.so", legacy.resolve("native_init").readText().trim())
         assertEquals(legacy.resolve("native_init").readText(), modern.resolve("native_init.list").readText())
         val config = modern.resolve("module.prop").readLines()
-        assertTrue(config.containsAll(listOf("minApiVersion=102", "targetApiVersion=102",
+        assertTrue(config.containsAll(listOf("minApiVersion=101", "targetApiVersion=102",
             "staticScope=false", "autoHotReload=false")))
         assertFalse(app.resolve("src/root/assets/xposed_init").exists())
         assertFalse(app.resolve("src/root/assets/native_init").exists())
