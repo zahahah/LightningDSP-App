@@ -30,6 +30,7 @@ import lightning.dsp.utils.extensions.PermissionExtensions.hasDumpPermission
 import lightning.dsp.utils.isRoot
 import lightning.dsp.utils.isRootless
 import lightning.dsp.utils.preferences.Preferences
+import lightning.dsp.utils.WorkProfileAppsPolicy
 import org.koin.android.ext.android.inject
 import timber.log.Timber
 
@@ -48,6 +49,9 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
     }
     private val includeSystemSounds by lazy {
         findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_include_system_sounds))
+    }
+    private val processWorkProfileAudio by lazy {
+        findPreference<MaterialSwitchPreference>(getString(R.string.key_audioformat_process_work_profile_audio))
     }
     private val fusionOptions by lazy {
         findPreference<PreferenceCategory>(getString(R.string.key_audioformat_fusion_options))
@@ -70,6 +74,14 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
         preferenceManager.sharedPreferencesName = Constants.PREF_APP
         setPreferencesFromResource(R.xml.app_audio_format_preferences, rootKey)
         updateProcessingMode(preferences.get<Boolean>(R.string.key_audioformat_processing))
+        updateProcessWorkProfileAudio()
+        processWorkProfileAudio?.setOnPreferenceChangeListener { _, newValue ->
+            val context = requireContext()
+            context.getSharedPreferences("lightningdsp_volume_panel", Context.MODE_PRIVATE)
+                .edit().putBoolean("process_work_profile_audio", newValue as Boolean).apply()
+            context.sendLocalBroadcast(Intent(Constants.ACTION_PREFERENCES_UPDATED))
+            true
+        }
 
         audioCompat?.apply {
             val compatContext = requireContext().applicationContext
@@ -275,6 +287,16 @@ class SettingsAudioFormatFragment : SettingsBaseFragment() {
     override fun onResume() {
         super.onResume()
         updateProcessingMode(preferences.get<Boolean>(R.string.key_audioformat_processing))
+        updateProcessWorkProfileAudio()
+    }
+
+    private fun updateProcessWorkProfileAudio() {
+        val preference = processWorkProfileAudio ?: return
+        preference.isVisible = isRoot() && WorkProfileAppsPolicy.hasAccessibleWorkProfile(requireContext())
+        if (!preference.isVisible) return
+        val panelPreferences = requireContext()
+            .getSharedPreferences("lightningdsp_volume_panel", Context.MODE_PRIVATE)
+        preference.isChecked = panelPreferences.getBoolean("process_work_profile_audio", true)
     }
 
     private fun updateProcessingMode(globalEnabled: Boolean) {

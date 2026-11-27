@@ -1,8 +1,8 @@
 package lightning.dsp.volumemanager.ui
+import lightning.dsp.utils.WorkProfileAppsPolicy
 
 import android.content.Intent
 import android.content.ComponentName
-import android.content.pm.LauncherApps
 import android.net.Uri
 import android.os.Bundle
 import android.os.Process
@@ -230,24 +230,18 @@ class LightningDspVolumeManagerActivity : BaseActivity() {
             setOnCheckedChangeListener { _, checked -> LightningDspVolumeManager.setStartupOnBoot(checked) }
         })
         addSection(R.string.ldsp_vm_settings_app_controls)
-        val launcherApps = getSystemService(LauncherApps::class.java)
-        val currentUserId = Process.myUid() / 100000
-        val hasWorkProfile = runCatching {
-            launcherApps?.let { launcher -> launcher.profiles.any { profile ->
-                launcher.getActivityList(null, profile).any { it.applicationInfo.uid / 100000 != currentUserId }
-            } } ?: false
-        }.getOrDefault(false)
+        val hasWorkProfile = WorkProfileAppsPolicy.hasAccessibleWorkProfile(this)
         if (hasWorkProfile) {
             controls.addView(MaterialSwitch(settingsContext).apply {
-                setText(R.string.ldsp_vm_process_work_profile_audio)
+                setText(R.string.ldsp_vm_show_work_profile_apps)
                 isChecked = preferences.getBoolean(
-                    "process_work_profile_audio", WorkProfileVisibilityPolicy.DEFAULT_PROCESS_WORK_PROFILE_AUDIO)
+                    "show_work_profile_apps", WorkProfileVisibilityPolicy.DEFAULT_SHOW_WORK_APPS)
                 setOnCheckedChangeListener { _, checked ->
-                    LightningDspVolumeManager.setProcessWorkProfileAudio(checked)
+                    preferences.edit().putBoolean("show_work_profile_apps", checked).apply()
                 }
             })
             controls.addView(TextView(settingsContext).apply {
-                setText(R.string.ldsp_vm_process_work_profile_audio_summary)
+                setText(R.string.ldsp_vm_show_work_profile_apps_summary)
                 setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodySmall)
             })
         }

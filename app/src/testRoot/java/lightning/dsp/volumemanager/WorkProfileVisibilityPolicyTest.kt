@@ -18,19 +18,34 @@ class WorkProfileVisibilityPolicyTest {
         assertTrue(WorkProfileVisibilityPolicy.includes(workProfile = false, showWorkProfileApps = false))
     }
 
-    @Test fun controlIsOnlyOfferedWhenAnAccessibleWorkAppIsPresentAndRowsAreBadged() {
+    @Test fun workAppVisibilityLivesInVolumeManagerSettingsAndRowsAreBadged() {
         val app = sequenceOf(File("."), File("app")).first { File(it, "src/root/AndroidManifest.xml").isFile }
         val compose = File(app, "src/root/java/lightning/dsp/volumemanager/ui/LightningVolumeComposeUi.kt").readText()
-        assertTrue(compose.contains("if (hasWorkProfileApps) item(key = \"work_profile_visibility\")"))
         assertTrue(compose.contains("\"show_work_profile_apps\", WorkProfileVisibilityPolicy.DEFAULT_SHOW_WORK_APPS"))
+        assertFalse(compose.contains("work_profile_visibility"))
+        assertFalse(compose.contains("Show work profile apps"))
         assertTrue(compose.contains("WorkProfileBadge"))
         assertTrue(compose.contains("Icons.Default.Work"))
         assertFalse(compose.contains("work_profile_processing"))
 
         val activity = File(app, "src/root/java/lightning/dsp/volumemanager/ui/LightningDspVolumeManagerActivity.kt").readText()
-        assertTrue(activity.contains("if (hasWorkProfile)"))
-        assertTrue(activity.contains("R.string.ldsp_vm_process_work_profile_audio"))
-        assertTrue(activity.contains("WorkProfileVisibilityPolicy.DEFAULT_PROCESS_WORK_PROFILE_AUDIO"))
+        val settings = activity.substringAfter("private fun showSettings()")
+        assertTrue(settings.contains("WorkProfileAppsPolicy.hasAccessibleWorkProfile(this)"))
+        assertTrue(settings.contains("R.string.ldsp_vm_show_work_profile_apps"))
+        assertTrue(settings.contains("WorkProfileVisibilityPolicy.DEFAULT_SHOW_WORK_APPS"))
+        assertFalse(settings.contains("process_work_profile_audio"))
+        assertTrue(WorkProfileVisibilityPolicy.DEFAULT_SHOW_WORK_APPS)
+
+        val audioXml = File(app, "src/main/res/xml/app_audio_format_preferences.xml").readText()
+        assertTrue(audioXml.contains("key_audioformat_process_work_profile_audio"))
+        assertTrue(audioXml.contains("android:persistent=\"false\""))
+        val audioSettings = File(app, "src/main/java/lightning/dsp/fragment/settings/SettingsAudioFormatFragment.kt").readText()
+        assertTrue(audioSettings.contains("updateProcessWorkProfileAudio()"))
+        assertTrue(audioSettings.contains("process_work_profile_audio\", newValue as Boolean"))
+        assertTrue(audioSettings.contains("WorkProfileAppsPolicy.hasAccessibleWorkProfile(requireContext())"))
+        val appVisibilityPolicy = File(app, "src/main/java/lightning/dsp/utils/WorkProfileAppsPolicy.kt").readText()
+        assertTrue(appVisibilityPolicy.contains("fun hasAccessibleWorkProfile(context: Context)"))
+
         assertTrue(WorkProfileVisibilityPolicy.DEFAULT_PROCESS_WORK_PROFILE_AUDIO)
 
         val sessionDatabase = File(app, "src/main/java/lightning/dsp/session/root/RootSessionDatabase.kt").readText()

@@ -274,7 +274,6 @@ internal fun LightningVolumeManagerScreen(
     } else if (dark) androidx.compose.material3.darkColorScheme() else androidx.compose.material3.lightColorScheme()
     // Resolve outside LazyListScope: changing an order must invalidate its item provider,
     // even when no player status, search query, or volume changed.
-    val hasWorkProfileApps = state.apps.any { it.workProfile }
     val allApps = state.apps.filter {
         WorkProfileVisibilityPolicy.includes(it.workProfile, showWorkProfileApps)
     }
@@ -420,14 +419,6 @@ internal fun LightningVolumeManagerScreen(
                 if (!compact) {
                     item(key = "manager_controls") {
                         ManagerStatus(state = state, onEnabledChange = onManagerEnabledChange)
-                    }
-                    if (hasWorkProfileApps) item(key = "work_profile_visibility") {
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("Show work profile apps", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                            Switch(checked = showWorkProfileApps, onCheckedChange = {
-                                panelPrefs.edit().putBoolean("show_work_profile_apps", it).apply()
-                            })
-                        }
                     }
                     if (state.enabled && !Settings.canDrawOverlays(context)) {
                         item(key = "overlay_permission") {

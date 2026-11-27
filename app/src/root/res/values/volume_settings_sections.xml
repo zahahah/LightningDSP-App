@@ -6,8 +6,8 @@
     <string name="ldsp_vm_audio_focus_root_failed" tools:ignore="MissingTranslation">Could not verify the root audio focus setting.</string>
     <string name="ldsp_vm_settings_behavior" tools:ignore="MissingTranslation">Manager behavior</string>
     <string name="ldsp_vm_settings_app_controls" tools:ignore="MissingTranslation">App controls</string>
-    <string name="ldsp_vm_process_work_profile_audio" tools:ignore="MissingTranslation">Process work profile audio</string>
-    <string name="ldsp_vm_process_work_profile_audio_summary" tools:ignore="MissingTranslation">Apply DSP to work-profile apps in Session and Fusion. Enabled by default when a work profile is available.</string>
+    <string name="ldsp_vm_show_work_profile_apps" tools:ignore="MissingTranslation">Show work profile apps</string>
+    <string name="ldsp_vm_show_work_profile_apps_summary" tools:ignore="MissingTranslation">Include work-profile apps in the Volume Manager list. Their icons show a briefcase badge.</string>
     <string name="ldsp_vm_media_play_pause" tools:ignore="MissingTranslation">Show media play/pause buttons</string>
     <string name="ldsp_vm_media_play_pause_summary" tools:ignore="MissingTranslation">When enabled, root grants LightningDSP notification access for media controls. Supported players show a button; paused apps stay in the floating panel for 3 minutes.</string>
     <string name="ldsp_vm_media_play_pause_access_failed" tools:ignore="MissingTranslation">Could not enable media controls. Allow notification access for LightningDSP and try again.</string>

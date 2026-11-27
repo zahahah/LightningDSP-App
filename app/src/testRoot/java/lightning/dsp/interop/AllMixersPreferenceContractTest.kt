@@ -88,7 +88,8 @@ class AllMixersPreferenceContractTest {
         assertGroup("audio_format_processing_modes_header", "key_audioformat_processing_global_option",
             "key_audioformat_processing_session_option", "key_audioformat_processing_app_mixer_option")
         assertGroup("audio_format_coverage_header", "key_audioformat_all_mixers",
-            "key_audioformat_include_system_sounds", "key_audioformat_enhanced_processing",
+            "key_audioformat_include_system_sounds", "key_audioformat_process_work_profile_audio",
+            "key_audioformat_enhanced_processing",
             "key_audioformat_enhanced_processing_info")
         assertGroup("audio_format_compatibility_header", "key_audioformat_aaudio_compat",
             "key_audioformat_aaudio_reuse_session")

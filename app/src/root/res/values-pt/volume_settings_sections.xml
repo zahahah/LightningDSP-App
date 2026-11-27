@@ -1,7 +1,7 @@
 <resources>
     <string name="ldsp_vm_settings_behavior">Comportamento do gerenciador</string>
-    <string name="ldsp_vm_process_work_profile_audio">Processar áudio do perfil de trabalho</string>
-    <string name="ldsp_vm_process_work_profile_audio_summary">Aplicar DSP aos apps de trabalho nos modos Session e Fusion. Ativado por padrão quando há um perfil de trabalho.</string>
+    <string name="ldsp_vm_show_work_profile_apps">Mostrar apps do perfil de trabalho</string>
+    <string name="ldsp_vm_show_work_profile_apps_summary">Incluir apps do perfil de trabalho na lista do Volume Manager. Os ícones exibem um distintivo de pasta.</string>
     <string name="ldsp_vm_settings_app_list">Lista de apps</string>
     <string name="ldsp_vm_settings_dsp_card">Card LightningDSP</string>
     <string name="ldsp_vm_settings_floating_controls">Controles do painel flutuante</string>

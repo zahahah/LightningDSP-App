@@ -315,6 +315,8 @@
     <string name="audio_format_fusion_stability_mode_summary">Uses a larger output buffer to reduce dropouts, but increases audio delay. The buffer can grow from 20 ms to 80 ms. Changing this setting restarts Fusion Mode.</string>
     <string name="audio_format_include_system_sounds">Include system sounds</string>
     <string name="audio_format_include_system_sounds_summary">Applies effects to notification tones, keyboard clicks, and other system sounds.</string>
+    <string name="audio_format_process_work_profile_audio">Process work profile audio</string>
+    <string name="audio_format_process_work_profile_audio_summary">Apply DSP to work-profile apps in Session and Fusion. Enabled by default when a work profile is available.</string>
     <string name="audio_format_processing_session">Session Mode</string>
     <string name="audio_format_processing_session_summary">Apply effects to individual app sessions</string>
     <string name="audio_format_all_mixers">Cover additional sessions</string>

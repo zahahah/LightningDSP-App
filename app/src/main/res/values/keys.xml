@@ -43,6 +43,7 @@
     <string name="key_audioformat_processing_app_mixer" translatable="false">audioformat_processing_app_mixer</string>
     <string name="key_audioformat_processing_app_mixer_option" translatable="false">audioformat_processing_app_mixer_option</string>
     <string name="key_audioformat_include_system_sounds" translatable="false">audioformat_include_system_sounds</string>
+    <string name="key_audioformat_process_work_profile_audio" translatable="false">audioformat_process_work_profile_audio</string>
     <string name="key_audioformat_fusion_options" translatable="false">audioformat_fusion_options</string>
     <string name="key_audioformat_fusion_stability_mode" translatable="false">audioformat_fusion_stability_mode</string>
     <string name="key_audioformat_processing_global_option" translatable="false">audioformat_processing_global_option</string>

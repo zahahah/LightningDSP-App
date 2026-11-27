@@ -26,6 +26,8 @@
     <!-- Permission request notifications -->
     <string name="notification_request_permission_title">Ação do usuário é necessária para lançar o LightningDSP</string>
     <string name="notification_request_permission">Toque para conceder permissão de captura e ativar o processamento de áudio do LightningDSP</string>
+    <string name="audio_format_process_work_profile_audio">Processar áudio do perfil de trabalho</string>
+    <string name="audio_format_process_work_profile_audio_summary">Aplicar DSP às aplicações do perfil de trabalho nos modos Session e Fusion. Ativado por predefinição quando existe um perfil de trabalho.</string>
     <!-- Session control loss notifications -->
     <string name="session_control_loss_toast">LightningDSP parou devido à perda de controlo da sessão de áudio. Por favor, desative outras aplicações de efeito de áudio.</string>
     <string name="session_control_loss_notification_title">Processamento de áudio desativado. Outra aplicação está interferindo com o LightningDSP.</string>

@@ -81,6 +81,13 @@
             app:iconSpaceReserved="false" />
 
         <lightning.dsp.preference.MaterialSwitchPreference
+            android:key="@string/key_audioformat_process_work_profile_audio"
+            android:persistent="false"
+            android:title="@string/audio_format_process_work_profile_audio"
+            android:summary="@string/audio_format_process_work_profile_audio_summary"
+            app:iconSpaceReserved="false" />
+
+        <lightning.dsp.preference.MaterialSwitchPreference
             android:key="@string/key_audioformat_enhanced_processing"
             android:defaultValue="@bool/default_audioformat_enhanced_processing"
             android:title="@string/audio_format_enhanced_processing"
