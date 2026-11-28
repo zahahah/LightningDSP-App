@@ -59,10 +59,12 @@ object AppMixerRoutingExperiment {
             println("APP_MIXER:FILES_OK (read-only; no DSP instance or route created)")
             return
         }
-        val supervised = args.size == 10 && args[7].matches(Regex("--stability-mode=[01]")) && args[8] == "--local-dsp" && args[9].startsWith("--owner-external-b64=") && args[0] == "--supervised" && args[1].startsWith("--exclude-uids=") && args[2].startsWith("--user=") && args[3].startsWith("--owner=") && args[4].startsWith("--owner-pid=") && args[5].startsWith("--owner-start=") && args[6].matches(Regex("--include-system-sounds=[01]"))
+        val directPolicyUpdates = args.size == 11 && args.last() == "--direct-policy-updates"
+        val supervised = (args.size == 10 || directPolicyUpdates) && args[7].matches(Regex("--stability-mode=[01]")) && args[8] == "--local-dsp" && args[9].startsWith("--owner-external-b64=") && args[0] == "--supervised" && args[1].startsWith("--exclude-uids=") && args[2].startsWith("--user=") && args[3].startsWith("--owner=") && args[4].startsWith("--owner-pid=") && args[5].startsWith("--owner-start=") && args[6].matches(Regex("--include-system-sounds=[01]"))
         val config = if (supervised) AppMixerExperimentConfig(
             AppMixerExperimentConfig.parseExcludedUids(args[1], args[6].endsWith("=1"),
-                AppMixerExperimentConfig.parseUserIds(args[2].removePrefix("--user=")).size), 90, excludeUids = true,
+                AppMixerExperimentConfig.parseUserIds(args[2].removePrefix("--user=")).size, directPolicyUpdates), 90, excludeUids = true,
+            directPolicyUpdates = directPolicyUpdates,
             userId = args[3].removePrefix("--owner=").toInt() / 100000,
             userIds = AppMixerExperimentConfig.parseUserIds(args[2].removePrefix("--user=")),
             ownerUid = args[3].removePrefix("--owner=").toInt(),
@@ -103,7 +105,8 @@ object AppMixerRoutingExperiment {
                     val command = AppMixerControlProtocol.readCommand(input)
                     if (command != "READY" || !commands.offer(command)) return@Thread
                     while (true) {
-                        val line = AppMixerControlProtocol.readCommand(input, 256) ?: break
+                        val line = AppMixerControlProtocol.readCommand(input,
+                            if (config.directPolicyUpdates) AppMixerExperimentConfig.MAX_DIRECT_POLICY_UPDATE_CHARS else 256) ?: break
                         if (line == "STOP") break
                         val parts = line.split(' ', limit = 5)
                         if (parts.size !in 4..5 || parts[0] != "UPDATE" || parts[1].toLongOrNull() == null || parts[2] !in setOf("0", "1")) break
@@ -111,7 +114,7 @@ object AppMixerRoutingExperiment {
                             val includeSystemSounds = parts[2] == "1"
                             val users = if (parts.size == 5) AppMixerExperimentConfig.parseUserIds(parts[4]) else config.userIds
                             require(config.userId in users)
-                            val excluded = AppMixerExperimentConfig.parseExcludedUids("--exclude-uids=${parts[3]}", includeSystemSounds, users.size)
+                            val excluded = AppMixerExperimentConfig.parseExcludedUids("--exclude-uids=${parts[3]}", includeSystemSounds, users.size, config.directPolicyUpdates)
                             require(config.ownerUid in excluded)
                             updater.get()?.invoke(excluded, includeSystemSounds, users) == true
                         }.getOrDefault(false)
@@ -180,13 +183,20 @@ object AppMixerRoutingExperiment {
         }
         return ruleBuilderType.getMethod("build").invoke(ruleBuilder)
         }
-        val rule = buildRule(config.uids)
+        // Until the API 37 direct-AIDL update is accepted, never register a broad
+        // rule with a partial list of exclusions. Int.MAX_VALUE is not an app UID.
+        val rule = if (config.directPolicyUpdates) {
+            val builder = ruleBuilderType.getConstructor().newInstance()
+            ruleBuilderType.getMethod("addMixRule", Int::class.javaPrimitiveType, Any::class.java)
+                .invoke(builder, uidRule, Int.MAX_VALUE)
+            ruleBuilderType.getMethod("build").invoke(builder)
+        } else buildRule(config.uids)
         val mixBuilderType = Class.forName("android.media.audiopolicy.AudioMix\$Builder")
         val mixBuilder = mixBuilderType.getConstructor(ruleType).newInstance(rule)
         mixBuilderType.getMethod("setFormat", AudioFormat::class.java).invoke(mixBuilder, format)
         mixBuilderType.getMethod("setRouteFlags", Int::class.javaPrimitiveType)
             .invoke(mixBuilder, mixType.getField("ROUTE_FLAG_LOOP_BACK").getInt(null))
-        val mix = mixBuilderType.getMethod("build").invoke(mixBuilder)
+        val mix: Any = checkNotNull(mixBuilderType.getMethod("build").invoke(mixBuilder))
         val policyBuilderType = Class.forName("android.media.audiopolicy.AudioPolicy\$Builder")
         val policyBuilder = policyBuilderType.getConstructor(Context::class.java).newInstance(context)
         policyBuilderType.getMethod("addMix", mixType).invoke(policyBuilder, mix)
@@ -196,6 +206,7 @@ object AppMixerRoutingExperiment {
         var player: AudioTrack? = null
         var effect: AudioEffect? = null
         var localDsp: AppMixerLocalDsp? = null
+        val routeLock = Any()
         try {
             check(!stop.get()) { "Owner pipe closed before routing" }
             if (config.localDsp) localDsp = AppMixerLocalDsp.open(context, config.ownerUid, stop, relayFrames * AppMixerLatencyPolicy.CHANNELS, config.ownerExternalFiles)
@@ -289,7 +300,19 @@ object AppMixerRoutingExperiment {
                     effect?.let { check(it.setEnabled(true) == AudioEffect.SUCCESS && it.enabled && it.hasControl()) }
                     target.play()
                     if (config.localDsp) startCapture()
-                    if (config.excludeUids) updater.set { excluded, includeSystemSounds, users ->
+                    if (config.directPolicyUpdates) {
+                        val address = mixType.getMethod("getRegistration").invoke(mix) as String
+                        check(address.isNotBlank()) { "Owned mix registration is unavailable" }
+                        fun replace(excluded: Set<Int>, systemSounds: Boolean, users: Set<Int>): Boolean =
+                            synchronized(routeLock) {
+                                !stop.get() && AppMixerPolicyMixAidl.replace(mix, address, config.ownerUid,
+                                    excluded.sorted().toIntArray(), systemSounds, users.sorted().toIntArray())
+                            }
+                        check(replace(config.uids, config.includeSystemSounds, config.userIds)) {
+                            "Fusion policy rules were not accepted by AudioPolicyService"
+                        }
+                        updater.set(::replace)
+                    } else if (config.excludeUids) updater.set { excluded, includeSystemSounds, users ->
                         val update = policyType.getMethod("updateMixingRules", List::class.java)
                         val updates = listOf(android.util.Pair(mix, buildRule(excluded, includeSystemSounds, users)))
                         (update.invoke(policy, updates) as Int) == 0
@@ -330,6 +353,7 @@ object AppMixerRoutingExperiment {
                 })
             println("APP_MIXER:STOP samplesRead=${counts.readSamples} samplesWritten=${counts.writtenSamples}; counters are NOT coverage proof")
         } finally {
+            stop.set(true)
             updater.set(null)
             // Every cleanup is attempted independently; rollback is never skipped after an error.
             var cleanupFailure: Throwable? = null
@@ -342,7 +366,11 @@ object AppMixerRoutingExperiment {
             cleanup { effect?.release() }
             cleanup { recorder?.release() }
             cleanup { player?.release() }
-            if (registrationAttempted) cleanup { unregister.invoke(audio, policy) }
+            if (registrationAttempted) cleanup {
+                if (config.directPolicyUpdates) synchronized(routeLock) {
+                    unregister.invoke(audio, policy)
+                } else unregister.invoke(audio, policy)
+            }
             cleanup { localDsp?.close() }
             if (cleanupFailure != null) throw IllegalStateException("APP_MIXER:CLEANUP_FAILED; verify policy/output state", cleanupFailure)
             println("APP_MIXER:RELEASED (verify dumps to confirm baseline restoration)")

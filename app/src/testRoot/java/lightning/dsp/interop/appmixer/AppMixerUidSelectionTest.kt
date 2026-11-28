@@ -33,4 +33,15 @@ class AppMixerUidSelectionTest {
         assertEquals(14, AppMixerUidSelection.exclusions(disabled, 10004)?.size)
         assertNull(AppMixerUidSelection.exclusions(disabled + app(10022, "10022", false), 10004, true))
     }
+    @Test fun api37DirectPolicyTransportRetainsThirtyExclusionsWithoutDroppingSystemSoundRules() {
+        val ownerUid = 10004
+        val disabled = (10010..10039).map { app(it, "app.$it", false) }
+        val expected = setOf(0, ownerUid) + disabled.map { it.uid }
+        assertNull(AppMixerUidSelection.exclusions(disabled, ownerUid, includeSystemSounds = true))
+        assertEquals(expected, AppMixerUidSelection.exclusions(
+            disabled, ownerUid, includeSystemSounds = true, directPolicyUpdates = true))
+        val argument = "--exclude-uids=" + expected.sorted().joinToString(",")
+        assertEquals(expected, AppMixerExperimentConfig.parseExcludedUids(
+            argument, includeSystemSounds = true, directPolicyUpdates = true))
+    }
 }

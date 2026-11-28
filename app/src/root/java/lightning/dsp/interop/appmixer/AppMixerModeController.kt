@@ -17,8 +17,9 @@ internal class AppMixerModeController(
     private val app = context.applicationContext
     private val panel = app.getSharedPreferences("lightningdsp_volume_panel", Context.MODE_PRIVATE)
     private val executor = Executors.newSingleThreadScheduledExecutor()
-    private val launcher = AppMixerProcessLauncher(app)
-    private val inventory = AppMixerUidInventory(app)
+    private val directPolicyUpdates = AppMixerPolicyMixAidl.isAvailable()
+    private val launcher = AppMixerProcessLauncher(app, directPolicyUpdates)
+    private val inventory = AppMixerUidInventory(app, directPolicyUpdates)
     private val appPrefs = app.getSharedPreferences(Constants.PREF_APP, Context.MODE_PRIVATE)
     private fun modeAndPowerWanted(): Boolean =
         appPrefs.getBoolean(app.getString(R.string.key_audioformat_processing_app_mixer), false) &&
@@ -45,7 +46,7 @@ internal class AppMixerModeController(
         { modeAndPowerWanted() && inventory.readRoute(selectedSystemSounds)?.let {
             it.userIds == selectedUsers && it.excludedUids == selected &&
                 it.includesSystemSounds == selectedSystemSounds && it.workProfileIncluded == selectedWorkProfileIncluded
-        } == true }) { clean ->
+        } == true }, directPolicyUpdates = directPolicyUpdates) { clean ->
         runCatching {
             executor.execute {
                 if (requested && !supervisor.isActive()) {

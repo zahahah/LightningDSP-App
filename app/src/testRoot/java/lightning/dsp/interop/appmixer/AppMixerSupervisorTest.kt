@@ -183,4 +183,15 @@ class AppMixerSupervisorTest {
         assertTrue(released)
     }
 
+    @Test fun directPolicyOwnerTransmitsAnExtendedUpdateWithoutRestarting() {
+        val helper = Helper()
+        val owner = AppMixerSupervisor({ helper }, { AutoCloseable {} },
+            { AutoCloseable {} }, directPolicyUpdates = true)
+        assertTrue(owner.start())
+        val excluded = setOf(0, 10004) + (1010010..1010039)
+        assertTrue(owner.updateRules(excluded, includeSystemSounds = true, userIds = setOf(0, 10)))
+        assertTrue(owner.isActive())
+        owner.close()
+        assertEquals(listOf("READY", "UPDATE 1 1 ${excluded.sorted().joinToString(",")} 0,10", "STOP"), helper.commands)
+    }
 }

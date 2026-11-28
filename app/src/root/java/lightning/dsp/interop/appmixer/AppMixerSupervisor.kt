@@ -17,6 +17,7 @@ internal class AppMixerSupervisor(
     private val acquireExclusive: () -> AutoCloseable?,
     private val prepareEffect: (Int) -> AutoCloseable?,
     private val mayRoute: () -> Boolean = { true },
+    private val directPolicyUpdates: Boolean = false,
     private val onUnexpectedExit: (Boolean) -> Unit = {},
 ) : AutoCloseable {
     private var child: Process? = null
@@ -118,7 +119,7 @@ internal class AppMixerSupervisor(
         if (!process.isAlive) return false
         return try {
             val values = exclusions.sorted().joinToString(",")
-            AppMixerExperimentConfig.parseExcludedUids("--exclude-uids=$values", includeSystemSounds, userIds?.size ?: 1)
+            AppMixerExperimentConfig.parseExcludedUids("--exclude-uids=$values", includeSystemSounds, userIds?.size ?: 1, directPolicyUpdates)
             val id = ++updateId
             process.outputStream.write("UPDATE $id ${if (includeSystemSounds) 1 else 0} $values${userIds?.sorted()?.joinToString(",")?.let { " $it" }.orEmpty()}\n".toByteArray(Charsets.US_ASCII))
             process.outputStream.flush()

@@ -12,12 +12,16 @@ internal data class AppMixerExperimentConfig(
     val stabilityMode: Boolean = false,
     val ownerExternalFiles: String = "",
     val userIds: Set<Int> = setOf(userId),
+    val directPolicyUpdates: Boolean = false,
 ) {
     companion object {
         const val MAX_SUPERVISED_UIDS = 1024
         // Media, game, and unknown are always matched; system sounds add notification,
         // notification-event, and sonification usages. Every allowed user shares the 20-rule cap.
         const val MAX_EXCLUDED_UIDS = 16
+        // Transport safety bounds for the API 37 direct-AIDL path, not a policy limit.
+        const val MAX_DIRECT_POLICY_EXCLUSIONS = 8192
+        const val MAX_DIRECT_POLICY_UPDATE_CHARS = 100_000
         fun maxExcludedUids(includeSystemSounds: Boolean, userCount: Int = 1): Int {
             require(userCount in 1..8)
             return 20 - userCount - 3 - if (includeSystemSounds) 3 else 0
@@ -29,10 +33,14 @@ internal data class AppMixerExperimentConfig(
             return users.toSet()
         }
 
-        fun parseExcludedUids(argument: String, includeSystemSounds: Boolean = false, userCount: Int = 1): Set<Int> {
-            require(argument.startsWith("--exclude-uids="))
+        fun parseExcludedUids(argument: String, includeSystemSounds: Boolean = false, userCount: Int = 1,
+                              directPolicyUpdates: Boolean = false): Set<Int> {
+            require(argument.startsWith("--exclude-uids=") && userCount in 1..8)
+            val limit = if (directPolicyUpdates) MAX_DIRECT_POLICY_EXCLUSIONS else maxExcludedUids(includeSystemSounds, userCount)
+            require(argument.length <= if (directPolicyUpdates) MAX_DIRECT_POLICY_UPDATE_CHARS else 256)
             val values = argument.removePrefix("--exclude-uids=").split(',').map { it.toInt() }
-            require(values.size in 1..maxExcludedUids(includeSystemSounds, userCount) && 0 in values && values.all {
+            require(values.size in 1..limit && values.distinct().size == values.size &&
+                0 in values && values.all {
                 it == 0 || (it >= 0 && it % 100000 in 10000..19999)
             }) { "Invalid or excessive UID exclusions" }
             return values.toSet()

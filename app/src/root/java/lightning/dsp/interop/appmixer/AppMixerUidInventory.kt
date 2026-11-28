@@ -10,7 +10,7 @@ import java.util.concurrent.FutureTask
 import java.util.concurrent.TimeUnit
 
 /** Profile-scoped inventory; unknown package membership rejects that profile's route. */
-internal class AppMixerUidInventory(private val context: Context) {
+internal class AppMixerUidInventory(private val context: Context, private val directPolicyUpdates: Boolean = false) {
     private data class WorkInventory(val apps: List<AppMixerUidSelection.App>, val userIds: Set<Int>)
     private data class CachedWorkPackages(val expiresAt: Long, val packagesByUid: Map<Int, Set<String>>?)
 
@@ -130,9 +130,9 @@ internal class AppMixerUidInventory(private val context: Context) {
         includeSystemSounds: Boolean,
         workProfileIncluded: Boolean,
     ): Route? {
-        val exclusions = AppMixerUidSelection.exclusions(apps, Process.myUid(), includeSystemSounds, users.size)
+        val exclusions = AppMixerUidSelection.exclusions(apps, Process.myUid(), includeSystemSounds, users.size, directPolicyUpdates)
         if (exclusions != null) return Route(exclusions, includeSystemSounds, users, workProfileIncluded)
-        if (includeSystemSounds) {
+        if (includeSystemSounds && !directPolicyUpdates) {
             // Preserve Fusion Mode if the extra usage rules exceed AudioPolicy's
             // criterion budget; degrade only optional system-sound coverage.
             AppMixerUidSelection.exclusions(apps, Process.myUid(), false, users.size)?.let {

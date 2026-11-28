@@ -6,7 +6,7 @@ import android.util.Base64
 import android.os.Process as AndroidProcess
 
 /** Launch only from a supervised background owner that retains stdin until stop. */
-internal class AppMixerProcessLauncher(private val context: Context) {
+internal class AppMixerProcessLauncher(private val context: Context, private val directPolicyUpdates: Boolean = false) {
     fun launch(
         uids: Set<Int>,
         includeSystemSounds: Boolean,
@@ -15,7 +15,7 @@ internal class AppMixerProcessLauncher(private val context: Context) {
     ): Process {
         val values = uids.sorted().joinToString(",")
         // Reject exclusions that cannot fit alongside the selected usage and user rules.
-        AppMixerExperimentConfig.parseExcludedUids("--exclude-uids=$values", includeSystemSounds, userIds.size)
+        AppMixerExperimentConfig.parseExcludedUids("--exclude-uids=$values", includeSystemSounds, userIds.size, directPolicyUpdates)
         val apk = "'" + context.applicationInfo.sourceDir.replace("'", "'\\''") + "'"
         val abi = (if (AndroidProcess.is64Bit()) Build.SUPPORTED_64_BIT_ABIS else Build.SUPPORTED_32_BIT_ABIS)
             .firstOrNull() ?: error("Cannot establish relay ABI")
@@ -31,7 +31,8 @@ internal class AppMixerProcessLauncher(private val context: Context) {
             "Cannot establish Fusion Mode owner identity"
         }
         check(owner.uid == android.os.Process.myUid())
+        val nativeArg = if (directPolicyUpdates) " --direct-policy-updates" else ""
         return ProcessBuilder("su", "-c", "CLASSPATH=$apk LD_LIBRARY_PATH=$nativeDir exec $runtime -Djava.library.path=$nativeDir /system/bin " +
-            "lightning.dsp.interop.appmixer.AppMixerRoutingExperiment --supervised --exclude-uids=$values --user=${userIds.sorted().joinToString(",")} --owner=${owner.uid} --owner-pid=${owner.pid} --owner-start=${owner.startTicks} --include-system-sounds=${if (includeSystemSounds) 1 else 0} --stability-mode=${if (stabilityMode) 1 else 0} --local-dsp --owner-external-b64=$encodedExternal").start()
+            "lightning.dsp.interop.appmixer.AppMixerRoutingExperiment --supervised --exclude-uids=$values --user=${userIds.sorted().joinToString(",")} --owner=${owner.uid} --owner-pid=${owner.pid} --owner-start=${owner.startTicks} --include-system-sounds=${if (includeSystemSounds) 1 else 0} --stability-mode=${if (stabilityMode) 1 else 0} --local-dsp --owner-external-b64=$encodedExternal$nativeArg").start()
     }
 }
