@@ -75,7 +75,7 @@ jobs:
           assert len(digests) == 1 and digests[0].lower() == 'c18c2d21eee51c357d9485c781be9bf201131c6fa94bab97b93c94b710c40357', 'Unauthorized APK signer'
           PYCERT
           "$tools/aapt" dump badging dist/LightningDSP-root-universal.apk > "$RUNNER_TEMP/apk-badging.txt"
-          grep -E "^package: name='com.lightning.dsp' versionCode='152' versionName='1.7.2'" "$RUNNER_TEMP/apk-badging.txt"
+          grep -E "^package: name='com.lightning.dsp' versionCode='153' versionName='1.7.2'" "$RUNNER_TEMP/apk-badging.txt"
           git rev-parse HEAD > dist/SOURCE-COMMIT.txt
           (cd dist && sha256sum LightningDSP-root-universal.apk > SHA256SUMS.txt)
       - name: Test and build libxposed API 102 candidate
@@ -119,7 +119,7 @@ jobs:
           assert len(digests) == 1 and digests[0].lower() == 'c18c2d21eee51c357d9485c781be9bf201131c6fa94bab97b93c94b710c40357', 'Unauthorized APK signer'
           PYCERT
           "$tools/aapt" dump badging dist/LightningDSP-root-universal-libxposed102.apk > "$RUNNER_TEMP/modern-badging.txt"
-          grep -E "^package: name='com.lightning.dsp' versionCode='152' versionName='1.7.2'" "$RUNNER_TEMP/modern-badging.txt"
+          grep -E "^package: name='com.lightning.dsp' versionCode='153' versionName='1.7.2'" "$RUNNER_TEMP/modern-badging.txt"
           (cd dist && sha256sum LightningDSP-root-universal.apk LightningDSP-root-universal-libxposed102.apk > SHA256SUMS.txt)
       - uses: actions/upload-artifact@v4
         with:
