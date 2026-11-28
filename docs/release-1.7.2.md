@@ -1,6 +1,6 @@
-# LightningDSP app 1.7.2-beta-2
+# LightningDSP app 1.7.2-beta-3
 
-This pre-release brings the work-profile and volume-panel work forward, improves audio recovery, and includes an optional build for testing the modern libxposed API. The usual APK still uses the legacy Xposed entry point to preserve compatibility with existing setups.
+This pre-release adds Android 14/15 processing-mode defaults and updates the Fusion Mode description. It also carries forward the work-profile, volume-panel and audio-recovery changes, plus an optional build for testing the modern libxposed API. The usual APK still uses the legacy Xposed entry point to preserve compatibility with existing setups.
 
 ### Changes
 
@@ -23,6 +23,11 @@ This pre-release brings the work-profile and volume-panel work forward, improves
 - Keep Fusion responsive without reducing its playback headroom; improve work-profile routing without disabling the relay when Android's package inventory is incomplete.
 - Add repeatable OpenSL route checks for diagnosis. These checks do not change the APK's audio behavior.
 
+#### Processing-mode defaults
+- Fresh root installs on Android 14/API 34 and Android 15/API 35 start in Global Mode. Other Android versions retain the existing Fusion default.
+- Saved processing choices are preserved on updates, and users can still choose Fusion Mode on Android 14/15.
+- Describe Fusion as offering per-app effect control and potentially better playback stability, while warning that its extra audio path can add delay.
+
 #### Optional libxposed API 102 candidate
 - The release also provides a separately named root universal APK built against libxposed API 102 for testing with a compatible modern hook framework.
 - The normal APK remains on the legacy Xposed API path. The two APKs are alternatives with the same package and signing certificate; do not install or distribute them as separate apps.
@@ -30,7 +35,7 @@ This pre-release brings the work-profile and volume-panel work forward, improves
 
 ### Versions and compatibility
 
-Root app **1.7.2/code 147**, package `com.lightning.dsp`, signed with the existing owner certificate. The universal APK includes arm64-v8a, armeabi-v7a, x86 and x86_64 app libraries. This does not make the module's ARM64 audio driver universal.
+Root app **1.7.2/code 153**, package `com.lightning.dsp`, signed with the existing owner certificate. The universal APK includes arm64-v8a, armeabi-v7a, x86 and x86_64 app libraries. This does not make the module's ARM64 audio driver universal.
 
 Work-profile routing depends on Android exposing the profile and an eligible package inventory through the supported root path. The SystemUI replacement requires its app scope and hook enabled in a compatible Vector/LSPosed setup; stock controls remain the fallback when the replacement is unavailable. Global Mode still cannot exclude one app from a shared output mix.
 
