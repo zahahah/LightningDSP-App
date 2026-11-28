@@ -5,8 +5,8 @@ object AndroidConfig {
     const val targetSdk = 34
 
     const val versionName = "1.7.2"
-    // Root flavor adds four; code 152 initializes valid AIDL offload metadata for Fusion routing.
-    const val versionCode = 148
+    // Root flavor adds four; keep beta updates installable over the 1.7.2 beta.
+    const val versionCode = 149
 
     const val kotlinVersion = "2.1.0"
     const val kspVersion = "2.1.0-1.0.29"

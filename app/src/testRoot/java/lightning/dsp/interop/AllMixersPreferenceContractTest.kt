@@ -26,7 +26,9 @@ class AllMixersPreferenceContractTest {
         assertEquals("Fusion Mode", value("src/main/res/values/strings.xml", "string", "audio_format_processing_app_mixer"))
         val summary = value("src/main/res/values/strings.xml", "string", "audio_format_processing_app_mixer_summary")
         assertTrue(summary.contains("virtual audio output"))
-        assertTrue(summary.contains("per-app control"))
+        assertTrue(summary.contains("per-app effect control"))
+        assertTrue(summary.contains("playback stability"))
+        assertTrue(summary.contains("may add audio delay"))
         assertEquals("audioformat_processing_app_mixer",
             value("src/main/res/values/keys.xml", "string", "key_audioformat_processing_app_mixer"))
     }

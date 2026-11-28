@@ -13,7 +13,7 @@ class RootExperienceWiringContractTest {
 
     @Test fun rootDefaultsAreSeededBeforeServicesOrProfilesConsumeThem() {
         val application = source("src/main/java/lightning/dsp/MainApplication.kt")
-        val seed = application.indexOf("seed(Constants.PREF_APP,")
+        val seed = application.indexOf("seed(Constants.PREF_APP)")
         assertTrue(seed >= 0)
         assertTrue(seed < application.indexOf("profileManager = ProfileManager()"))
         assertTrue(application.contains("seed(\"lightningdsp_volume_manager\","))

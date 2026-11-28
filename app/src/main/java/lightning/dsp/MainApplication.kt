@@ -169,7 +169,9 @@ open class MainApplication : Application(), SharedPreferences.OnSharedPreference
                     missing.forEach { (key, value) -> putBoolean(key, value) }
                 }.apply()
             }
-            seed(Constants.PREF_APP, lightning.dsp.utils.preferences.RootExperienceDefaults::processing)
+            seed(Constants.PREF_APP) { existing ->
+                lightning.dsp.utils.preferences.RootExperienceDefaults.processing(existing, Build.VERSION.SDK_INT)
+            }
             seed("lightningdsp_volume_manager", lightning.dsp.utils.preferences.RootExperienceDefaults::manager)
             seed("lightningdsp_volume_panel", lightning.dsp.utils.preferences.RootExperienceDefaults::panel)
         }

@@ -309,7 +309,7 @@
     <string name="audio_format_processing_global">Global Mode</string>
     <string name="audio_format_processing_global_summary">Apply effects to the output mix selected by Android</string>
     <string name="audio_format_processing_app_mixer" translatable="false">Fusion Mode</string>
-    <string name="audio_format_processing_app_mixer_summary" translatable="false">Creates a virtual audio output to process apps together, with per-app control in Volume Manager.</string>
+    <string name="audio_format_processing_app_mixer_summary" translatable="false">A virtual audio output for better per-app effect control. It can improve playback stability but may add audio delay.</string>
     <string name="audio_format_fusion_options_header">Fusion Mode options</string>
     <string name="audio_format_fusion_stability_mode">Fusion Stability Mode</string>
     <string name="audio_format_fusion_stability_mode_summary">Uses a larger output buffer to reduce dropouts, but increases audio delay. The buffer can grow from 20 ms to 80 ms. Changing this setting restarts Fusion Mode.</string>
